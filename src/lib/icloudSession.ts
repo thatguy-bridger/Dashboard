@@ -143,6 +143,13 @@ export async function submitFindMyCode(email: string, code: string): Promise<voi
     throw new Error("No pending iCloud login found. Start the login flow again.");
   }
 
+  console.log("[icloudSession] submitFindMyCode using session", {
+    scnt: pending.scnt,
+    sessionId: pending.sessionId,
+    aaspLength: pending.aasp?.length,
+    codeLength: code.length,
+  });
+
   const service = newService(email);
   restoreAuthSecrets(service, pending);
   await service.provideMfaCode(code);
@@ -191,6 +198,15 @@ export async function resendFindMyCode(email: string): Promise<void> {
   // icloudjs's own processAuthSecrets does for this same cookie.
   const aaspHeader = Array.from(res.headers.values()).find((v) => v.includes("aasp="));
   const newAasp = aaspHeader?.split("aasp=")[1]?.split(";")[0];
+
+  console.log("[icloudSession] resendFindMyCode header diff", {
+    scntChanged: newScnt !== null && newScnt !== pending.scnt,
+    sessionIdChanged: newSessionId !== null && newSessionId !== pending.sessionId,
+    aaspChanged: newAasp !== undefined && newAasp !== pending.aasp,
+    gotScntHeader: newScnt !== null,
+    gotSessionIdHeader: newSessionId !== null,
+    gotAaspHeader: newAasp !== undefined,
+  });
 
   await saveSession(email, {
     ...pending,
