@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { LocationsMap } from "@/components/LocationsMap";
 
 interface LocatedDevice {
   id: string;
@@ -19,16 +20,9 @@ interface FindMyData {
   error?: string;
 }
 
-function formatAge(timestamp: number | null) {
-  if (!timestamp) return "";
-  const minutes = Math.round((Date.now() - timestamp) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  return `${Math.round(minutes / 60)}h ago`;
-}
-
-/** Shows Find My device locations. Connecting the account (password + 2FA
- * code) happens in the control panel, not here — this widget is read-only. */
+/** Shows Find My device locations on a custom-styled dark map. Connecting
+ * the account (password + 2FA code) happens in the control panel, not
+ * here — this widget is read-only. */
 export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
   const [data, setData] = useState<FindMyData | null>(null);
 
@@ -59,32 +53,23 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
   if (data.status === "pending_code") {
     return <div className="text-sm text-[var(--muted)]">Waiting for 2FA code — finish connecting in Control</div>;
   }
-  if (data.status === "error" || data.devices.length === 0) {
+
+  const withFix = data.devices.filter(
+    (d): d is LocatedDevice & { latitude: number; longitude: number } => d.latitude != null && d.longitude != null
+  );
+
+  if (data.status === "error" || withFix.length === 0) {
     return <div className="text-sm text-[var(--muted)]">No locations available</div>;
   }
 
-  const count = size === "sm" ? 1 : size === "md" ? 3 : size === "lg" ? 6 : 10;
+  const heightClass = size === "sm" ? "h-24" : size === "md" ? "h-40" : size === "lg" ? "h-64" : "h-80";
 
   return (
-    <div className="w-full max-w-lg">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-3 text-center">Locations</div>
-      <ul className="flex flex-col gap-2">
-        {data.devices.slice(0, count).map((d) => (
-          <li
-            key={d.id}
-            className="flex justify-between gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
-          >
-            <span className="truncate">{d.name}</span>
-            <span className="text-[var(--muted)] text-xs whitespace-nowrap">
-              {d.latitude != null && d.longitude != null
-                ? `${d.latitude.toFixed(3)}, ${d.longitude.toFixed(3)}`
-                : "no fix"}
-              {d.timestamp ? ` · ${formatAge(d.timestamp)}` : ""}
-              {d.isOld ? " (stale)" : ""}
-            </span>
-          </li>
-        ))}
-      </ul>
+    <div className="flex flex-col items-center gap-2">
+      {size !== "sm" && (
+        <div className="text-xs uppercase tracking-widest text-[var(--muted)] text-center">Locations</div>
+      )}
+      <LocationsMap devices={withFix} heightClass={heightClass} />
     </div>
   );
 }

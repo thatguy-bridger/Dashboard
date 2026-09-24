@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "icloudjs": "^1.6.2",
+    "maplibre-gl": "^6.11.2",
     "next": "16.3.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
