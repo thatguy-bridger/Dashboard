@@ -60,12 +60,24 @@ export default function ControlPage() {
     return () => clearInterval(id);
   }, [refreshDevices, refreshPresets]);
 
+  // The device registry is a JSON blob with a read-modify-write cycle, so a
+  // write from here can race with a device's own heartbeat write and get
+  // silently lost. Verify the patch landed and retry a couple of times if not.
   async function patchDevice(id: string, body: Record<string, unknown>) {
-    await fetch(`/api/devices/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await fetch(`/api/devices/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      const check = await fetch(`/api/devices/${id}`, { cache: "no-store" });
+      if (check.ok) {
+        const { device } = await check.json();
+        const matches = Object.entries(body).every(([k, v]) => device[k] === v);
+        if (matches) break;
+      }
+    }
     refreshDevices();
   }
 
