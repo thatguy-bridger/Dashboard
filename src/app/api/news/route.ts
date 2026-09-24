@@ -10,8 +10,16 @@ export async function GET() {
   }
   const xml = await res.text();
 
+  const decodeEntities = (s: string) =>
+    s
+      .replace(/&amp;/g, "&")
+      .replace(/&apos;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+
   const titles = [...xml.matchAll(/<item>[\s\S]*?<title>([\s\S]*?)<\/title>/g)]
-    .map((m) => m[1].replace("<![CDATA[", "").replace("]]>", "").trim())
+    .map((m) => decodeEntities(m[1].replace("<![CDATA[", "").replace("]]>", "").trim()))
     .filter(Boolean)
     .slice(0, 6);
 
