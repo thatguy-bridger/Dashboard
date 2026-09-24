@@ -11,6 +11,7 @@ export async function POST() {
     await resendFindMyCode(email);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    console.error("[icloud/findmy/resend]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

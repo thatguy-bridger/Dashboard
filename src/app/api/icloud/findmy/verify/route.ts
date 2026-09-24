@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     await submitFindMyCode(email, code);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    console.error("[icloud/findmy/verify]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     const result = await startFindMyLogin(email, password);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
+    console.error("[icloud/findmy/login]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
