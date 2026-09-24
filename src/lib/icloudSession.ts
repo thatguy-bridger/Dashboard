@@ -299,21 +299,27 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
   restoreReadySession(service, session);
 
   const findMy = service.getService("findme");
+  // The library defaults to including Family Sharing members' devices
+  // (fmly: true in the request) — this dashboard only wants the account's
+  // own devices.
+  findMy.includeFamily = false;
   const response = await findMy.refresh();
 
   // Cookies can rotate on a refresh; keep the stored session current.
   await saveSession(email, captureReadySession(service));
 
-  return response.content.map((d) => ({
-    id: d.id,
-    name: d.name,
-    deviceClass: d.deviceClass,
-    batteryLevel: typeof d.batteryLevel === "number" ? d.batteryLevel : null,
-    latitude: d.location?.latitude ?? null,
-    longitude: d.location?.longitude ?? null,
-    isOld: d.location?.isOld ?? false,
-    timestamp: d.location?.timeStamp ?? null,
-  }));
+  return response.content
+    .filter((d) => !d.fmlyShare)
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      deviceClass: d.deviceClass,
+      batteryLevel: typeof d.batteryLevel === "number" ? d.batteryLevel : null,
+      latitude: d.location?.latitude ?? null,
+      longitude: d.location?.longitude ?? null,
+      isOld: d.location?.isOld ?? false,
+      timestamp: d.location?.timeStamp ?? null,
+    }));
 }
 
 export async function getFindMyStatus(email: string): Promise<"disconnected" | "pending_code" | "connected"> {
