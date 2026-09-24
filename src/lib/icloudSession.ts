@@ -169,8 +169,16 @@ export async function resendFindMyCode(email: string): Promise<void> {
     },
   });
 
-  if (!res.ok) {
+  // Apple returns 409 here on success too (same convention as
+  // signin/complete) — the body's securityCode.valid reflects whether a
+  // code actually went out, not the HTTP status.
+  if (res.status !== 200 && res.status !== 409) {
     throw new Error(`Resend failed: ${res.status} ${await res.text()}`);
+  }
+
+  const body = (await res.json()) as { securityCode?: { valid?: boolean } };
+  if (body.securityCode?.valid === false) {
+    throw new Error("Apple did not send a new code (securityCode.valid: false)");
   }
 }
 
