@@ -180,6 +180,24 @@ export async function resendFindMyCode(email: string): Promise<void> {
   if (body.securityCode?.valid === false) {
     throw new Error("Apple did not send a new code (securityCode.valid: false)");
   }
+
+  // Apple rotates scnt (and sometimes the session id / aasp cookie) on this
+  // response — verifying against the old ones is what was causing a 409 on
+  // an otherwise-correct code, so persist whatever changed before returning.
+  const newScnt = res.headers.get("scnt");
+  const newSessionId = res.headers.get("X-Apple-ID-Session-Id");
+  // Native fetch's Headers.get("set-cookie") isn't reliable with multiple
+  // Set-Cookie headers present — scan all header values instead, same as
+  // icloudjs's own processAuthSecrets does for this same cookie.
+  const aaspHeader = Array.from(res.headers.values()).find((v) => v.includes("aasp="));
+  const newAasp = aaspHeader?.split("aasp=")[1]?.split(";")[0];
+
+  await saveSession(email, {
+    ...pending,
+    scnt: newScnt ?? pending.scnt,
+    sessionId: newSessionId ?? pending.sessionId,
+    aasp: newAasp ?? pending.aasp,
+  });
 }
 
 export interface LocatedDevice {
