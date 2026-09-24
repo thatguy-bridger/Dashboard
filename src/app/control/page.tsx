@@ -5,6 +5,7 @@ import type { Device } from "@/lib/registry";
 import { WIDGET_TYPES, WIDGET_SIZES, type Preset, type PresetWidget, type WidgetType, type WidgetSize } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { FindMyConnect } from "@/components/FindMyConnect";
+import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
   clock: "Clock",
@@ -14,6 +15,9 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   sports: "Sports",
   calendar: "Calendar",
   locations: "Locations",
+  gmail: "Gmail",
+  drive: "Drive files",
+  photos: "Photos",
 };
 
 const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
@@ -350,6 +354,11 @@ export default function ControlPage() {
         <p className="text-xs text-[var(--muted)] mt-2">
           Signing in here shares your calendar/email with every screen — no need to sign in on each device.
         </p>
+        {googleStatus?.connected && (
+          <div className="mt-4 pt-4 border-t border-[var(--surface-border)]">
+            <GooglePhotosConnect />
+          </div>
+        )}
       </section>
 
       <section className="glass-panel p-6">

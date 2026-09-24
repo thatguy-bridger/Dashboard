@@ -6,6 +6,9 @@ import { SportsWidget } from "@/components/SportsWidget";
 import { ClockWidget } from "@/components/ClockWidget";
 import { CalendarWidget } from "@/components/CalendarWidget";
 import { LocationsWidget } from "@/components/LocationsWidget";
+import { GmailWidget } from "@/components/GmailWidget";
+import { DriveWidget } from "@/components/DriveWidget";
+import { PhotosWidget } from "@/components/PhotosWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -23,6 +26,12 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <CalendarWidget size={size} />;
     case "locations":
       return <LocationsWidget size={size} />;
+    case "gmail":
+      return <GmailWidget size={size} />;
+    case "drive":
+      return <DriveWidget size={size} />;
+    case "photos":
+      return <PhotosWidget size={size} />;
     default:
       return null;
   }
