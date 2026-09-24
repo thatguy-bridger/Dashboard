@@ -8,8 +8,8 @@ export async function POST() {
   }
 
   try {
-    await resendFindMyCode(email);
-    return NextResponse.json({ ok: true });
+    const { code } = await resendFindMyCode(email);
+    return NextResponse.json({ ok: true, code });
   } catch (err) {
     console.error("[icloud/findmy/resend]", err);
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });

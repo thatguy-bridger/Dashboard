@@ -160,7 +160,7 @@ export async function submitFindMyCode(email: string, code: string): Promise<voi
 
 /** Re-requests the 2FA push to trusted devices for a login that's already
  * awaiting a code (doesn't restart the password step). */
-export async function resendFindMyCode(email: string): Promise<void> {
+export async function resendFindMyCode(email: string): Promise<{ code?: string }> {
   const pending = await loadSession(email);
   if (!pending || pending.status !== "mfa_requested") {
     throw new Error("No pending iCloud login found. Start the login flow again.");
@@ -183,7 +183,7 @@ export async function resendFindMyCode(email: string): Promise<void> {
     throw new Error(`Resend failed: ${res.status} ${await res.text()}`);
   }
 
-  const body = (await res.json()) as { securityCode?: { valid?: boolean } };
+  const body = (await res.json()) as { securityCode?: { valid?: boolean; code?: string } };
   if (body.securityCode?.valid === false) {
     throw new Error("Apple did not send a new code (securityCode.valid: false)");
   }
@@ -214,6 +214,8 @@ export async function resendFindMyCode(email: string): Promise<void> {
     sessionId: newSessionId ?? pending.sessionId,
     aasp: newAasp ?? pending.aasp,
   });
+
+  return { code: body.securityCode?.code };
 }
 
 export interface LocatedDevice {

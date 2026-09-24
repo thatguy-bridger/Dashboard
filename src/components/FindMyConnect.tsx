@@ -56,7 +56,12 @@ export function FindMyConnect() {
       const res = await fetch("/api/icloud/findmy/resend", { method: "POST" });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "resend failed");
-      setMessage("Code resent — check your trusted devices.");
+      if (json.code) {
+        setCode(json.code);
+        setMessage(`Code resent: ${json.code} (also filled in below).`);
+      } else {
+        setMessage("Code resent — check your trusted devices.");
+      }
     } catch (err) {
       setMessage(String(err));
     } finally {
