@@ -19,7 +19,10 @@ const REGISTRY_PATH = "home-base/devices.json";
 async function readRegistry(): Promise<Record<string, Device>> {
   try {
     const info = await head(REGISTRY_PATH);
-    const res = await fetch(info.url, { cache: "no-store" });
+    const res = await fetch(info.url, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+    });
     if (!res.ok) return {};
     return (await res.json()) as Record<string, Device>;
   } catch {
@@ -29,7 +32,7 @@ async function readRegistry(): Promise<Record<string, Device>> {
 
 async function writeRegistry(devices: Record<string, Device>): Promise<void> {
   await put(REGISTRY_PATH, JSON.stringify(devices), {
-    access: "public",
+    access: "private",
     contentType: "application/json",
     allowOverwrite: true,
   });
