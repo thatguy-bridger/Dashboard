@@ -1,34 +1,23 @@
-import { put, head } from "@vercel/blob";
+import { d1Query } from "@/lib/d1";
 
 export interface Settings {
   favoriteTeam: string | null;
 }
 
-const SETTINGS_PATH = "home-base/settings.json";
-const DEFAULTS: Settings = { favoriteTeam: null };
-
 export async function getSettings(): Promise<Settings> {
-  try {
-    const info = await head(SETTINGS_PATH);
-    const res = await fetch(`${info.url}?t=${Date.now()}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
-    });
-    if (!res.ok) return DEFAULTS;
-    return { ...DEFAULTS, ...(await res.json()) };
-  } catch {
-    return DEFAULTS;
-  }
+  const rows = await d1Query<{ key: string; value: string | null }>(
+    "SELECT key, value FROM settings WHERE key = 'favoriteTeam'"
+  );
+  return { favoriteTeam: rows[0]?.value ?? null };
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  const current = await getSettings();
-  const updated = { ...current, ...patch };
-  await put(SETTINGS_PATH, JSON.stringify(updated), {
-    access: "private",
-    contentType: "application/json",
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-  });
-  return updated;
+  if ("favoriteTeam" in patch) {
+    await d1Query(
+      `INSERT INTO settings (key, value) VALUES ('favoriteTeam', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [patch.favoriteTeam]
+    );
+  }
+  return getSettings();
 }

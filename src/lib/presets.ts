@@ -1,4 +1,4 @@
-import { put, head } from "@vercel/blob";
+import { d1Query } from "@/lib/d1";
 
 export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -11,73 +11,70 @@ export interface Preset {
   updatedAt: number;
 }
 
-const PRESETS_PATH = "home-base/presets.json";
-
-async function readPresets(): Promise<Record<string, Preset>> {
-  try {
-    const info = await head(PRESETS_PATH);
-    const res = await fetch(`${info.url}?t=${Date.now()}`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
-    });
-    if (!res.ok) return {};
-    return (await res.json()) as Record<string, Preset>;
-  } catch {
-    return {};
-  }
+interface PresetRow {
+  id: string;
+  name: string;
+  widgets: string;
+  created_at: number;
+  updated_at: number;
 }
 
-async function writePresets(presets: Record<string, Preset>): Promise<void> {
-  await put(PRESETS_PATH, JSON.stringify(presets), {
-    access: "private",
-    contentType: "application/json",
-    allowOverwrite: true,
-    cacheControlMaxAge: 0,
-  });
+function fromRow(row: PresetRow): Preset {
+  return {
+    id: row.id,
+    name: row.name,
+    widgets: JSON.parse(row.widgets),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export async function listPresets(): Promise<Preset[]> {
-  const presets = await readPresets();
-  return Object.values(presets).sort((a, b) => b.updatedAt - a.updatedAt);
+  const rows = await d1Query<PresetRow>("SELECT * FROM presets ORDER BY updated_at DESC");
+  return rows.map(fromRow);
 }
 
 export async function getPreset(id: string): Promise<Preset | null> {
-  const presets = await readPresets();
-  return presets[id] ?? null;
+  const rows = await d1Query<PresetRow>("SELECT * FROM presets WHERE id = ?", [id]);
+  return rows[0] ? fromRow(rows[0]) : null;
 }
 
 export async function createPreset(name: string, widgets: WidgetType[]): Promise<Preset> {
-  const presets = await readPresets();
+  const id = crypto.randomUUID();
   const now = Date.now();
-  const preset: Preset = {
-    id: crypto.randomUUID(),
-    name,
-    widgets,
-    createdAt: now,
-    updatedAt: now,
-  };
-  presets[preset.id] = preset;
-  await writePresets(presets);
-  return preset;
+  await d1Query(
+    "INSERT INTO presets (id, name, widgets, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    [id, name, JSON.stringify(widgets), now, now]
+  );
+  return { id, name, widgets, createdAt: now, updatedAt: now };
 }
 
 export async function updatePreset(
   id: string,
   patch: Partial<Pick<Preset, "name" | "widgets">>
 ): Promise<Preset | null> {
-  const presets = await readPresets();
-  const existing = presets[id];
-  if (!existing) return null;
-  const updated = { ...existing, ...patch, updatedAt: Date.now() };
-  presets[id] = updated;
-  await writePresets(presets);
-  return updated;
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if ("name" in patch) {
+    sets.push("name = ?");
+    values.push(patch.name);
+  }
+  if ("widgets" in patch) {
+    sets.push("widgets = ?");
+    values.push(JSON.stringify(patch.widgets));
+  }
+  sets.push("updated_at = ?");
+  values.push(Date.now());
+
+  values.push(id);
+  await d1Query(`UPDATE presets SET ${sets.join(", ")} WHERE id = ?`, values);
+  return getPreset(id);
 }
 
 export async function deletePreset(id: string): Promise<boolean> {
-  const presets = await readPresets();
-  if (!presets[id]) return false;
-  delete presets[id];
-  await writePresets(presets);
+  const existing = await getPreset(id);
+  if (!existing) return false;
+  await d1Query("DELETE FROM presets WHERE id = ?", [id]);
   return true;
 }

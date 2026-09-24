@@ -40,7 +40,7 @@ export function useDevice(): { deviceId: string | null; device: Device | null } 
     }
 
     heartbeat();
-    const id = setInterval(heartbeat, 60 * 1000);
+    const id = setInterval(heartbeat, 20 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);
