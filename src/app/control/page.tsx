@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
 import { WIDGET_TYPES, type Preset, type WidgetType } from "@/lib/presets";
+import { ScreenPreview } from "@/components/ScreenPreview";
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
   clock: "Clock",
@@ -20,21 +21,9 @@ export default function ControlPage() {
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/settings", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data) => setFavoriteTeam(data.settings.favoriteTeam ?? ""));
-  }, []);
-
-  async function saveFavoriteTeam() {
-    await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ favoriteTeam: favoriteTeam.trim() || null }),
-    });
-    setTeamSaved(true);
-    setTimeout(() => setTeamSaved(false), 1500);
-  }
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [draftWidgets, setDraftWidgets] = useState<WidgetType[]>([]);
+  const [publishing, setPublishing] = useState(false);
 
   const refreshDevices = useCallback(async () => {
     const res = await fetch("/api/devices", { cache: "no-store" });
@@ -60,6 +49,22 @@ export default function ControlPage() {
     return () => clearInterval(id);
   }, [refreshDevices, refreshPresets]);
 
+  useEffect(() => {
+    fetch("/api/settings", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setFavoriteTeam(data.settings.favoriteTeam ?? ""));
+  }, []);
+
+  async function saveFavoriteTeam() {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favoriteTeam: favoriteTeam.trim() || null }),
+    });
+    setTeamSaved(true);
+    setTimeout(() => setTeamSaved(false), 1500);
+  }
+
   async function patchDevice(id: string, body: Record<string, unknown>) {
     await fetch(`/api/devices/${id}`, {
       method: "PATCH",
@@ -82,8 +87,32 @@ export default function ControlPage() {
   }
 
   async function deletePreset(id: string) {
+    if (editingPresetId === id) setEditingPresetId(null);
     await fetch(`/api/presets/${id}`, { method: "DELETE" });
     refreshPresets();
+  }
+
+  function startEditing(preset: Preset) {
+    setEditingPresetId(preset.id);
+    setDraftWidgets(preset.widgets);
+  }
+
+  function toggleDraftWidget(type: WidgetType) {
+    setDraftWidgets((current) =>
+      current.includes(type) ? current.filter((w) => w !== type) : [...current, type]
+    );
+  }
+
+  async function publishDraft() {
+    if (!editingPresetId) return;
+    setPublishing(true);
+    await fetch(`/api/presets/${editingPresetId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ widgets: draftWidgets }),
+    });
+    await refreshPresets();
+    setPublishing(false);
   }
 
   function toggleWidget(type: WidgetType) {
@@ -92,14 +121,36 @@ export default function ControlPage() {
     );
   }
 
+  const approvedDevices = devices?.filter((d) => d.status === "approved") ?? [];
+
   return (
-    <main className="flex-1 p-10 max-w-3xl mx-auto w-full flex flex-col gap-8">
+    <main className="flex-1 p-10 max-w-5xl mx-auto w-full flex flex-col gap-8">
       <div>
         <h1 className="text-2xl font-semibold mb-1">Controller</h1>
         <p className="text-[var(--muted)]">
           Approve devices, name them, and quick-assign a preset layout to each.
         </p>
       </div>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Live screens
+        </h2>
+        {approvedDevices.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            No approved devices yet — approved screens will mirror live here.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {approvedDevices.map((d) => (
+              <div key={d.id} className="flex flex-col gap-1">
+                <ScreenPreview src={`/screen?preview=${d.id}`} width={260} />
+                <span className="text-xs text-[var(--muted)] text-center">{d.name ?? d.id.slice(0, 8)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
@@ -208,27 +259,68 @@ export default function ControlPage() {
           Presets
         </h2>
 
-        <div className="flex flex-col gap-2 mb-6">
+        <div className="flex flex-col gap-4 mb-6">
           {presets?.length === 0 && (
             <p className="text-sm text-[var(--muted)]">No presets yet — create one below.</p>
           )}
           {presets?.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
-            >
-              <div>
-                <div className="text-sm font-medium">{p.name}</div>
-                <div className="text-xs text-[var(--muted)]">
-                  {p.widgets.map((w) => WIDGET_LABELS[w]).join(", ") || "no widgets"}
+            <div key={p.id} className="border-t border-[var(--surface-border)] pt-3 first:border-t-0 first:pt-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium">{p.name}</div>
+                  <div className="text-xs text-[var(--muted)]">
+                    {p.widgets.map((w) => WIDGET_LABELS[w]).join(", ") || "no widgets"}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => (editingPresetId === p.id ? setEditingPresetId(null) : startEditing(p))}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+                  >
+                    {editingPresetId === p.id ? "Close editor" : "Edit"}
+                  </button>
+                  <button
+                    onClick={() => deletePreset(p.id)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => deletePreset(p.id)}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
-              >
-                Delete
-              </button>
+
+              {editingPresetId === p.id && (
+                <div className="mt-4 flex flex-col md:flex-row gap-4 items-start bg-black/20 rounded-xl p-4">
+                  <ScreenPreview src={`/screen?draft=${draftWidgets.join(",")}`} width={280} />
+                  <div className="flex-1 flex flex-col gap-3">
+                    <p className="text-xs text-[var(--muted)]">
+                      This preview is a live render — the exact same code the screens run, just not published
+                      yet. Toggle widgets, watch it update, then publish when it looks right.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {WIDGET_TYPES.map((type) => (
+                        <button
+                          key={type}
+                          onClick={() => toggleDraftWidget(type)}
+                          className={`text-xs px-3 py-1.5 rounded-lg border ${
+                            draftWidgets.includes(type)
+                              ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
+                              : "border-[var(--surface-border)] text-[var(--muted)]"
+                          }`}
+                        >
+                          {WIDGET_LABELS[type]}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={publishDraft}
+                      disabled={publishing}
+                      className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      {publishing ? "Publishing…" : "Publish to live devices"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

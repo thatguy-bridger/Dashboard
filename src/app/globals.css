@@ -74,3 +74,36 @@ body {
 .living-orb[data-state="alert"] {
   animation: orb-pulse 0.9s ease-in-out infinite;
 }
+
+.tile {
+  border: 1px solid var(--surface-border);
+  border-radius: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tile-clock {
+  background: linear-gradient(160deg, rgba(125, 211, 252, 0.14), rgba(125, 211, 252, 0.03));
+}
+
+.tile-weather {
+  background: linear-gradient(160deg, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0.03));
+}
+
+.tile-worldclocks {
+  background: linear-gradient(160deg, rgba(167, 139, 250, 0.16), rgba(167, 139, 250, 0.03));
+}
+
+.tile-news {
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.14), rgba(251, 191, 36, 0.03));
+}
+
+.tile-sports {
+  background: linear-gradient(160deg, rgba(52, 211, 153, 0.14), rgba(52, 211, 153, 0.03));
+}
