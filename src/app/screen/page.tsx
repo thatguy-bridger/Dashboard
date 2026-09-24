@@ -5,17 +5,24 @@ import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
 import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
-import type { Preset, WidgetType } from "@/lib/presets";
-import { WIDGET_TYPES } from "@/lib/presets";
+import type { Preset, PresetWidget, WidgetSize } from "@/lib/presets";
+import { WIDGET_TYPES, WIDGET_SIZES, SIZE_SPANS } from "@/lib/presets";
 
-function useClock() {
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
+const DEFAULT_WIDGETS: PresetWidget[] = [
+  { type: "clock", size: "lg" },
+  { type: "weather", size: "md" },
+];
+
+function parseDraft(raw: string): PresetWidget[] {
+  return raw
+    .split(",")
+    .map((entry) => {
+      const [type, size] = entry.split(":");
+      if (!(WIDGET_TYPES as readonly string[]).includes(type)) return null;
+      const validSize = (WIDGET_SIZES as readonly string[]).includes(size) ? (size as WidgetSize) : "md";
+      return { type, size: validSize } as PresetWidget;
+    })
+    .filter((w): w is PresetWidget => w !== null);
 }
 
 /** Polls a device's own record by id — used for the controller's live mirror. */
@@ -75,40 +82,40 @@ function usePreset(presetId: string | null | undefined) {
   return preset;
 }
 
-function ClockTile({ name, orbState }: { name: string; orbState: "idle" | "active" | "alert" }) {
-  const now = useClock();
+function StatusBadge({ name, orbState }: { name: string; orbState: "idle" | "active" | "alert" }) {
   return (
-    <div className="tile tile-clock relative">
-      <div className="absolute top-4 left-4 flex items-center gap-2">
-        <LivingOrb state={orbState} size={18} />
-        <span className="text-xs text-[var(--muted)] uppercase tracking-widest">{name}</span>
-      </div>
-      <div className="text-6xl md:text-8xl font-semibold tabular-nums">
-        {now ? now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
-      </div>
-      <div className="text-[var(--muted)] mt-2 text-lg">
-        {now?.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }) ?? ""}
-      </div>
+    <div className="fixed top-4 left-4 flex items-center gap-2 z-10 pointer-events-none">
+      <LivingOrb state={orbState} size={16} />
+      <span className="text-xs text-[var(--muted)] uppercase tracking-widest">{name}</span>
     </div>
   );
 }
 
-function ScreenGrid({ widgets, name, orbState }: { widgets: WidgetType[]; name: string; orbState: "idle" | "active" | "alert" }) {
-  const others = widgets.filter((w) => w !== "clock");
+function ScreenGrid({ widgets, name, orbState }: { widgets: PresetWidget[]; name: string; orbState: "idle" | "active" | "alert" }) {
   return (
-    <div
-      className="h-screen w-screen p-4 grid gap-4"
-      style={{
-        gridTemplateColumns: `repeat(auto-fit, minmax(${others.length === 0 ? "100%" : "320px"}, 1fr))`,
-        gridAutoRows: "1fr",
-      }}
-    >
-      <ClockTile name={name} orbState={orbState} />
-      {others.map((w) => (
-        <div key={w} className={`tile tile-${w}`}>
-          <WidgetRenderer type={w} />
-        </div>
-      ))}
+    <div className="h-screen w-screen relative">
+      <StatusBadge name={name} orbState={orbState} />
+      <div
+        className="h-full w-full p-3 grid gap-3"
+        style={{
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateRows: "repeat(3, 1fr)",
+          gridAutoFlow: "row dense",
+        }}
+      >
+        {widgets.map((w, i) => {
+          const span = SIZE_SPANS[w.size];
+          return (
+            <div
+              key={`${w.type}-${i}`}
+              className={`tile tile-${w.type}`}
+              style={{ gridColumn: `span ${span.col}`, gridRow: `span ${span.row}` }}
+            >
+              <WidgetRenderer type={w.type} size={w.size} />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -136,10 +143,7 @@ function ScreenPageInner() {
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");
 
-  const draftWidgets =
-    draftParam !== null
-      ? (draftParam.split(",").filter((w): w is WidgetType => WIDGET_TYPES.includes(w as WidgetType)) as WidgetType[])
-      : null;
+  const draftWidgets = draftParam !== null ? parseDraft(draftParam) : null;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
@@ -151,13 +155,13 @@ function ScreenPageInner() {
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
   const approved = isDraft || device?.status === "approved";
   const preset = usePreset(isDraft ? null : device?.presetId ?? null);
-  const widgets = isDraft ? draftWidgets! : (preset?.widgets ?? ["clock", "weather"]);
+  const widgets = isDraft ? draftWidgets! : (preset?.widgets ?? DEFAULT_WIDGETS);
 
   if (!approved) {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  return <ScreenGrid widgets={widgets} name={device?.name ?? "Home Base"} orbState={isDraft ? "idle" : "idle"} />;
+  return <ScreenGrid widgets={widgets} name={device?.name ?? "Home Base"} orbState="idle" />;
 }
 
 export default function ScreenPage() {

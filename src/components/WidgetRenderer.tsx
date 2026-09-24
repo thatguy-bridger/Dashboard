@@ -1,22 +1,22 @@
-import type { WidgetType } from "@/lib/presets";
+import type { WidgetType, WidgetSize } from "@/lib/presets";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { WorldClocksWidget } from "@/components/WorldClocksWidget";
 import { NewsWidget } from "@/components/NewsWidget";
 import { SportsWidget } from "@/components/SportsWidget";
+import { ClockWidget } from "@/components/ClockWidget";
 
-export function WidgetRenderer({ type }: { type: WidgetType }) {
+export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
-    case "weather":
-      return <WeatherWidget />;
-    case "worldclocks":
-      return <WorldClocksWidget />;
-    case "news":
-      return <NewsWidget />;
-    case "sports":
-      return <SportsWidget />;
     case "clock":
-      // The clock itself is always rendered by the screen shell.
-      return null;
+      return <ClockWidget size={size} />;
+    case "weather":
+      return <WeatherWidget size={size} />;
+    case "worldclocks":
+      return <WorldClocksWidget size={size} />;
+    case "news":
+      return <NewsWidget size={size} />;
+    case "sports":
+      return <SportsWidget size={size} />;
     default:
       return null;
   }

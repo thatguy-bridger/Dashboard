@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listPresets, createPreset, WIDGET_TYPES, type WidgetType } from "@/lib/presets";
+import { listPresets, createPreset, parseWidgets } from "@/lib/presets";
 
 export async function GET() {
   const presets = await listPresets();
@@ -9,9 +9,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  const widgets: WidgetType[] = Array.isArray(body.widgets)
-    ? body.widgets.filter((w: unknown): w is WidgetType => WIDGET_TYPES.includes(w as WidgetType))
-    : [];
+  const widgets = parseWidgets(body.widgets);
 
   if (!name) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });

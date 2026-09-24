@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updatePreset, deletePreset, WIDGET_TYPES, type WidgetType } from "@/lib/presets";
+import { updatePreset, deletePreset, parseWidgets } from "@/lib/presets";
 
 export async function PATCH(
   req: NextRequest,
@@ -8,13 +8,9 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  const patch: { name?: string; widgets?: WidgetType[] } = {};
+  const patch: { name?: string; widgets?: ReturnType<typeof parseWidgets> } = {};
   if (typeof body.name === "string") patch.name = body.name.trim();
-  if (Array.isArray(body.widgets)) {
-    patch.widgets = body.widgets.filter((w: unknown): w is WidgetType =>
-      WIDGET_TYPES.includes(w as WidgetType)
-    );
-  }
+  if (Array.isArray(body.widgets)) patch.widgets = parseWidgets(body.widgets);
 
   const preset = await updatePreset(id, patch);
   if (!preset) {
