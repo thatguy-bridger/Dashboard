@@ -5,6 +5,7 @@ import { NewsWidget } from "@/components/NewsWidget";
 import { SportsWidget } from "@/components/SportsWidget";
 import { ClockWidget } from "@/components/ClockWidget";
 import { CalendarWidget } from "@/components/CalendarWidget";
+import { LocationsWidget } from "@/components/LocationsWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -20,6 +21,8 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <SportsWidget size={size} />;
     case "calendar":
       return <CalendarWidget size={size} />;
+    case "locations":
+      return <LocationsWidget size={size} />;
     default:
       return null;
   }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
 import { WIDGET_TYPES, WIDGET_SIZES, type Preset, type PresetWidget, type WidgetType, type WidgetSize } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
+import { FindMyConnect } from "@/components/FindMyConnect";
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
   clock: "Clock",
@@ -12,6 +13,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   news: "News headlines",
   sports: "Sports",
   calendar: "Calendar",
+  locations: "Locations",
 };
 
 const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
@@ -232,6 +234,13 @@ export default function ControlPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          iCloud Find My
+        </h2>
+        <FindMyConnect />
       </section>
 
       <section className="glass-panel p-6">
