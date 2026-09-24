@@ -30,6 +30,33 @@ const AUTH_HEADERS = {
   "X-Apple-OAuth-Client-Type": "firstPartyAuth",
 };
 
+const SETUP_ENDPOINT = "https://setup.icloud.com/setup/ws/1/accountLogin";
+const DEFAULT_HEADERS = {
+  "User-Agent": AUTH_HEADERS["User-Agent"],
+  Accept: "application/json",
+  "Content-Type": "application/json",
+  Origin: "https://www.icloud.com",
+};
+
+// As of iOS/macOS 26.4, Apple reworked the trusted-device 2FA handshake:
+// the resend/verify code request must go through icloud.com's origin (not
+// idmsa.apple.com) and a 409 with securityCode.valid:true is now the normal
+// *success* response for a correct code, not a failure — icloudjs's built-in
+// provideMfaCode() still expects the old plain-204 response and throws on
+// this, so the code-submission step is reimplemented here instead of calling
+// into the library for it.
+function icloudOriginMfaHeaders(pending: StoredSession) {
+  return {
+    ...AUTH_HEADERS,
+    Origin: "https://www.icloud.com",
+    Referer: "https://www.icloud.com/",
+    "X-Apple-OAuth-State": `auth-${crypto.randomUUID()}`,
+    scnt: pending.scnt!,
+    "X-Apple-ID-Session-Id": pending.sessionId!,
+    Cookie: "aasp=" + pending.aasp,
+  };
+}
+
 interface StoredSession {
   status: "mfa_requested" | "ready";
   username: string;
@@ -94,14 +121,6 @@ function captureReadySession(service: iCloudService): StoredSession {
   };
 }
 
-function restoreAuthSecrets(service: iCloudService, session: StoredSession): void {
-  const store = service.authStore;
-  store.sessionId = session.sessionId;
-  store.sessionToken = session.sessionToken;
-  store.scnt = session.scnt;
-  store.aasp = session.aasp;
-}
-
 function restoreReadySession(service: iCloudService, session: StoredSession): void {
   const store = service.authStore;
   store.sessionToken = session.sessionToken;
@@ -143,19 +162,58 @@ export async function submitFindMyCode(email: string, code: string): Promise<voi
     throw new Error("No pending iCloud login found. Start the login flow again.");
   }
 
-  console.log("[icloudSession] submitFindMyCode using session", {
-    scnt: pending.scnt,
-    sessionId: pending.sessionId,
-    aaspLength: pending.aasp?.length,
-    codeLength: code.length,
+  const verifyRes = await fetch(AUTH_ENDPOINT + "verify/trusteddevice/securitycode", {
+    method: "POST",
+    headers: icloudOriginMfaHeaders(pending),
+    body: JSON.stringify({ securityCode: { code } }),
   });
 
-  const service = newService(email);
-  restoreAuthSecrets(service, pending);
-  await service.provideMfaCode(code);
-  await service.awaitReady;
+  let verifyBody: { securityCode?: { valid?: boolean } } = {};
+  try {
+    verifyBody = await verifyRes.json();
+  } catch {
+    // 204 (the legacy success case) has no body
+  }
 
-  await saveSession(email, captureReadySession(service));
+  const succeeded = verifyRes.status === 204 || (verifyRes.status === 409 && verifyBody.securityCode?.valid === true);
+  if (!succeeded) {
+    throw new Error(`Incorrect verification code (${verifyRes.status}) ${JSON.stringify(verifyBody)}`);
+  }
+
+  // Trust this "browser" so future logins skip 2FA, then exchange the
+  // resulting trust token for the actual iCloud web session cookies.
+  const trustRes = await fetch(AUTH_ENDPOINT + "2sv/trust", {
+    headers: icloudOriginMfaHeaders(pending),
+  });
+  const sessionToken = trustRes.headers.get("x-apple-session-token") ?? pending.sessionToken;
+  const trustToken = trustRes.headers.get("x-apple-twosv-trust-token") ?? undefined;
+  if (!sessionToken) {
+    throw new Error("2sv/trust did not return a session token");
+  }
+
+  const setupRes = await fetch(SETUP_ENDPOINT, {
+    method: "POST",
+    headers: DEFAULT_HEADERS,
+    body: JSON.stringify({ dsWebAuthToken: sessionToken, trustToken }),
+  });
+  if (!setupRes.ok) {
+    throw new Error(`accountLogin failed: ${setupRes.status} ${await setupRes.text()}`);
+  }
+  const accountInfo = await setupRes.json();
+  const icloudCookies = Array.from(setupRes.headers.entries())
+    .filter(([k]) => k.toLowerCase() === "set-cookie")
+    .flatMap(([, v]) => v.split(", "))
+    .map((v) => Cookie.parse(v))
+    .filter((c): c is Cookie => !!c);
+
+  await saveSession(email, {
+    status: "ready",
+    username: email,
+    sessionToken,
+    trustToken,
+    icloudCookies: icloudCookies.map((c) => c.toJSON()),
+    accountInfo,
+  });
 }
 
 /** Re-requests the 2FA push to trusted devices for a login that's already
@@ -166,24 +224,26 @@ export async function resendFindMyCode(email: string): Promise<{ code?: string }
     throw new Error("No pending iCloud login found. Start the login flow again.");
   }
 
-  const res = await fetch(AUTH_ENDPOINT + "verify/trusteddevice", {
-    method: "GET",
-    headers: {
-      ...AUTH_HEADERS,
-      scnt: pending.scnt!,
-      "X-Apple-ID-Session-Id": pending.sessionId!,
-      Cookie: "aasp=" + pending.aasp,
-    },
+  // Since iOS/macOS 26.4, POST /verify/trusteddevice returns 405 — the
+  // resend must go through PUT on the securitycode endpoint instead, with
+  // an empty body, using the icloud.com origin.
+  const res = await fetch(AUTH_ENDPOINT + "verify/trusteddevice/securitycode", {
+    method: "PUT",
+    headers: icloudOriginMfaHeaders(pending),
   });
 
-  // Apple returns 409 here on success too (same convention as
-  // signin/complete) — the body's securityCode.valid reflects whether a
-  // code actually went out, not the HTTP status.
-  if (res.status !== 200 && res.status !== 409) {
+  // A 409 with securityCode.valid:true is the normal "code sent" response
+  // now, not just an alternate success shape for signin/complete.
+  if (res.status !== 200 && res.status !== 202 && res.status !== 409) {
     throw new Error(`Resend failed: ${res.status} ${await res.text()}`);
   }
 
-  const body = (await res.json()) as { securityCode?: { valid?: boolean; code?: string } };
+  let body: { securityCode?: { valid?: boolean; code?: string } } = {};
+  try {
+    body = await res.json();
+  } catch {
+    // 200/202 with an empty body is fine — there's just nothing to inspect
+  }
   if (body.securityCode?.valid === false) {
     throw new Error("Apple did not send a new code (securityCode.valid: false)");
   }
