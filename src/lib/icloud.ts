@@ -9,24 +9,38 @@ function authHeader(): string {
 }
 
 async function propfind(url: string, depth: "0" | "1", body: string): Promise<{ text: string; baseUrl: string }> {
-  const res = await fetch(url, {
-    method: "PROPFIND",
-    headers: {
-      Authorization: authHeader(),
-      Depth: depth,
-      "Content-Type": "text/xml; charset=utf-8",
-      "User-Agent": "HomeBaseDashboard/1.0",
-      Accept: "text/xml, application/xml",
-    },
-    body,
-  });
-  if (!res.ok && res.status !== 207) {
-    const body = await res.text();
-    throw new Error(`PROPFIND ${url} failed: ${res.status} ${body.slice(0, 300)}`);
+  let currentUrl = url;
+  for (let redirects = 0; redirects < 5; redirects++) {
+    const res = await fetch(currentUrl, {
+      method: "PROPFIND",
+      redirect: "manual",
+      headers: {
+        Authorization: authHeader(),
+        Depth: depth,
+        "Content-Type": "text/xml; charset=utf-8",
+        "User-Agent": "HomeBaseDashboard/1.0",
+        Accept: "text/xml, application/xml",
+      },
+      body,
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) throw new Error(`PROPFIND ${currentUrl} redirected (${res.status}) with no Location header`);
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    if (!res.ok && res.status !== 207) {
+      const respBody = await res.text();
+      throw new Error(`PROPFIND ${currentUrl} failed: ${res.status} ${respBody.slice(0, 500)}`);
+    }
+
+    const text = await res.text();
+    const baseUrl = new URL(currentUrl).origin;
+    return { text, baseUrl };
   }
-  const text = await res.text();
-  const baseUrl = new URL(res.url).origin;
-  return { text, baseUrl };
+  throw new Error(`PROPFIND ${url} exceeded redirect limit`);
 }
 
 function extractAll(xml: string, tag: string): string[] {
