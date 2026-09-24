@@ -40,7 +40,7 @@ interface CalendarInfo {
   displayName: string;
 }
 
-async function discoverCalendars(): Promise<{ baseUrl: string; calendars: CalendarInfo[] }> {
+export async function discoverCalendars(): Promise<{ baseUrl: string; calendars: CalendarInfo[] }> {
   const principalBody = `<?xml version="1.0" encoding="utf-8"?>
     <A:propfind xmlns:A="DAV:"><A:prop><A:current-user-principal/></A:prop></A:propfind>`;
   const step1 = await propfind("https://caldav.icloud.com/", "0", principalBody);
