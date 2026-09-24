@@ -11,8 +11,10 @@ function detectTouch(): boolean {
 
 /**
  * Registers this device with the controller's registry on mount and every
- * 30s after (a heartbeat that also picks up approval/name changes), and
- * returns the device's current record once known.
+ * 20s after (a heartbeat that reports ip/user-agent/touch capability), and
+ * separately polls its own record every 3s (a cheap read, no write) so
+ * approval and preset changes made from the controller show up almost
+ * instantly without waiting on the heartbeat's write cycle.
  */
 export function useDevice(): { deviceId: string | null; device: Device | null } {
   const deviceId = useDeviceId();
@@ -22,7 +24,7 @@ export function useDevice(): { deviceId: string | null; device: Device | null } 
     if (!deviceId) return;
     let cancelled = false;
 
-    async function checkIn() {
+    async function heartbeat() {
       try {
         const res = await fetch("/api/devices", {
           method: "POST",
@@ -37,8 +39,30 @@ export function useDevice(): { deviceId: string | null; device: Device | null } 
       }
     }
 
-    checkIn();
-    const id = setInterval(checkIn, 30 * 1000);
+    heartbeat();
+    const id = setInterval(heartbeat, 20 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [deviceId]);
+
+  useEffect(() => {
+    if (!deviceId) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/devices/${deviceId}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setDevice(data.device);
+      } catch {
+        // keep last known state on a transient network failure
+      }
+    }
+
+    const id = setInterval(poll, 3 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

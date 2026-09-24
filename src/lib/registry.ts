@@ -10,6 +10,7 @@ export interface Device {
   userAgent: string | null;
   touchCapable: boolean;
   touchOverride: boolean | null;
+  presetId: string | null;
   firstSeen: number;
   lastSeen: number;
 }
@@ -44,6 +45,11 @@ export async function listDevices(): Promise<Device[]> {
   return Object.values(devices).sort((a, b) => b.lastSeen - a.lastSeen);
 }
 
+export async function getDevice(id: string): Promise<Device | null> {
+  const devices = await readRegistry();
+  return devices[id] ?? null;
+}
+
 export async function touchDevice(params: {
   id: string;
   ip: string | null;
@@ -64,6 +70,7 @@ export async function touchDevice(params: {
         userAgent: params.userAgent,
         touchCapable: params.touchCapable,
         touchOverride: null,
+        presetId: null,
         firstSeen: now,
         lastSeen: now,
       };
@@ -75,7 +82,7 @@ export async function touchDevice(params: {
 
 export async function updateDevice(
   id: string,
-  patch: Partial<Pick<Device, "name" | "status" | "touchOverride">>
+  patch: Partial<Pick<Device, "name" | "status" | "touchOverride" | "presetId">>
 ): Promise<Device | null> {
   const devices = await readRegistry();
   const existing = devices[id];
