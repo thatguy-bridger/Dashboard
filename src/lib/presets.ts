@@ -1,6 +1,6 @@
 import { d1Query } from "@/lib/d1";
 
-export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports"] as const;
+export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports", "calendar"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 export const WIDGET_SIZES = ["sm", "md", "lg", "xl"] as const;

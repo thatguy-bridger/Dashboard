@@ -107,3 +107,7 @@ body {
 .tile-sports {
   background: linear-gradient(160deg, rgba(52, 211, 153, 0.14), rgba(52, 211, 153, 0.03));
 }
+
+.tile-calendar {
+  background: linear-gradient(160deg, rgba(244, 114, 182, 0.14), rgba(244, 114, 182, 0.03));
+}

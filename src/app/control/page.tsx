@@ -11,6 +11,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   worldclocks: "World clocks",
   news: "News headlines",
   sports: "Sports",
+  calendar: "Calendar",
 };
 
 const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
@@ -95,6 +96,21 @@ export default function ControlPage() {
   ]);
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
+  const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
+
+  const refreshGoogleStatus = useCallback(async () => {
+    const res = await fetch("/api/auth/google/status", { cache: "no-store" });
+    if (res.ok) setGoogleStatus(await res.json());
+  }, []);
+
+  useEffect(() => {
+    refreshGoogleStatus();
+  }, [refreshGoogleStatus]);
+
+  async function disconnectGoogle() {
+    await fetch("/api/auth/google/status", { method: "DELETE" });
+    refreshGoogleStatus();
+  }
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [draftWidgets, setDraftWidgets] = useState<PresetWidget[]>([]);
@@ -298,6 +314,33 @@ export default function ControlPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Google Account
+        </h2>
+        {googleStatus?.connected ? (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">Connected as {googleStatus.email}</span>
+            <button
+              onClick={disconnectGoogle}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <a
+            href="/api/auth/google/start"
+            className="inline-block text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Sign in with Google
+          </a>
+        )}
+        <p className="text-xs text-[var(--muted)] mt-2">
+          Signing in here shares your calendar/email with every screen — no need to sign in on each device.
+        </p>
       </section>
 
       <section className="glass-panel p-6">
