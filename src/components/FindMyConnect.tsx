@@ -49,6 +49,21 @@ export function FindMyConnect() {
     }
   }
 
+  async function resendCode() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/icloud/findmy/resend", { method: "POST" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "resend failed");
+      setMessage("Code resent — check your trusted devices.");
+    } catch (err) {
+      setMessage(String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitCode() {
     setBusy(true);
     setMessage(null);
@@ -109,21 +124,30 @@ export function FindMyConnect() {
       )}
 
       {status === "pending_code" && (
-        <div className="flex gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="123456"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="flex-1 text-sm rounded-lg border border-[var(--surface-border)] bg-transparent px-3 py-1.5"
-          />
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="123456"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="flex-1 text-sm rounded-lg border border-[var(--surface-border)] bg-transparent px-3 py-1.5"
+            />
+            <button
+              onClick={submitCode}
+              disabled={busy || code.length !== 6}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--accent)] text-[var(--accent)] disabled:opacity-50"
+            >
+              Verify
+            </button>
+          </div>
           <button
-            onClick={submitCode}
-            disabled={busy || code.length !== 6}
-            className="text-xs px-3 py-1.5 rounded-lg border border-[var(--accent)] text-[var(--accent)] disabled:opacity-50"
+            onClick={resendCode}
+            disabled={busy}
+            className="text-xs self-start text-[var(--muted)] underline disabled:opacity-50"
           >
-            Verify
+            Resend code
           </button>
         </div>
       )}

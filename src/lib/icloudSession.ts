@@ -12,6 +12,24 @@ import { d1Query } from "@/lib/d1";
 
 const DATA_DIR = "/tmp/icloud-findmy";
 
+// Duplicated from icloudjs's (unexported) consts module — needed to call the
+// trusted-device resend endpoint directly, since the library only sends this
+// once, implicitly, as a side effect of signin/complete.
+const AUTH_ENDPOINT = "https://idmsa.apple.com/appleauth/auth/";
+const CLIENT_ID = "d39ba9916b7251055b22c7f910e2ea796ee65e98b2ddecea8f5dde8d9d1a815d";
+const AUTH_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:103.0) Gecko/20100101 Firefox/103.0",
+  Accept: "application/json",
+  "Content-Type": "application/json",
+  Origin: "https://idmsa.apple.com",
+  Referer: "https://idmsa.apple.com/",
+  "X-Apple-Widget-Key": CLIENT_ID,
+  "X-Apple-OAuth-Client-Id": CLIENT_ID,
+  "X-Apple-OAuth-Response-Type": "code",
+  "X-Apple-OAuth-Response-Mode": "web_message",
+  "X-Apple-OAuth-Client-Type": "firstPartyAuth",
+};
+
 interface StoredSession {
   status: "mfa_requested" | "ready";
   username: string;
@@ -131,6 +149,29 @@ export async function submitFindMyCode(email: string, code: string): Promise<voi
   await service.awaitReady;
 
   await saveSession(email, captureReadySession(service));
+}
+
+/** Re-requests the 2FA push to trusted devices for a login that's already
+ * awaiting a code (doesn't restart the password step). */
+export async function resendFindMyCode(email: string): Promise<void> {
+  const pending = await loadSession(email);
+  if (!pending || pending.status !== "mfa_requested") {
+    throw new Error("No pending iCloud login found. Start the login flow again.");
+  }
+
+  const res = await fetch(AUTH_ENDPOINT + "verify/trusteddevice", {
+    method: "GET",
+    headers: {
+      ...AUTH_HEADERS,
+      scnt: pending.scnt!,
+      "X-Apple-ID-Session-Id": pending.sessionId!,
+      Cookie: "aasp=" + pending.aasp,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Resend failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 export interface LocatedDevice {
