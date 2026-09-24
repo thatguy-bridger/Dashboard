@@ -2,6 +2,7 @@ import type { WidgetType } from "@/lib/presets";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { WorldClocksWidget } from "@/components/WorldClocksWidget";
 import { NewsWidget } from "@/components/NewsWidget";
+import { SportsWidget } from "@/components/SportsWidget";
 
 export function WidgetRenderer({ type }: { type: WidgetType }) {
   switch (type) {
@@ -11,6 +12,8 @@ export function WidgetRenderer({ type }: { type: WidgetType }) {
       return <WorldClocksWidget />;
     case "news":
       return <NewsWidget />;
+    case "sports":
+      return <SportsWidget />;
     case "clock":
       // The clock itself is always rendered by the screen shell.
       return null;

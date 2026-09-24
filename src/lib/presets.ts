@@ -1,6 +1,6 @@
 import { put, head } from "@vercel/blob";
 
-export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news"] as const;
+export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 export interface Preset {

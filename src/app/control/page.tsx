@@ -9,6 +9,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   weather: "Weather",
   worldclocks: "World clocks",
   news: "News headlines",
+  sports: "Sports",
 };
 
 export default function ControlPage() {
@@ -16,6 +17,24 @@ export default function ControlPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetWidgets, setNewPresetWidgets] = useState<WidgetType[]>(["clock", "weather"]);
+  const [favoriteTeam, setFavoriteTeam] = useState("");
+  const [teamSaved, setTeamSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/settings", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setFavoriteTeam(data.settings.favoriteTeam ?? ""));
+  }, []);
+
+  async function saveFavoriteTeam() {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favoriteTeam: favoriteTeam.trim() || null }),
+    });
+    setTeamSaved(true);
+    setTimeout(() => setTeamSaved(false), 1500);
+  }
 
   const refreshDevices = useCallback(async () => {
     const res = await fetch("/api/devices", { cache: "no-store" });
@@ -161,6 +180,26 @@ export default function ControlPage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Settings
+        </h2>
+        <div className="flex items-center gap-2">
+          <input
+            value={favoriteTeam}
+            onChange={(e) => setFavoriteTeam(e.target.value)}
+            placeholder="Favorite team (e.g. Lakers)"
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+          />
+          <button
+            onClick={saveFavoriteTeam}
+            className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            {teamSaved ? "Saved" : "Save"}
+          </button>
         </div>
       </section>
 
