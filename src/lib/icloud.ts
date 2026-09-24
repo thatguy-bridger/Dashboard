@@ -14,12 +14,15 @@ async function propfind(url: string, depth: "0" | "1", body: string): Promise<{ 
     headers: {
       Authorization: authHeader(),
       Depth: depth,
-      "Content-Type": "application/xml; charset=utf-8",
+      "Content-Type": "text/xml; charset=utf-8",
+      "User-Agent": "HomeBaseDashboard/1.0",
+      Accept: "text/xml, application/xml",
     },
     body,
   });
   if (!res.ok && res.status !== 207) {
-    throw new Error(`PROPFIND ${url} failed: ${res.status}`);
+    const body = await res.text();
+    throw new Error(`PROPFIND ${url} failed: ${res.status} ${body.slice(0, 300)}`);
   }
   const text = await res.text();
   const baseUrl = new URL(res.url).origin;
@@ -123,7 +126,9 @@ export async function getICloudEvents(): Promise<ICloudEvent[]> {
           headers: {
             Authorization: authHeader(),
             Depth: "1",
-            "Content-Type": "application/xml; charset=utf-8",
+            "Content-Type": "text/xml; charset=utf-8",
+            "User-Agent": "HomeBaseDashboard/1.0",
+            Accept: "text/xml, application/xml",
           },
           body: reportBody,
         });
