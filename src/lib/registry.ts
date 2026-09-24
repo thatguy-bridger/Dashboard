@@ -19,7 +19,7 @@ const REGISTRY_PATH = "home-base/devices.json";
 async function readRegistry(): Promise<Record<string, Device>> {
   try {
     const info = await head(REGISTRY_PATH);
-    const res = await fetch(info.url, {
+    const res = await fetch(`${info.url}?t=${Date.now()}`, {
       cache: "no-store",
       headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
     });
@@ -35,6 +35,7 @@ async function writeRegistry(devices: Record<string, Device>): Promise<void> {
     access: "private",
     contentType: "application/json",
     allowOverwrite: true,
+    cacheControlMaxAge: 0,
   });
 }
 
