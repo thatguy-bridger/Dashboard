@@ -299,6 +299,7 @@ interface RawFindMyDevice {
   deviceClass: string;
   batteryLevel?: number;
   fmlyShare?: boolean;
+  prsId?: string;
   location?: {
     latitude: number;
     longitude: number;
@@ -307,7 +308,21 @@ interface RawFindMyDevice {
   };
 }
 
-export async function getFindMyLocations(email: string): Promise<LocatedDevice[]> {
+interface RawFindMyResponse {
+  content?: RawFindMyDevice[];
+  userInfo?: {
+    membersInfo?: Record<string, { firstName?: string; lastName?: string }>;
+  };
+}
+
+export interface FindMyResult {
+  devices: LocatedDevice[];
+  /** Names of people/devices Find My has no current location for at all —
+   * kept out of the map entirely rather than cluttering it. */
+  noLocation: string[];
+}
+
+export async function getFindMyLocations(email: string): Promise<FindMyResult> {
   const session = await loadSession(email);
   if (!session || session.status !== "ready") {
     throw new NeedsLoginError();
@@ -332,7 +347,7 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
     headers: service.authStore.getHeaders(),
     body: JSON.stringify({
       clientContext: {
-        fmly: true, // include Family Sharing members' locations (shown in red)
+        fmly: true, // include people who share their location with this account
         shouldLocate: true,
         deviceListVersion: 1,
         selectedDevice: "all",
@@ -346,15 +361,51 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
       `Find My refresh returned an empty response (status ${res.status}) — the session may need reconnecting.`
     );
   }
-  const data = JSON.parse(text) as { content?: RawFindMyDevice[] };
+  const data = JSON.parse(text) as RawFindMyResponse;
 
   // Cookies can rotate on a refresh; keep the stored session current.
   await saveSession(email, captureReadySession(service));
 
-  const located = data.content ?? [];
+  const raw = data.content ?? [];
+  const ownDevices = raw.filter((d) => !d.fmlyShare);
+  const peopleEntries = raw.filter((d) => d.fmlyShare);
 
-  return Promise.all(
-    located.map(async (d): Promise<LocatedDevice> => {
+  const noLocation: string[] = [];
+  const finalList: RawFindMyDevice[] = [];
+
+  for (const d of ownDevices) {
+    if (d.location) finalList.push(d);
+    else noLocation.push(d.name);
+  }
+
+  // People can show up as several devices each; Find My's own People view
+  // shows one pin per person (their best current location), not one per
+  // device, so group by person and pick the freshest located device —
+  // anyone with none at all goes to the "no location" list instead of
+  // being silently dropped or cluttering the map with a stale/empty pin.
+  const byPerson = new Map<string, RawFindMyDevice[]>();
+  for (const d of peopleEntries) {
+    const key = d.prsId ?? d.name;
+    if (!byPerson.has(key)) byPerson.set(key, []);
+    byPerson.get(key)!.push(d);
+  }
+
+  for (const [key, entries] of byPerson) {
+    const memberInfo = data.userInfo?.membersInfo?.[key];
+    const displayName =
+      [memberInfo?.firstName, memberInfo?.lastName].filter(Boolean).join(" ") || entries[0].name;
+
+    const withLocation = entries.filter((e) => e.location);
+    if (withLocation.length === 0) {
+      noLocation.push(displayName);
+      continue;
+    }
+    withLocation.sort((a, b) => (b.location!.timeStamp ?? 0) - (a.location!.timeStamp ?? 0));
+    finalList.push({ ...withLocation[0], name: displayName });
+  }
+
+  const devices = await Promise.all(
+    finalList.map(async (d): Promise<LocatedDevice> => {
       const lat = d.location?.latitude ?? null;
       const lon = d.location?.longitude ?? null;
       const label = lat != null && lon != null ? await getLocationLabel(lat, lon) : { city: null, place: null };
@@ -373,6 +424,8 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
       };
     })
   );
+
+  return { devices, noLocation };
 }
 
 export async function getFindMyStatus(email: string): Promise<"disconnected" | "pending_code" | "connected"> {

@@ -20,6 +20,7 @@ interface LocatedDevice {
 interface FindMyData {
   status: "connected" | "pending_code" | "disconnected" | "error";
   devices: LocatedDevice[];
+  noLocation: string[];
   error?: string;
 }
 
@@ -62,7 +63,7 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
     (d): d is LocatedDevice & { latitude: number; longitude: number } => d.latitude != null && d.longitude != null
   );
 
-  if (data.status === "error" || withFix.length === 0) {
+  if (data.status === "error" || (withFix.length === 0 && data.noLocation.length === 0)) {
     return <div className="text-sm text-[var(--muted)]">No locations available</div>;
   }
 
@@ -72,6 +73,13 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
       {size !== "sm" && (
         <div className="absolute top-3 left-3 text-xs uppercase tracking-widest text-[var(--muted)] bg-[var(--background)]/60 px-2 py-1 rounded-md pointer-events-none">
           Locations
+        </div>
+      )}
+      {/* Kept small and out of the way — this is a "we know about them but
+          have nothing to plot" note, not something meant to draw attention. */}
+      {size !== "sm" && data.noLocation.length > 0 && (
+        <div className="absolute bottom-1 left-2 max-w-[65%] text-[9px] text-[var(--muted)] opacity-70 pointer-events-none truncate">
+          No location: {data.noLocation.join(", ")}
         </div>
       )}
     </div>
