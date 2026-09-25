@@ -290,6 +290,7 @@ export interface LocatedDevice {
   timestamp: number | null;
   city: string | null;
   place: string | null;
+  isPerson: boolean;
 }
 
 interface RawFindMyDevice {
@@ -331,7 +332,7 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
     headers: service.authStore.getHeaders(),
     body: JSON.stringify({
       clientContext: {
-        fmly: false, // this dashboard only wants the account's own devices
+        fmly: true, // include Family Sharing members' locations (shown in red)
         shouldLocate: true,
         deviceListVersion: 1,
         selectedDevice: "all",
@@ -350,7 +351,7 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
   // Cookies can rotate on a refresh; keep the stored session current.
   await saveSession(email, captureReadySession(service));
 
-  const located = (data.content ?? []).filter((d) => !d.fmlyShare);
+  const located = data.content ?? [];
 
   return Promise.all(
     located.map(async (d): Promise<LocatedDevice> => {
@@ -366,6 +367,7 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
         longitude: lon,
         isOld: d.location?.isOld ?? false,
         timestamp: d.location?.timeStamp ?? null,
+        isPerson: Boolean(d.fmlyShare),
         city: label.city,
         place: label.place,
       };

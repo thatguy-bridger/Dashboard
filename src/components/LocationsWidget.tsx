@@ -14,6 +14,7 @@ interface LocatedDevice {
   timestamp: number | null;
   city: string | null;
   place: string | null;
+  isPerson: boolean;
 }
 
 interface FindMyData {

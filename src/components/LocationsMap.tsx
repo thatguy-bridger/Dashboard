@@ -17,6 +17,7 @@ const STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.j
 maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
 
 const ACCENT_GLOW = "#38bdf8";
+const PERSON_RED = "#f87171";
 const BACKGROUND = "#0b0d12";
 const MUTED = "#8b93a7";
 
@@ -29,6 +30,7 @@ interface MapDevice {
   isOld: boolean;
   city: string | null;
   place: string | null;
+  isPerson: boolean;
 }
 
 /** Retints CARTO's stock dark style to the dashboard's own background/accent
@@ -59,7 +61,7 @@ function dotElement(device: MapDevice): HTMLDivElement {
   el.style.width = "14px";
   el.style.height = "14px";
   el.style.borderRadius = "9999px";
-  const color = device.isOld ? MUTED : ACCENT_GLOW;
+  const color = device.isOld ? MUTED : device.isPerson ? PERSON_RED : ACCENT_GLOW;
   el.style.background = `radial-gradient(circle at 35% 35%, ${color}, transparent 70%)`;
   el.style.boxShadow = `0 0 16px 5px ${color}55`;
   el.style.border = `1.5px solid ${color}`;
