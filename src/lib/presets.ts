@@ -34,6 +34,7 @@ export interface Preset {
   id: string;
   name: string;
   widgets: PresetWidget[];
+  isDefault: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -42,6 +43,7 @@ interface PresetRow {
   id: string;
   name: string;
   widgets: string;
+  is_default: number;
   created_at: number;
   updated_at: number;
 }
@@ -74,6 +76,7 @@ function fromRow(row: PresetRow): Preset {
     id: row.id,
     name: row.name,
     widgets: parseWidgets(JSON.parse(row.widgets)),
+    isDefault: Boolean(row.is_default),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -89,6 +92,11 @@ export async function getPreset(id: string): Promise<Preset | null> {
   return rows[0] ? fromRow(rows[0]) : null;
 }
 
+export async function getDefaultPreset(): Promise<Preset | null> {
+  const rows = await d1Query<PresetRow>("SELECT * FROM presets WHERE is_default = 1 LIMIT 1");
+  return rows[0] ? fromRow(rows[0]) : null;
+}
+
 export async function createPreset(name: string, widgets: PresetWidget[]): Promise<Preset> {
   const id = crypto.randomUUID();
   const now = Date.now();
@@ -96,7 +104,17 @@ export async function createPreset(name: string, widgets: PresetWidget[]): Promi
     "INSERT INTO presets (id, name, widgets, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     [id, name, JSON.stringify(widgets), now, now]
   );
-  return { id, name, widgets, createdAt: now, updatedAt: now };
+  return { id, name, widgets, isDefault: false, createdAt: now, updatedAt: now };
+}
+
+/** Marks one preset as the default new devices land on. Only one preset can
+ * be default at a time, so this clears the flag off every other preset. */
+export async function setDefaultPreset(id: string): Promise<Preset | null> {
+  const existing = await getPreset(id);
+  if (!existing) return null;
+  await d1Query("UPDATE presets SET is_default = 0");
+  await d1Query("UPDATE presets SET is_default = 1 WHERE id = ?", [id]);
+  return getPreset(id);
 }
 
 export async function updatePreset(

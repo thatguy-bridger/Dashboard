@@ -51,14 +51,14 @@ function usePreviewDevice(deviceId: string | null) {
   return device;
 }
 
+/** Devices with no preset assigned (brand new, just approved) fall back to
+ * whichever preset is marked as the default rather than a fixed, uneditable
+ * widget set — so pointing a new screen somewhere useful is just "set a
+ * default preset" instead of a manual per-device step. */
 function usePreset(presetId: string | null | undefined) {
   const [preset, setPreset] = useState<Preset | null>(null);
 
   useEffect(() => {
-    if (!presetId) {
-      setPreset(null);
-      return;
-    }
     let cancelled = false;
 
     function load() {
@@ -66,7 +66,11 @@ function usePreset(presetId: string | null | undefined) {
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (cancelled || !data) return;
-          setPreset(data.presets.find((p: Preset) => p.id === presetId) ?? null);
+          const presets: Preset[] = data.presets;
+          const match = presetId
+            ? presets.find((p) => p.id === presetId)
+            : presets.find((p) => p.isDefault);
+          setPreset(match ?? null);
         })
         .catch(() => {});
     }

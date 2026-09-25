@@ -192,6 +192,15 @@ export default function ControlPage() {
     refreshPresets();
   }
 
+  async function setDefaultPreset(id: string) {
+    await fetch(`/api/presets/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isDefault: true }),
+    });
+    refreshPresets();
+  }
+
   function startEditing(preset: Preset) {
     setEditingPresetId(preset.id);
     setDraftWidgets(preset.widgets);
@@ -288,6 +297,11 @@ export default function ControlPage() {
                   >
                     {d.status}
                   </span>
+                  {d.presetId === null && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)]">
+                      new
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-[var(--muted)] font-mono truncate">
                   {d.id} · {d.ip ?? "unknown ip"} · {d.touchCapable ? "touch" : "no-touch"}
@@ -394,10 +408,25 @@ export default function ControlPage() {
             <div key={p.id} className="border-t border-[var(--surface-border)] pt-3 first:border-t-0 first:pt-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium">{p.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{p.name}</div>
+                    {p.isDefault && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)]">
+                        default
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-[var(--muted)]">{summarize(p.widgets)}</div>
                 </div>
                 <div className="flex gap-2">
+                  {!p.isDefault && (
+                    <button
+                      onClick={() => setDefaultPreset(p.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      Set default
+                    </button>
+                  )}
                   <button
                     onClick={() => (editingPresetId === p.id ? setEditingPresetId(null) : startEditing(p))}
                     className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
