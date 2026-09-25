@@ -200,9 +200,12 @@ export async function submitFindMyCode(email: string, code: string): Promise<voi
     throw new Error(`accountLogin failed: ${setupRes.status} ${await setupRes.text()}`);
   }
   const accountInfo = await setupRes.json();
-  const icloudCookies = Array.from(setupRes.headers.entries())
-    .filter(([k]) => k.toLowerCase() === "set-cookie")
-    .flatMap(([, v]) => v.split(", "))
+  // headers.entries()/.get() merge multiple Set-Cookie values into one
+  // comma-joined string, and naively splitting on ", " corrupts any cookie
+  // whose Expires attribute itself contains a comma (e.g. "Wed, 21 Oct
+  // ..."). getSetCookie() returns them as a proper, unmangled string[].
+  const icloudCookies = setupRes.headers
+    .getSetCookie()
     .map((v) => Cookie.parse(v))
     .filter((c): c is Cookie => !!c);
 
@@ -253,10 +256,7 @@ export async function resendFindMyCode(email: string): Promise<{ code?: string }
   // an otherwise-correct code, so persist whatever changed before returning.
   const newScnt = res.headers.get("scnt");
   const newSessionId = res.headers.get("X-Apple-ID-Session-Id");
-  // Native fetch's Headers.get("set-cookie") isn't reliable with multiple
-  // Set-Cookie headers present — scan all header values instead, same as
-  // icloudjs's own processAuthSecrets does for this same cookie.
-  const aaspHeader = Array.from(res.headers.values()).find((v) => v.includes("aasp="));
+  const aaspHeader = res.headers.getSetCookie().find((v) => v.includes("aasp="));
   const newAasp = aaspHeader?.split("aasp=")[1]?.split(";")[0];
 
   console.log("[icloudSession] resendFindMyCode header diff", {
