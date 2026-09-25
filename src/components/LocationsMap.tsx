@@ -78,14 +78,17 @@ function cardElement(device: MapDevice): HTMLDivElement {
   el.style.border = "1px solid rgba(255, 255, 255, 0.12)";
   el.style.backdropFilter = "blur(8px)";
   (el.style as CSSStyleDeclaration & { WebkitBackdropFilter?: string }).WebkitBackdropFilter = "blur(8px)";
-  el.style.whiteSpace = "nowrap";
   el.style.pointerEvents = "none";
   el.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.35)";
+  el.style.maxWidth = "120px";
 
   const name = document.createElement("div");
   name.textContent = device.name;
   name.style.font = "600 11px system-ui, sans-serif";
   name.style.color = "#f2f4f8";
+  name.style.overflow = "hidden";
+  name.style.textOverflow = "ellipsis";
+  name.style.whiteSpace = "nowrap";
   el.appendChild(name);
 
   if (device.batteryLevel != null || device.isOld) {
@@ -132,6 +135,12 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
 
     map.scrollZoom.disable();
     map.dragRotate.disable();
+    // Rounding the canvas itself (rather than clipping the whole container
+    // with overflow-hidden) keeps the tile rounded while still letting a
+    // floating label spill past the edge in a narrow widget instead of
+    // getting cut off mid-word.
+    map.getCanvasContainer().style.borderRadius = "0.75rem";
+    map.getCanvasContainer().style.overflow = "hidden";
     map.on("style.load", () => restyle(map));
     map.on("idle", () => setTilesLoaded(true));
     map.on("error", (e) => setError(e.error?.message ?? String(e.error ?? "unknown map error")));
@@ -176,10 +185,14 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
         bounds.extend(lngLat);
       }
 
+      // Extra right-side padding since each label card extends rightward
+      // from its dot — without it a device near the fitted edge gets its
+      // card pushed half off the visible map.
+      const padding = { top: 40, bottom: 40, left: 30, right: 130 };
       if (devices.length === 1) {
         map!.jumpTo({ center: [devices[0].longitude, devices[0].latitude], zoom: 12 });
       } else {
-        map!.fitBounds(bounds, { padding: 48, maxZoom: 12, animate: false });
+        map!.fitBounds(bounds, { padding, maxZoom: 12, animate: false });
       }
     }
 
@@ -189,7 +202,7 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
 
   return (
     <div
-      className={`${heightClass} w-full max-w-lg rounded-xl overflow-hidden border border-[var(--surface-border)] relative`}
+      className={`${heightClass} w-full max-w-lg rounded-xl border border-[var(--surface-border)] relative`}
     >
       <div ref={containerRef} className="h-full w-full" />
       {!error && !tilesLoaded && (
