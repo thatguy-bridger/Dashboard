@@ -44,16 +44,53 @@ function restyle(map: maplibregl.Map) {
   }
 }
 
-function markerElement(device: MapDevice): HTMLDivElement {
+function dotElement(device: MapDevice): HTMLDivElement {
   const el = document.createElement("div");
-  el.style.width = "16px";
-  el.style.height = "16px";
+  el.style.width = "14px";
+  el.style.height = "14px";
   el.style.borderRadius = "9999px";
   const color = device.isOld ? MUTED : ACCENT_GLOW;
   el.style.background = `radial-gradient(circle at 35% 35%, ${color}, transparent 70%)`;
   el.style.boxShadow = `0 0 16px 5px ${color}55`;
   el.style.border = `1.5px solid ${color}`;
-  el.style.cursor = "pointer";
+  return el;
+}
+
+// A small always-on glass-panel tag next to each dot — this map is a
+// glanceable display, not something a viewer taps through, so the label
+// is always visible rather than hidden behind a click/hover popup.
+function cardElement(device: MapDevice): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.display = "flex";
+  el.style.flexDirection = "column";
+  el.style.gap = "1px";
+  el.style.padding = "4px 8px";
+  el.style.borderRadius = "10px";
+  el.style.background = "rgba(11, 13, 18, 0.72)";
+  el.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+  el.style.backdropFilter = "blur(8px)";
+  (el.style as CSSStyleDeclaration & { WebkitBackdropFilter?: string }).WebkitBackdropFilter = "blur(8px)";
+  el.style.whiteSpace = "nowrap";
+  el.style.pointerEvents = "none";
+  el.style.boxShadow = "0 4px 16px rgba(0, 0, 0, 0.35)";
+
+  const name = document.createElement("div");
+  name.textContent = device.name;
+  name.style.font = "600 11px system-ui, sans-serif";
+  name.style.color = "#f2f4f8";
+  el.appendChild(name);
+
+  if (device.batteryLevel != null || device.isOld) {
+    const sub = document.createElement("div");
+    const parts = [];
+    if (device.batteryLevel != null) parts.push(`${Math.round(device.batteryLevel * 100)}%`);
+    if (device.isOld) parts.push("stale");
+    sub.textContent = parts.join(" · ");
+    sub.style.font = "10px system-ui, sans-serif";
+    sub.style.color = MUTED;
+    el.appendChild(sub);
+  }
+
   return el;
 }
 
@@ -94,20 +131,18 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
 
       const bounds = new maplibregl.LngLatBounds();
       for (const d of devices) {
-        const marker = new maplibregl.Marker({ element: markerElement(d) })
-          .setLngLat([d.longitude, d.latitude])
-          .setPopup(
-            new maplibregl.Popup({ offset: 16, closeButton: false }).setHTML(
-              `<div style="font:12px system-ui;color:#f2f4f8;background:#0b0d12;padding:2px 4px;">
-                 <strong>${d.name}</strong>${
-                   d.batteryLevel != null ? `<br/>${Math.round(d.batteryLevel * 100)}% battery` : ""
-                 }
-               </div>`
-            )
-          )
+        const lngLat: [number, number] = [d.longitude, d.latitude];
+
+        const dot = new maplibregl.Marker({ element: dotElement(d) }).setLngLat(lngLat).addTo(map!);
+        // A second marker, offset to the dot's right, carries the label —
+        // markers stay screen-space-sized and correctly placed at any zoom,
+        // which a plain absolutely-positioned overlay wouldn't.
+        const card = new maplibregl.Marker({ element: cardElement(d), anchor: "left", offset: [10, 0] })
+          .setLngLat(lngLat)
           .addTo(map!);
-        markersRef.current.push(marker);
-        bounds.extend([d.longitude, d.latitude]);
+
+        markersRef.current.push(dot, card);
+        bounds.extend(lngLat);
       }
 
       if (devices.length === 1) {
