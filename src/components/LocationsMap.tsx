@@ -106,14 +106,26 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
       style: STYLE_URL,
       center: [0, 20],
       zoom: 1,
-      attributionControl: { compact: true },
+      // The stock control renders as an expandable white "i" button that
+      // doesn't match this app anywhere else — CARTO's free tier still
+      // requires attribution, so it's replaced below with a plain, tiny,
+      // dark-styled text line instead of dropping it.
+      attributionControl: false,
     });
     map.scrollZoom.disable();
     map.dragRotate.disable();
     map.on("style.load", () => restyle(map));
+    map.on("error", (e) => console.error("[LocationsMap]", e.error));
     mapRef.current = map;
 
+    // A widget tile can mount before its grid cell has its final size
+    // (e.g. right after a preset publish); without this the map's canvas
+    // can get stuck sized at whatever the container was at construction.
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(containerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
     };
@@ -158,8 +170,12 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
 
   return (
     <div
-      ref={containerRef}
-      className={`${heightClass} w-full max-w-lg rounded-xl overflow-hidden border border-[var(--surface-border)]`}
-    />
+      className={`${heightClass} w-full max-w-lg rounded-xl overflow-hidden border border-[var(--surface-border)] relative`}
+    >
+      <div ref={containerRef} className="h-full w-full" />
+      <div className="absolute bottom-1 right-2 text-[9px] text-[var(--muted)] opacity-60 pointer-events-none select-none">
+        © CARTO, © OpenStreetMap
+      </div>
+    </div>
   );
 }
