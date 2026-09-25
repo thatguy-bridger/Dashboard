@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -98,24 +98,35 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: STYLE_URL,
-      center: [0, 20],
-      zoom: 1,
-      // The stock control renders as an expandable white "i" button that
-      // doesn't match this app anywhere else — CARTO's free tier still
-      // requires attribution, so it's replaced below with a plain, tiny,
-      // dark-styled text line instead of dropping it.
-      attributionControl: false,
-    });
+
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: STYLE_URL,
+        center: [0, 20],
+        zoom: 1,
+        // The stock control renders as an expandable white "i" button that
+        // doesn't match this app anywhere else — CARTO's free tier still
+        // requires attribution, so it's replaced below with a plain, tiny,
+        // dark-styled text line instead of dropping it.
+        attributionControl: false,
+      });
+    } catch (e) {
+      queueMicrotask(() => setError(String(e)));
+      return;
+    }
+
     map.scrollZoom.disable();
     map.dragRotate.disable();
     map.on("style.load", () => restyle(map));
-    map.on("error", (e) => console.error("[LocationsMap]", e.error));
+    map.on("idle", () => setTilesLoaded(true));
+    map.on("error", (e) => setError(e.error?.message ?? String(e.error ?? "unknown map error")));
     mapRef.current = map;
 
     // A widget tile can mount before its grid cell has its final size
@@ -173,6 +184,16 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
       className={`${heightClass} w-full max-w-lg rounded-xl overflow-hidden border border-[var(--surface-border)] relative`}
     >
       <div ref={containerRef} className="h-full w-full" />
+      {!error && !tilesLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--muted)] pointer-events-none">
+          Loading map…
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs text-[var(--muted)] pointer-events-none">
+          Map failed to load: {error}
+        </div>
+      )}
       <div className="absolute bottom-1 right-2 text-[9px] text-[var(--muted)] opacity-60 pointer-events-none select-none">
         © CARTO, © OpenStreetMap
       </div>
