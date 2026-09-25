@@ -2,23 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
-import { WIDGET_TYPES, WIDGET_SIZES, type Preset, type PresetWidget, type WidgetType, type WidgetSize } from "@/lib/presets";
+import {
+  WIDGET_TYPES,
+  WIDGET_SIZES,
+  WIDGET_LABELS,
+  type Preset,
+  type PresetWidget,
+  type WidgetType,
+  type WidgetSize,
+} from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
-
-const WIDGET_LABELS: Record<WidgetType, string> = {
-  clock: "Clock",
-  weather: "Weather",
-  worldclocks: "World clocks",
-  news: "News headlines",
-  sports: "Sports",
-  calendar: "Calendar",
-  locations: "Locations",
-  gmail: "Gmail",
-  drive: "Drive files",
-  photos: "Photos",
-};
 
 const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
 

@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
 import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
-import type { Preset, PresetWidget, WidgetSize } from "@/lib/presets";
-import { WIDGET_TYPES, WIDGET_SIZES, SIZE_SPANS } from "@/lib/presets";
+import type { Preset, PresetWidget, WidgetSize, WidgetType } from "@/lib/presets";
+import { WIDGET_TYPES, WIDGET_SIZES, WIDGET_LABELS, SIZE_SPANS } from "@/lib/presets";
 
 const DEFAULT_WIDGETS: PresetWidget[] = [
   { type: "clock", size: "lg" },
@@ -86,19 +86,22 @@ function usePreset(presetId: string | null | undefined) {
   return preset;
 }
 
-function StatusBadge({ name, orbState }: { name: string; orbState: "idle" | "active" | "alert" }) {
+/** Every tile gets the same small orb + name badge in its corner — this
+ * used to be a single "device name" badge fixed to the whole screen, but a
+ * per-widget label is more useful (kiosk viewers care what each tile is,
+ * not which physical screen they're looking at). */
+function WidgetBadge({ type }: { type: WidgetType }) {
   return (
-    <div className="fixed top-4 left-4 flex items-center gap-2 z-10 pointer-events-none">
-      <LivingOrb state={orbState} size={16} />
-      <span className="text-xs text-[var(--muted)] uppercase tracking-widest">{name}</span>
+    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 pointer-events-none">
+      <LivingOrb state="idle" size={10} />
+      <span className="text-[9px] text-[var(--muted)] uppercase tracking-widest">{WIDGET_LABELS[type]}</span>
     </div>
   );
 }
 
-function ScreenGrid({ widgets, name, orbState }: { widgets: PresetWidget[]; name: string; orbState: "idle" | "active" | "alert" }) {
+function ScreenGrid({ widgets }: { widgets: PresetWidget[] }) {
   return (
     <div className="h-screen w-screen relative">
-      <StatusBadge name={name} orbState={orbState} />
       <div
         className="h-full w-full p-3 grid gap-3"
         style={{
@@ -112,10 +115,11 @@ function ScreenGrid({ widgets, name, orbState }: { widgets: PresetWidget[]; name
           return (
             <div
               key={`${w.type}-${i}`}
-              className={`tile tile-${w.type}`}
+              className={`tile tile-${w.type} relative`}
               style={{ gridColumn: `span ${span.col}`, gridRow: `span ${span.row}` }}
             >
               <WidgetRenderer type={w.type} size={w.size} />
+              <WidgetBadge type={w.type} />
             </div>
           );
         })}
@@ -165,7 +169,7 @@ function ScreenPageInner() {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  return <ScreenGrid widgets={widgets} name={device?.name ?? "Home Base"} orbState="idle" />;
+  return <ScreenGrid widgets={widgets} />;
 }
 
 export default function ScreenPage() {

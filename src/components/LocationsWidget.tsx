@@ -70,11 +70,6 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
   return (
     <div className="relative w-full h-full">
       <LocationsMap devices={withFix} />
-      {size !== "sm" && (
-        <div className="absolute top-3 left-3 text-xs uppercase tracking-widest text-[var(--muted)] bg-[var(--background)]/60 px-2 py-1 rounded-md pointer-events-none">
-          Locations
-        </div>
-      )}
       {/* Kept small and out of the way — this is a "we know about them but
           have nothing to plot" note, not something meant to draw attention. */}
       {size !== "sm" && data.noLocation.length > 0 && (

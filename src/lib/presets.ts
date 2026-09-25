@@ -14,6 +14,19 @@ export const WIDGET_TYPES = [
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
+export const WIDGET_LABELS: Record<WidgetType, string> = {
+  clock: "Clock",
+  weather: "Weather",
+  worldclocks: "World clocks",
+  news: "News",
+  sports: "Sports",
+  calendar: "Calendar",
+  locations: "Locations",
+  gmail: "Gmail",
+  drive: "Drive files",
+  photos: "Photos",
+};
+
 export const WIDGET_SIZES = ["sm", "md", "lg", "xl"] as const;
 export type WidgetSize = (typeof WIDGET_SIZES)[number];
 
