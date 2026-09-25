@@ -27,6 +27,8 @@ interface MapDevice {
   longitude: number;
   batteryLevel: number | null;
   isOld: boolean;
+  city: string | null;
+  place: string | null;
 }
 
 /** Retints CARTO's stock dark style to the dashboard's own background/accent
@@ -90,6 +92,28 @@ function cardElement(device: MapDevice): HTMLDivElement {
   name.style.textOverflow = "ellipsis";
   name.style.whiteSpace = "nowrap";
   el.appendChild(name);
+
+  // City by default; a named building/business (from reverse geocoding)
+  // is more specific, so it takes the primary spot with the city as
+  // context underneath rather than replacing it.
+  if (device.place || device.city) {
+    const location = document.createElement("div");
+    location.textContent = device.place ?? device.city!;
+    location.style.font = "500 10px system-ui, sans-serif";
+    location.style.color = "#c7cddb";
+    location.style.overflow = "hidden";
+    location.style.textOverflow = "ellipsis";
+    location.style.whiteSpace = "nowrap";
+    el.appendChild(location);
+
+    if (device.place && device.city) {
+      const city = document.createElement("div");
+      city.textContent = device.city;
+      city.style.font = "10px system-ui, sans-serif";
+      city.style.color = MUTED;
+      el.appendChild(city);
+    }
+  }
 
   if (device.batteryLevel != null || device.isOld) {
     const sub = document.createElement("div");

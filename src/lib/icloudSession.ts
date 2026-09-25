@@ -9,6 +9,7 @@
 import iCloudService from "icloudjs";
 import { Cookie } from "tough-cookie";
 import { d1Query } from "@/lib/d1";
+import { getLocationLabel } from "@/lib/geocode";
 
 const DATA_DIR = "/tmp/icloud-findmy";
 
@@ -287,6 +288,8 @@ export interface LocatedDevice {
   longitude: number | null;
   isOld: boolean;
   timestamp: number | null;
+  city: string | null;
+  place: string | null;
 }
 
 interface RawFindMyDevice {
@@ -347,18 +350,27 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
   // Cookies can rotate on a refresh; keep the stored session current.
   await saveSession(email, captureReadySession(service));
 
-  return (data.content ?? [])
-    .filter((d) => !d.fmlyShare)
-    .map((d) => ({
-      id: d.id,
-      name: d.name,
-      deviceClass: d.deviceClass,
-      batteryLevel: typeof d.batteryLevel === "number" ? d.batteryLevel : null,
-      latitude: d.location?.latitude ?? null,
-      longitude: d.location?.longitude ?? null,
-      isOld: d.location?.isOld ?? false,
-      timestamp: d.location?.timeStamp ?? null,
-    }));
+  const located = (data.content ?? []).filter((d) => !d.fmlyShare);
+
+  return Promise.all(
+    located.map(async (d): Promise<LocatedDevice> => {
+      const lat = d.location?.latitude ?? null;
+      const lon = d.location?.longitude ?? null;
+      const label = lat != null && lon != null ? await getLocationLabel(lat, lon) : { city: null, place: null };
+      return {
+        id: d.id,
+        name: d.name,
+        deviceClass: d.deviceClass,
+        batteryLevel: typeof d.batteryLevel === "number" ? d.batteryLevel : null,
+        latitude: lat,
+        longitude: lon,
+        isOld: d.location?.isOld ?? false,
+        timestamp: d.location?.timeStamp ?? null,
+        city: label.city,
+        place: label.place,
+      };
+    })
+  );
 }
 
 export async function getFindMyStatus(email: string): Promise<"disconnected" | "pending_code" | "connected"> {

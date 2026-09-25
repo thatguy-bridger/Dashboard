@@ -12,6 +12,8 @@ interface LocatedDevice {
   longitude: number | null;
   isOld: boolean;
   timestamp: number | null;
+  city: string | null;
+  place: string | null;
 }
 
 interface FindMyData {
