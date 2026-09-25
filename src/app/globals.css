@@ -111,3 +111,9 @@ body {
 .tile-calendar {
   background: linear-gradient(160deg, rgba(244, 114, 182, 0.14), rgba(244, 114, 182, 0.03));
 }
+
+/* The map wants to fill the whole tile edge-to-edge rather than sit
+   centered in the standard tile padding like the text/number widgets. */
+.tile-locations {
+  padding: 0;
+}

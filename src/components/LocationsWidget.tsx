@@ -20,9 +20,10 @@ interface FindMyData {
   error?: string;
 }
 
-/** Shows Find My device locations on a custom-styled dark map. Connecting
- * the account (password + 2FA code) happens in the control panel, not
- * here — this widget is read-only. */
+/** Shows Find My device locations on a custom-styled dark map, filling the
+ * whole tile edge-to-edge rather than sitting in the standard tile padding
+ * like the text/number widgets. Connecting the account (password + 2FA
+ * code) happens in the control panel, not here — this widget is read-only. */
 export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
   const [data, setData] = useState<FindMyData | null>(null);
 
@@ -62,14 +63,14 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
     return <div className="text-sm text-[var(--muted)]">No locations available</div>;
   }
 
-  const heightClass = size === "sm" ? "h-24" : size === "md" ? "h-40" : size === "lg" ? "h-64" : "h-80";
-
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className="relative w-full h-full">
+      <LocationsMap devices={withFix} />
       {size !== "sm" && (
-        <div className="text-xs uppercase tracking-widest text-[var(--muted)] text-center">Locations</div>
+        <div className="absolute top-3 left-3 text-xs uppercase tracking-widest text-[var(--muted)] bg-[var(--background)]/60 px-2 py-1 rounded-md pointer-events-none">
+          Locations
+        </div>
       )}
-      <LocationsMap devices={withFix} heightClass={heightClass} />
     </div>
   );
 }

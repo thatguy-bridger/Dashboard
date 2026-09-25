@@ -105,7 +105,7 @@ function cardElement(device: MapDevice): HTMLDivElement {
   return el;
 }
 
-export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; heightClass: string }) {
+export function LocationsMap({ devices }: { devices: MapDevice[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -135,12 +135,6 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
 
     map.scrollZoom.disable();
     map.dragRotate.disable();
-    // Rounding the canvas itself (rather than clipping the whole container
-    // with overflow-hidden) keeps the tile rounded while still letting a
-    // floating label spill past the edge in a narrow widget instead of
-    // getting cut off mid-word.
-    map.getCanvasContainer().style.borderRadius = "0.75rem";
-    map.getCanvasContainer().style.overflow = "hidden";
     map.on("style.load", () => restyle(map));
     map.on("idle", () => setTilesLoaded(true));
     map.on("error", (e) => setError(e.error?.message ?? String(e.error ?? "unknown map error")));
@@ -201,9 +195,9 @@ export function LocationsMap({ devices, heightClass }: { devices: MapDevice[]; h
   }, [devices]);
 
   return (
-    <div
-      className={`${heightClass} w-full max-w-lg rounded-xl border border-[var(--surface-border)] relative`}
-    >
+    // No border/rounding here — the enclosing .tile already provides both
+    // (and clips to them), so the map fills it edge-to-edge.
+    <div className="relative w-full h-full">
       <div ref={containerRef} className="h-full w-full" />
       {!error && !tilesLoaded && (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-[var(--muted)] pointer-events-none">
