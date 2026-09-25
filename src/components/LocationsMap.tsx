@@ -8,6 +8,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 // dashboard's own palette instead of using its default dark theme as-is.
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
+// v6's tile-processing worker is a real ES module that imports a sibling
+// file by a relative path; Next.js (Turbopack and webpack alike) doesn't
+// resolve that pair correctly when left to auto-detect it from inside
+// node_modules, silently producing "Worker failed to load". Both files are
+// copied to /public by scripts/copy-maplibre-worker.js (on postinstall) and
+// served same-origin instead.
+maplibregl.setWorkerUrl("/maplibre-gl-worker.mjs");
+
 const ACCENT_GLOW = "#38bdf8";
 const BACKGROUND = "#0b0d12";
 const MUTED = "#8b93a7";
