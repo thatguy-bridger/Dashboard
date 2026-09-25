@@ -289,6 +289,20 @@ export interface LocatedDevice {
   timestamp: number | null;
 }
 
+interface RawFindMyDevice {
+  id: string;
+  name: string;
+  deviceClass: string;
+  batteryLevel?: number;
+  fmlyShare?: boolean;
+  location?: {
+    latitude: number;
+    longitude: number;
+    isOld: boolean;
+    timeStamp: number;
+  };
+}
+
 export async function getFindMyLocations(email: string): Promise<LocatedDevice[]> {
   const session = await loadSession(email);
   if (!session || session.status !== "ready") {
@@ -298,17 +312,42 @@ export async function getFindMyLocations(email: string): Promise<LocatedDevice[]
   const service = newService(email);
   restoreReadySession(service, session);
 
-  const findMy = service.getService("findme");
-  // The library defaults to including Family Sharing members' devices
-  // (fmly: true in the request) — this dashboard only wants the account's
-  // own devices.
-  findMy.includeFamily = false;
-  const response = await findMy.refresh();
+  const accountInfo = session.accountInfo as { webservices?: { findme?: { url?: string } } } | undefined;
+  const serviceUri = accountInfo?.webservices?.findme?.url;
+  if (!serviceUri) {
+    throw new Error("No Find My service URL on this session — reconnect iCloud in Control.");
+  }
+
+  // Calling icloudjs's own iCloudFindMyService here would also fire an
+  // unawaited, uncaught refresh() from its constructor — when Apple's
+  // endpoint returns an empty body (which it does intermittently), that
+  // unhandled rejection crashes the whole serverless invocation. Hitting
+  // the endpoint directly avoids that entirely.
+  const res = await fetch(`${serviceUri}/fmipservice/client/web/refreshClient`, {
+    method: "POST",
+    headers: service.authStore.getHeaders(),
+    body: JSON.stringify({
+      clientContext: {
+        fmly: false, // this dashboard only wants the account's own devices
+        shouldLocate: true,
+        deviceListVersion: 1,
+        selectedDevice: "all",
+      },
+    }),
+  });
+
+  const text = await res.text();
+  if (!text) {
+    throw new Error(
+      `Find My refresh returned an empty response (status ${res.status}) — the session may need reconnecting.`
+    );
+  }
+  const data = JSON.parse(text) as { content?: RawFindMyDevice[] };
 
   // Cookies can rotate on a refresh; keep the stored session current.
   await saveSession(email, captureReadySession(service));
 
-  return response.content
+  return (data.content ?? [])
     .filter((d) => !d.fmlyShare)
     .map((d) => ({
       id: d.id,

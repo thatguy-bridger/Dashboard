@@ -15,6 +15,7 @@ export async function GET() {
       const status = await getFindMyStatus(email);
       return NextResponse.json({ status, devices: [] });
     }
+    console.error("[icloud/findmy]", err);
     return NextResponse.json({ status: "error", error: String(err), devices: [] }, { status: 500 });
   }
 }
