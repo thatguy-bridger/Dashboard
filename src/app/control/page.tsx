@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
+import type { Countdown } from "@/lib/countdowns";
 import {
   WIDGET_TYPES,
   WIDGET_SIZES,
@@ -98,6 +99,9 @@ export default function ControlPage() {
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [countdowns, setCountdowns] = useState<Countdown[] | null>(null);
+  const [newCountdownLabel, setNewCountdownLabel] = useState("");
+  const [newCountdownDate, setNewCountdownDate] = useState("");
 
   const refreshGoogleStatus = useCallback(async () => {
     const res = await fetch("/api/auth/google/status", { cache: "no-store" });
@@ -211,6 +215,37 @@ export default function ControlPage() {
     });
     await refreshPresets();
     setPublishing(false);
+  }
+
+  const refreshCountdowns = useCallback(async () => {
+    const res = await fetch("/api/countdowns", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setCountdowns(data.countdowns);
+  }, []);
+
+  useEffect(() => {
+    refreshCountdowns();
+  }, [refreshCountdowns]);
+
+  async function createCountdown() {
+    if (!newCountdownLabel.trim() || !newCountdownDate) return;
+    await fetch("/api/countdowns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: newCountdownLabel.trim(),
+        targetDate: new Date(newCountdownDate).getTime(),
+      }),
+    });
+    setNewCountdownLabel("");
+    setNewCountdownDate("");
+    refreshCountdowns();
+  }
+
+  async function deleteCountdown(id: string) {
+    await fetch(`/api/countdowns/${id}`, { method: "DELETE" });
+    refreshCountdowns();
   }
 
   const approvedDevices = devices?.filter((d) => d.status === "approved") ?? [];
@@ -386,6 +421,56 @@ export default function ControlPage() {
             className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
           >
             {teamSaved ? "Saved" : "Save"}
+          </button>
+        </div>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Countdowns
+        </h2>
+        <div className="flex flex-col gap-2 mb-4">
+          {countdowns?.length === 0 && (
+            <p className="text-sm text-[var(--muted)]">No countdowns yet — add one below.</p>
+          )}
+          {countdowns?.map((c) => (
+            <div
+              key={c.id}
+              className="flex items-center justify-between border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            >
+              <div>
+                <span className="text-sm font-medium">{c.label}</span>
+                <span className="text-xs text-[var(--muted)] ml-2">
+                  {new Date(c.targetDate).toLocaleDateString()}
+                </span>
+              </div>
+              <button
+                onClick={() => deleteCountdown(c.id)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={newCountdownLabel}
+            onChange={(e) => setNewCountdownLabel(e.target.value)}
+            placeholder="Label (e.g. Disneyland trip)"
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+          />
+          <input
+            type="date"
+            value={newCountdownDate}
+            onChange={(e) => setNewCountdownDate(e.target.value)}
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          />
+          <button
+            onClick={createCountdown}
+            className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Add
           </button>
         </div>
       </section>

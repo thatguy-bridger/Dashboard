@@ -11,6 +11,8 @@ export const WIDGET_TYPES = [
   "gmail",
   "drive",
   "photos",
+  "traffic",
+  "countdown",
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -25,6 +27,8 @@ export const WIDGET_LABELS: Record<WidgetType, string> = {
   gmail: "Gmail",
   drive: "Drive files",
   photos: "Photos",
+  traffic: "Traffic camera",
+  countdown: "Countdown",
 };
 
 export const WIDGET_SIZES = ["sm", "md", "lg", "xl"] as const;

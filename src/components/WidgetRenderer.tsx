@@ -9,6 +9,8 @@ import { LocationsWidget } from "@/components/LocationsWidget";
 import { GmailWidget } from "@/components/GmailWidget";
 import { DriveWidget } from "@/components/DriveWidget";
 import { PhotosWidget } from "@/components/PhotosWidget";
+import { TrafficCameraWidget } from "@/components/TrafficCameraWidget";
+import { CountdownWidget } from "@/components/CountdownWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -32,6 +34,10 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <DriveWidget size={size} />;
     case "photos":
       return <PhotosWidget size={size} />;
+    case "traffic":
+      return <TrafficCameraWidget size={size} />;
+    case "countdown":
+      return <CountdownWidget size={size} />;
     default:
       return null;
   }
