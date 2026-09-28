@@ -2,8 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
-import { WIDGET_TYPES, WIDGET_SIZES, type Preset, type PresetWidget, type WidgetType, type WidgetSize } from "@/lib/presets";
+import { WIDGET_TYPES, type Preset, type PresetWidget, type WidgetType } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
+import { GridEditor } from "@/components/GridEditor";
+import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { WidgetIcon } from "@/components/icons/WidgetIcons";
+import { findFreeSpot } from "@/lib/grid";
+import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
+import { encodeDraft } from "@/lib/draftEncoding";
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
   clock: "Clock",
@@ -14,74 +20,29 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   calendar: "Calendar",
 };
 
-const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
-
-function widgetsToDraftParam(widgets: PresetWidget[]) {
-  return widgets.map((w) => `${w.type}:${w.size}`).join(",");
-}
-
 function summarize(widgets: PresetWidget[]) {
-  return widgets.map((w) => `${WIDGET_LABELS[w.type]} (${SIZE_LABELS[w.size]})`).join(", ") || "no widgets";
+  return widgets.map((w) => WIDGET_LABELS[w.type]).join(", ") || "no widgets";
 }
 
-/** A row of widget-type toggles where each active widget also gets a size selector. */
-function WidgetPicker({
-  widgets,
-  onChange,
-}: {
-  widgets: PresetWidget[];
-  onChange: (widgets: PresetWidget[]) => void;
-}) {
-  function sizeOf(type: WidgetType): WidgetSize | null {
-    return widgets.find((w) => w.type === type)?.size ?? null;
-  }
-
-  function setSize(type: WidgetType, size: WidgetSize | null) {
-    if (size === null) {
-      onChange(widgets.filter((w) => w.type !== type));
-    } else if (widgets.some((w) => w.type === type)) {
-      onChange(widgets.map((w) => (w.type === type ? { ...w, size } : w)));
-    } else {
-      onChange([...widgets, { type, size }]);
-    }
-  }
-
+/** Icon tiles for adding a new widget type to the grid — click to drop it in an open spot. */
+function AddWidgetPalette({ widgets, onAdd }: { widgets: PresetWidget[]; onAdd: (widget: PresetWidget) => void }) {
   return (
-    <div className="flex flex-col gap-2">
-      {WIDGET_TYPES.map((type) => {
-        const active = sizeOf(type);
-        return (
-          <div key={type} className="flex items-center gap-2">
-            <button
-              onClick={() => setSize(type, active ? null : "md")}
-              className={`text-xs px-3 py-1.5 rounded-lg border w-32 text-left ${
-                active
-                  ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
-                  : "border-[var(--surface-border)] text-[var(--muted)]"
-              }`}
-            >
-              {WIDGET_LABELS[type]}
-            </button>
-            {active && (
-              <div className="flex gap-1">
-                {WIDGET_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setSize(type, size)}
-                    className={`text-xs w-8 h-8 rounded-lg border ${
-                      active === size
-                        ? "bg-[var(--accent)] text-black border-[var(--accent)]"
-                        : "border-[var(--surface-border)] text-[var(--muted)]"
-                    }`}
-                  >
-                    {SIZE_LABELS[size]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+    <div className="flex flex-wrap gap-2">
+      {WIDGET_TYPES.map((type) => (
+        <button
+          key={type}
+          onClick={() => {
+            const w = 4;
+            const h = 3;
+            const { x, y } = findFreeSpot(widgets, w, h);
+            onAdd({ id: `${type}-${Date.now().toString(36)}`, type, x, y, w, h });
+          }}
+          className="flex flex-col items-center gap-1 w-20 py-2.5 rounded-lg border border-[var(--surface-border)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[var(--muted)]"
+        >
+          <WidgetIcon type={type} className="w-6 h-6" />
+          <span className="text-[10px]">{WIDGET_LABELS[type]}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -91,9 +52,11 @@ export default function ControlPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetWidgets, setNewPresetWidgets] = useState<PresetWidget[]>([
-    { type: "clock", size: "lg" },
-    { type: "weather", size: "md" },
+    { id: "clock-new", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+    { id: "weather-new", type: "weather", x: 6, y: 0, w: 4, h: 3 },
   ]);
+  const [newPresetSelected, setNewPresetSelected] = useState<string | null>(null);
+  const [newPresetBackground, setNewPresetBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
@@ -114,6 +77,8 @@ export default function ControlPage() {
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [draftWidgets, setDraftWidgets] = useState<PresetWidget[]>([]);
+  const [draftBackground, setDraftBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [draftSelected, setDraftSelected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
 
   const refreshDevices = useCallback(async () => {
@@ -170,13 +135,14 @@ export default function ControlPage() {
     await fetch("/api/presets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newPresetName.trim(), widgets: newPresetWidgets }),
+      body: JSON.stringify({ name: newPresetName.trim(), widgets: newPresetWidgets, background: newPresetBackground }),
     });
     setNewPresetName("");
     setNewPresetWidgets([
-      { type: "clock", size: "lg" },
-      { type: "weather", size: "md" },
+      { id: "clock-new", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+      { id: "weather-new", type: "weather", x: 6, y: 0, w: 4, h: 3 },
     ]);
+    setNewPresetBackground(DEFAULT_BACKGROUND);
     refreshPresets();
   }
 
@@ -189,6 +155,8 @@ export default function ControlPage() {
   function startEditing(preset: Preset) {
     setEditingPresetId(preset.id);
     setDraftWidgets(preset.widgets);
+    setDraftBackground(preset.background);
+    setDraftSelected(null);
   }
 
   async function publishDraft() {
@@ -197,7 +165,7 @@ export default function ControlPage() {
     await fetch(`/api/presets/${editingPresetId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ widgets: draftWidgets }),
+      body: JSON.stringify({ widgets: draftWidgets, background: draftBackground }),
     });
     await refreshPresets();
     setPublishing(false);
@@ -396,14 +364,30 @@ export default function ControlPage() {
               </div>
 
               {editingPresetId === p.id && (
-                <div className="mt-4 flex flex-col md:flex-row gap-4 items-start bg-black/20 rounded-xl p-4">
-                  <ScreenPreview src={`/screen?draft=${widgetsToDraftParam(draftWidgets)}`} width={320} />
-                  <div className="flex-1 flex flex-col gap-3">
-                    <p className="text-xs text-[var(--muted)]">
-                      This preview is a live render — the exact same code the screens run, just not published
-                      yet. Toggle widgets and sizes, watch it update, then publish when it looks right.
-                    </p>
-                    <WidgetPicker widgets={draftWidgets} onChange={setDraftWidgets} />
+                <div className="mt-4 flex flex-col gap-4 bg-black/20 rounded-xl p-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    Drag widgets to move them, drag the bottom-right corner to resize, click an icon below to add
+                    one. Everything here is live — real data, real background — nothing is published until you
+                    hit publish.
+                  </p>
+                  <div className="flex flex-col lg:flex-row gap-4 items-start">
+                    <div className="w-full lg:w-[480px] shrink-0">
+                      <GridEditor
+                        widgets={draftWidgets}
+                        onChange={setDraftWidgets}
+                        selectedId={draftSelected}
+                        onSelect={setDraftSelected}
+                      />
+                    </div>
+                    <div className="flex-1 flex flex-col gap-4 min-w-0">
+                      <AddWidgetPalette widgets={draftWidgets} onAdd={(w) => setDraftWidgets([...draftWidgets, w])} />
+                      <div className="border-t border-[var(--surface-border)] pt-3">
+                        <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                        <BackgroundPicker value={draftBackground} onChange={setDraftBackground} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={publishDraft}
                       disabled={publishing}
@@ -411,6 +395,7 @@ export default function ControlPage() {
                     >
                       {publishing ? "Publishing…" : "Publish to live devices"}
                     </button>
+                    <ScreenPreview src={`/screen?draft=${encodeDraft(draftWidgets, draftBackground)}`} width={200} />
                   </div>
                 </div>
               )}
@@ -418,14 +403,30 @@ export default function ControlPage() {
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-[var(--surface-border)] pt-4">
+        <div className="flex flex-col gap-4 border-t border-[var(--surface-border)] pt-4">
           <input
             value={newPresetName}
             onChange={(e) => setNewPresetName(e.target.value)}
             placeholder="Preset name (e.g. Kitchen)"
             className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
-          <WidgetPicker widgets={newPresetWidgets} onChange={setNewPresetWidgets} />
+          <div className="flex flex-col lg:flex-row gap-4 items-start">
+            <div className="w-full lg:w-[480px] shrink-0">
+              <GridEditor
+                widgets={newPresetWidgets}
+                onChange={setNewPresetWidgets}
+                selectedId={newPresetSelected}
+                onSelect={setNewPresetSelected}
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-4 min-w-0">
+              <AddWidgetPalette widgets={newPresetWidgets} onAdd={(w) => setNewPresetWidgets([...newPresetWidgets, w])} />
+              <div className="border-t border-[var(--surface-border)] pt-3">
+                <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                <BackgroundPicker value={newPresetBackground} onChange={setNewPresetBackground} />
+              </div>
+            </div>
+          </div>
           <button
             onClick={createPreset}
             className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"

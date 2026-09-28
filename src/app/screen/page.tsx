@@ -5,24 +5,25 @@ import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
 import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
-import type { Preset, PresetWidget, WidgetSize } from "@/lib/presets";
-import { WIDGET_TYPES, WIDGET_SIZES, SIZE_SPANS } from "@/lib/presets";
+import { ScreenBackground } from "@/components/ScreenBackground";
+import type { Preset, PresetWidget } from "@/lib/presets";
+import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
+import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 
 const DEFAULT_WIDGETS: PresetWidget[] = [
-  { type: "clock", size: "lg" },
-  { type: "weather", size: "md" },
+  { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+  { id: "weather-default", type: "weather", x: 6, y: 0, w: 4, h: 3 },
 ];
 
-function parseDraft(raw: string): PresetWidget[] {
-  return raw
-    .split(",")
-    .map((entry) => {
-      const [type, size] = entry.split(":");
-      if (!(WIDGET_TYPES as readonly string[]).includes(type)) return null;
-      const validSize = (WIDGET_SIZES as readonly string[]).includes(size) ? (size as WidgetSize) : "md";
-      return { type, size: validSize } as PresetWidget;
-    })
-    .filter((w): w is PresetWidget => w !== null);
+/** The control page's live draft editor sends its in-progress layout as base64 JSON. */
+function parseDraft(raw: string): { widgets: PresetWidget[]; background: BackgroundConfig } | null {
+  try {
+    const json = JSON.parse(decodeURIComponent(escape(atob(raw))));
+    if (!Array.isArray(json.widgets)) return null;
+    return { widgets: json.widgets, background: json.background ?? DEFAULT_BACKGROUND };
+  } catch {
+    return null;
+  }
 }
 
 /** Polls a device's own record by id — used for the controller's live mirror. */
@@ -91,30 +92,36 @@ function StatusBadge({ name, orbState }: { name: string; orbState: "idle" | "act
   );
 }
 
-function ScreenGrid({ widgets, name, orbState }: { widgets: PresetWidget[]; name: string; orbState: "idle" | "active" | "alert" }) {
+function ScreenGrid({
+  widgets,
+  background,
+  name,
+  orbState,
+}: {
+  widgets: PresetWidget[];
+  background: BackgroundConfig;
+  name: string;
+  orbState: "idle" | "active" | "alert";
+}) {
   return (
     <div className="h-screen w-screen relative">
+      <ScreenBackground config={background} />
       <StatusBadge name={name} orbState={orbState} />
-      <div
-        className="h-full w-full p-3 grid gap-3"
-        style={{
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gridTemplateRows: "repeat(3, 1fr)",
-          gridAutoFlow: "row dense",
-        }}
-      >
-        {widgets.map((w, i) => {
-          const span = SIZE_SPANS[w.size];
-          return (
-            <div
-              key={`${w.type}-${i}`}
-              className={`tile tile-${w.type}`}
-              style={{ gridColumn: `span ${span.col}`, gridRow: `span ${span.row}` }}
-            >
-              <WidgetRenderer type={w.type} size={w.size} />
-            </div>
-          );
-        })}
+      <div className="h-full w-full p-3 relative">
+        {widgets.map((w) => (
+          <div
+            key={w.id}
+            className={`tile tile-${w.type} absolute`}
+            style={{
+              left: `calc(${(w.x / GRID_COLS) * 100}% + 0.375rem)`,
+              top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.375rem)`,
+              width: `calc(${(w.w / GRID_COLS) * 100}% - 0.75rem)`,
+              height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.75rem)`,
+            }}
+          >
+            <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -143,25 +150,26 @@ function ScreenPageInner() {
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");
 
-  const draftWidgets = draftParam !== null ? parseDraft(draftParam) : null;
+  const draft = draftParam !== null ? parseDraft(draftParam) : null;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
 
-  const isDraft = draftWidgets !== null;
+  const isDraft = draft !== null;
   const isPreview = !isDraft && previewId !== null;
 
   const device = isPreview ? previewDevice : ownDevice.device;
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
   const approved = isDraft || device?.status === "approved";
   const preset = usePreset(isDraft ? null : device?.presetId ?? null);
-  const widgets = isDraft ? draftWidgets! : (preset?.widgets ?? DEFAULT_WIDGETS);
+  const widgets = isDraft ? draft!.widgets : (preset?.widgets ?? DEFAULT_WIDGETS);
+  const background = isDraft ? draft!.background : (preset?.background ?? DEFAULT_BACKGROUND);
 
   if (!approved) {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  return <ScreenGrid widgets={widgets} name={device?.name ?? "Home Base"} orbState="idle" />;
+  return <ScreenGrid widgets={widgets} background={background} name={device?.name ?? "Home Base"} orbState="idle" />;
 }
 
 export default function ScreenPage() {
