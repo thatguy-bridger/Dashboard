@@ -21,6 +21,10 @@ const PERSON_GREEN = "#4ade80";
 const BACKGROUND = "#0b0d12";
 const MUTED = "#8b93a7";
 
+const RAINVIEWER_LIST_URL = "https://api.rainviewer.com/public/weather-maps.json";
+const PRECIP_SOURCE_ID = "precip-radar";
+const PRECIP_LAYER_ID = "precip-radar-layer";
+
 interface MapDevice {
   id: string;
   name: string;
@@ -131,12 +135,37 @@ function cardElement(device: MapDevice): HTMLDivElement {
   return el;
 }
 
+/** Adds/removes RainViewer's free precipitation radar as a raster overlay.
+ * RainViewer publishes a rolling list of recent radar frames rather than a
+ * single "current" tile set, so this always grabs the latest one. */
+async function addPrecipLayer(map: maplibregl.Map) {
+  if (map.getLayer(PRECIP_LAYER_ID)) return;
+  const res = await fetch(RAINVIEWER_LIST_URL);
+  if (!res.ok) return;
+  const data = await res.json();
+  const frames = data?.radar?.past;
+  const latest = frames?.[frames.length - 1];
+  if (!latest) return;
+
+  const tileUrl = `${data.host}${latest.path}/256/{z}/{x}/{y}/4/1_1.png`;
+  if (!map.getSource(PRECIP_SOURCE_ID)) {
+    map.addSource(PRECIP_SOURCE_ID, { type: "raster", tiles: [tileUrl], tileSize: 256 });
+  }
+  map.addLayer({ id: PRECIP_LAYER_ID, type: "raster", source: PRECIP_SOURCE_ID, paint: { "raster-opacity": 0.75 } });
+}
+
+function removePrecipLayer(map: maplibregl.Map) {
+  if (map.getLayer(PRECIP_LAYER_ID)) map.removeLayer(PRECIP_LAYER_ID);
+  if (map.getSource(PRECIP_SOURCE_ID)) map.removeSource(PRECIP_SOURCE_ID);
+}
+
 export function LocationsMap({ devices }: { devices: MapDevice[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tilesLoaded, setTilesLoaded] = useState(false);
+  const [showPrecip, setShowPrecip] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -220,6 +249,19 @@ export function LocationsMap({ devices }: { devices: MapDevice[] }) {
     else map.once("load", placeMarkers);
   }, [devices]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    function apply() {
+      if (showPrecip) addPrecipLayer(map!);
+      else removePrecipLayer(map!);
+    }
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
+  }, [showPrecip]);
+
   return (
     // No border/rounding here — the enclosing .tile already provides both
     // (and clips to them), so the map fills it edge-to-edge.
@@ -236,8 +278,18 @@ export function LocationsMap({ devices }: { devices: MapDevice[] }) {
         </div>
       )}
       <div className="absolute bottom-1 right-2 text-[9px] text-[var(--muted)] opacity-60 pointer-events-none select-none">
-        © CARTO, © OpenStreetMap
+        © CARTO, © OpenStreetMap{showPrecip ? ", © RainViewer" : ""}
       </div>
+      <button
+        onClick={() => setShowPrecip((v) => !v)}
+        className={`absolute top-2 right-2 text-[10px] font-medium px-2.5 py-1 rounded-full border backdrop-blur-sm ${
+          showPrecip
+            ? "bg-[var(--accent)]/25 border-[var(--accent)] text-[var(--accent)]"
+            : "bg-black/40 border-white/15 text-[var(--muted)]"
+        }`}
+      >
+        Precipitation
+      </button>
     </div>
   );
 }

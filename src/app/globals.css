@@ -92,8 +92,11 @@ body {
   background: linear-gradient(160deg, rgba(125, 211, 252, 0.14), rgba(125, 211, 252, 0.03));
 }
 
+/* The weather card paints its own condition-based gradient edge-to-edge
+   (Apple Weather-style), so it opts out of the tile's default padding
+   and background the same way the map widget does. */
 .tile-weather {
-  background: linear-gradient(160deg, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0.03));
+  padding: 0;
 }
 
 .tile-worldclocks {
