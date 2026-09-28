@@ -25,6 +25,10 @@ const RAINVIEWER_LIST_URL = "https://api.rainviewer.com/public/weather-maps.json
 const PRECIP_SOURCE_ID = "precip-radar";
 const PRECIP_LAYER_ID = "precip-radar-layer";
 
+const TRAFFIC_SOURCE_ID = "traffic-flow";
+const TRAFFIC_LAYER_ID = "traffic-flow-layer";
+const TRAFFIC_TILE_URL = "/api/traffic/tile/{z}/{x}/{y}";
+
 interface MapDevice {
   id: string;
   name: string;
@@ -159,6 +163,21 @@ function removePrecipLayer(map: maplibregl.Map) {
   if (map.getSource(PRECIP_SOURCE_ID)) map.removeSource(PRECIP_SOURCE_ID);
 }
 
+/** Traffic tiles are proxied through our own /api/traffic/tile route (see
+ * that route for why) rather than pointed at TomTom directly. */
+function addTrafficLayer(map: maplibregl.Map) {
+  if (map.getLayer(TRAFFIC_LAYER_ID)) return;
+  if (!map.getSource(TRAFFIC_SOURCE_ID)) {
+    map.addSource(TRAFFIC_SOURCE_ID, { type: "raster", tiles: [TRAFFIC_TILE_URL], tileSize: 256 });
+  }
+  map.addLayer({ id: TRAFFIC_LAYER_ID, type: "raster", source: TRAFFIC_SOURCE_ID, paint: { "raster-opacity": 0.85 } });
+}
+
+function removeTrafficLayer(map: maplibregl.Map) {
+  if (map.getLayer(TRAFFIC_LAYER_ID)) map.removeLayer(TRAFFIC_LAYER_ID);
+  if (map.getSource(TRAFFIC_SOURCE_ID)) map.removeSource(TRAFFIC_SOURCE_ID);
+}
+
 export function LocationsMap({ devices }: { devices: MapDevice[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -166,6 +185,15 @@ export function LocationsMap({ devices }: { devices: MapDevice[] }) {
   const [error, setError] = useState<string | null>(null);
   const [tilesLoaded, setTilesLoaded] = useState(false);
   const [showPrecip, setShowPrecip] = useState(false);
+  const [showTraffic, setShowTraffic] = useState(false);
+  const [trafficAvailable, setTrafficAvailable] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/traffic/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setTrafficAvailable(data.connected))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -262,6 +290,19 @@ export function LocationsMap({ devices }: { devices: MapDevice[] }) {
     else map.once("load", apply);
   }, [showPrecip]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    function apply() {
+      if (showTraffic) addTrafficLayer(map!);
+      else removeTrafficLayer(map!);
+    }
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
+  }, [showTraffic]);
+
   return (
     // No border/rounding here — the enclosing .tile already provides both
     // (and clips to them), so the map fills it edge-to-edge.
@@ -278,18 +319,34 @@ export function LocationsMap({ devices }: { devices: MapDevice[] }) {
         </div>
       )}
       <div className="absolute bottom-1 right-2 text-[9px] text-[var(--muted)] opacity-60 pointer-events-none select-none">
-        © CARTO, © OpenStreetMap{showPrecip ? ", © RainViewer" : ""}
+        © CARTO, © OpenStreetMap
+        {showPrecip ? ", © RainViewer" : ""}
+        {showTraffic ? ", © TomTom" : ""}
       </div>
-      <button
-        onClick={() => setShowPrecip((v) => !v)}
-        className={`absolute top-2 right-2 text-[10px] font-medium px-2.5 py-1 rounded-full border backdrop-blur-sm ${
-          showPrecip
-            ? "bg-[var(--accent)]/25 border-[var(--accent)] text-[var(--accent)]"
-            : "bg-black/40 border-white/15 text-[var(--muted)]"
-        }`}
-      >
-        Precipitation
-      </button>
+      <div className="absolute top-2 right-2 flex flex-col items-end gap-1.5">
+        <button
+          onClick={() => setShowPrecip((v) => !v)}
+          className={`text-[10px] font-medium px-2.5 py-1 rounded-full border backdrop-blur-sm ${
+            showPrecip
+              ? "bg-[var(--accent)]/25 border-[var(--accent)] text-[var(--accent)]"
+              : "bg-black/40 border-white/15 text-[var(--muted)]"
+          }`}
+        >
+          Precipitation
+        </button>
+        {trafficAvailable && (
+          <button
+            onClick={() => setShowTraffic((v) => !v)}
+            className={`text-[10px] font-medium px-2.5 py-1 rounded-full border backdrop-blur-sm ${
+              showTraffic
+                ? "bg-[var(--accent)]/25 border-[var(--accent)] text-[var(--accent)]"
+                : "bg-black/40 border-white/15 text-[var(--muted)]"
+            }`}
+          >
+            Traffic
+          </button>
+        )}
+      </div>
     </div>
   );
 }
