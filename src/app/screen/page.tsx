@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
 import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
+import { LiveGameBanner } from "@/components/LiveGameBanner";
 import type { Preset, PresetWidget, WidgetSize, WidgetType } from "@/lib/presets";
 import { WIDGET_TYPES, WIDGET_SIZES, WIDGET_LABELS, SIZE_SPANS } from "@/lib/presets";
 
@@ -102,6 +103,7 @@ function WidgetBadge({ type }: { type: WidgetType }) {
 function ScreenGrid({ widgets }: { widgets: PresetWidget[] }) {
   return (
     <div className="h-screen w-screen relative">
+      <LiveGameBanner />
       <div
         className="h-full w-full p-3 grid gap-3"
         style={{

@@ -111,8 +111,53 @@ async function getAll() {
   return { scores: scores.filter((s) => s !== null), ticker };
 }
 
+interface LiveScoreEntry {
+  strHomeTeam: string;
+  strAwayTeam: string;
+  intHomeScore: string;
+  intAwayScore: string;
+  strStatus: string;
+  strLeague: string;
+}
+
+/** The livescore endpoint has no team filter, so this pulls every live game
+ * and matches the favorite team's name client-side — cheap since there are
+ * only ever a handful of live games at once. */
+async function getLiveGame() {
+  const { favoriteTeam } = await getSettings();
+  if (!favoriteTeam) return { live: null };
+
+  try {
+    const res = await fetch(`${BASE}/livescore.php`, { cache: "no-store" });
+    if (!res.ok) return { live: null };
+    const data = await res.json();
+    const entries: LiveScoreEntry[] = data.livescore ?? [];
+    const match = entries.find(
+      (e) =>
+        e.strHomeTeam.toLowerCase().includes(favoriteTeam.toLowerCase()) ||
+        e.strAwayTeam.toLowerCase().includes(favoriteTeam.toLowerCase())
+    );
+    if (!match) return { live: null };
+    return {
+      live: {
+        home: match.strHomeTeam,
+        away: match.strAwayTeam,
+        homeScore: match.intHomeScore,
+        awayScore: match.intAwayScore,
+        status: match.strStatus,
+        league: match.strLeague,
+      },
+    };
+  } catch {
+    return { live: null };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get("mode");
+  if (mode === "live") {
+    return NextResponse.json(await getLiveGame());
+  }
   const result = mode === "all" ? await getAll() : await getFavorite();
   if ("error" in result) {
     return NextResponse.json(result, { status: 502 });
