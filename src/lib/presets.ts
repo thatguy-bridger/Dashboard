@@ -13,6 +13,9 @@ export const WIDGET_TYPES = [
   "photos",
   "traffic",
   "countdown",
+  "airquality",
+  "history",
+  "stocks",
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -29,6 +32,9 @@ export const WIDGET_LABELS: Record<WidgetType, string> = {
   photos: "Photos",
   traffic: "Traffic camera",
   countdown: "Countdown",
+  airquality: "Air quality",
+  history: "On this day",
+  stocks: "Stocks",
 };
 
 export const WIDGET_SIZES = ["sm", "md", "lg", "xl"] as const;

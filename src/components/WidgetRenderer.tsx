@@ -11,6 +11,9 @@ import { DriveWidget } from "@/components/DriveWidget";
 import { PhotosWidget } from "@/components/PhotosWidget";
 import { TrafficCameraWidget } from "@/components/TrafficCameraWidget";
 import { CountdownWidget } from "@/components/CountdownWidget";
+import { AirQualityWidget } from "@/components/AirQualityWidget";
+import { HistoryWidget } from "@/components/HistoryWidget";
+import { StocksWidget } from "@/components/StocksWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -38,6 +41,12 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <TrafficCameraWidget size={size} />;
     case "countdown":
       return <CountdownWidget size={size} />;
+    case "airquality":
+      return <AirQualityWidget size={size} />;
+    case "history":
+      return <HistoryWidget size={size} />;
+    case "stocks":
+      return <StocksWidget size={size} />;
     default:
       return null;
   }
