@@ -60,15 +60,26 @@ export function findFreeSpot(existing: GridWidget[], w: number, h: number): { x:
   return { x: 0, y: 0 };
 }
 
-/** First-fit placement for legacy {type,size}[] presets that have no x/y/w/h yet. */
+/**
+ * First-fit placement for legacy {type,size}[] presets that have no x/y/w/h yet.
+ *
+ * Must never let two widgets land on the same cell: a collision used to fall
+ * back to (0,0), silently burying every widget placed after the first "full"
+ * one directly underneath it — they were still in the data, just invisible
+ * behind an earlier tile. Large legacy `lg`/`xl` widgets add up fast (an xl
+ * alone is more than half the 12x7 grid), so instead of overflowing past the
+ * visible screen (which is a fixed viewport, not scrollable) we shrink a
+ * widget's own footprint step by step until it fits somewhere unoccupied.
+ * Every widget the preset had is guaranteed a unique, visible spot.
+ */
 export function autoLayout(items: { type: WidgetType; size: WidgetSize }[]): GridWidget[] {
-  const occupied: boolean[][] = Array.from({ length: GRID_ROWS }, () => Array(GRID_COLS).fill(false));
+  const occupied = new Set<string>();
 
   function fits(x: number, y: number, w: number, h: number) {
     if (x + w > GRID_COLS || y + h > GRID_ROWS) return false;
     for (let yy = y; yy < y + h; yy++) {
       for (let xx = x; xx < x + w; xx++) {
-        if (occupied[yy][xx]) return false;
+        if (occupied.has(`${xx},${yy}`)) return false;
       }
     }
     return true;
@@ -77,29 +88,56 @@ export function autoLayout(items: { type: WidgetType; size: WidgetSize }[]): Gri
   function place(x: number, y: number, w: number, h: number) {
     for (let yy = y; yy < y + h; yy++) {
       for (let xx = x; xx < x + w; xx++) {
-        occupied[yy][xx] = true;
+        occupied.add(`${xx},${yy}`);
       }
     }
   }
 
-  const result: GridWidget[] = [];
-  items.forEach((item, i) => {
-    const span = LEGACY_SPANS[item.size];
-    const w = Math.min(GRID_COLS, span.col * 3);
-    const h = Math.min(GRID_ROWS, span.row * 2);
-
-    let placedAt: { x: number; y: number } | null = null;
-    outer: for (let y = 0; y <= GRID_ROWS - h; y++) {
+  function findSpot(w: number, h: number): { x: number; y: number } | null {
+    for (let y = 0; y <= GRID_ROWS - h; y++) {
       for (let x = 0; x <= GRID_COLS - w; x++) {
-        if (fits(x, y, w, h)) {
-          placedAt = { x, y };
-          break outer;
-        }
+        if (fits(x, y, w, h)) return { x, y };
       }
     }
-    const { x, y } = placedAt ?? { x: 0, y: 0 };
-    place(x, y, w, h);
-    result.push({ id: `${item.type}-${i}-${Date.now().toString(36)}`, type: item.type, x, y, w, h });
+    return null;
+  }
+
+  const sized = items.map((item) => {
+    const span = LEGACY_SPANS[item.size];
+    return { type: item.type, w: Math.min(GRID_COLS, span.col * 3), h: Math.min(GRID_ROWS, span.row * 2) };
+  });
+
+  // Pre-shrink globally when the requested footprints alone would fill (or
+  // nearly fill) the grid: first-fit packing is never 100% efficient, so
+  // leaving zero slack guarantees later widgets have nowhere left to go at
+  // all — the exact case that used to bury them at (0,0). Repeatedly shrink
+  // whichever widget is currently largest until there's real headroom.
+  const capacity = GRID_COLS * GRID_ROWS;
+  const area = () => sized.reduce((sum, it) => sum + it.w * it.h, 0);
+  while (area() > capacity * 0.75 && sized.some((it) => it.w > MIN_W || it.h > MIN_H)) {
+    const largest = sized.reduce((best, it) => (it.w * it.h > sized[best].w * sized[best].h ? sized.indexOf(it) : best), 0);
+    const it = sized[largest];
+    if (it.h > MIN_H) it.h -= 1;
+    else if (it.w > MIN_W) it.w -= 1;
+  }
+
+  const result: GridWidget[] = [];
+  sized.forEach((item, i) => {
+    let { w, h } = item;
+    let spot = findSpot(w, h);
+    // Per-item safety net in case packing order still leaves no room —
+    // shrink toward the minimum footprint until it fits. With MIN_W x MIN_H
+    // cells the whole 12x7 grid holds 42 of them, so this always succeeds
+    // for any realistic widget count.
+    while (!spot && (w > MIN_W || h > MIN_H)) {
+      if (h > MIN_H) h -= 1;
+      else w -= 1;
+      spot = findSpot(w, h);
+    }
+    spot ??= { x: 0, y: 0 };
+
+    place(spot.x, spot.y, w, h);
+    result.push({ id: `${item.type}-${i}-${Date.now().toString(36)}`, type: item.type, x: spot.x, y: spot.y, w, h });
   });
 
   return result;
