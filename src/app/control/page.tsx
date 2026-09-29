@@ -6,6 +6,7 @@ import { WIDGET_TYPES, type Preset, type PresetWidget, type WidgetType } from "@
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { Modal } from "@/components/Modal";
 import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { findFreeSpot } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
@@ -64,6 +65,7 @@ export default function ControlPage() {
   ]);
   const [newPresetSelected, setNewPresetSelected] = useState<string | null>(null);
   const [newPresetBackground, setNewPresetBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [creatingPreset, setCreatingPreset] = useState(false);
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
@@ -204,6 +206,7 @@ export default function ControlPage() {
       { id: "weather-new", type: "weather", x: 6, y: 0, w: 4, h: 3 },
     ]);
     setNewPresetBackground(DEFAULT_BACKGROUND);
+    setCreatingPreset(false);
     refreshPresets();
   }
 
@@ -320,88 +323,94 @@ export default function ControlPage() {
               ))}
             </div>
 
-            {editingDeviceId &&
-              (() => {
-                const d = approvedDevices.find((dv) => dv.id === editingDeviceId);
-                if (!d) return null;
-                return (
-                  <div className="flex flex-col gap-4 bg-black/20 rounded-xl p-4">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <p className="text-xs text-[var(--muted)] max-w-md">
-                        Editing <span className="text-[var(--foreground)]">{d.name ?? d.id.slice(0, 8)}</span>{" "}
-                        directly — this only affects this screen. Its assigned preset stays untouched, and other
-                        screens using that preset are unaffected.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <select
-                          defaultValue=""
-                          onChange={(e) => {
-                            if (e.target.value) loadDeviceDraftFromPreset(e.target.value);
-                            e.target.value = "";
-                          }}
-                          className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
-                        >
-                          <option value="" disabled>
-                            Start from preset…
-                          </option>
-                          {presets?.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                        {d.layout && (
-                          <button
-                            onClick={() => revertDeviceToPreset(d)}
-                            disabled={deviceSaving}
-                            className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40 disabled:opacity-50"
-                          >
-                            Revert to preset
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col lg:flex-row gap-4 items-start">
-                      <div className="w-full lg:w-[480px] shrink-0">
-                        <GridEditor
-                          widgets={deviceDraftWidgets}
-                          onChange={setDeviceDraftWidgets}
-                          selectedId={deviceDraftSelected}
-                          onSelect={setDeviceDraftSelected}
-                        />
-                      </div>
-                      <div className="flex-1 flex flex-col gap-4 min-w-0">
-                        <AddWidgetPalette
-                          widgets={deviceDraftWidgets}
-                          onAdd={(w) => setDeviceDraftWidgets([...deviceDraftWidgets, w])}
-                        />
-                        <div className="border-t border-[var(--surface-border)] pt-3">
-                          <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
-                          <BackgroundPicker value={deviceDraftBackground} onChange={setDeviceDraftBackground} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => saveDeviceLayout(d.id)}
-                        disabled={deviceSaving}
-                        className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                      >
-                        {deviceSaving ? "Saving…" : "Save to this screen"}
-                      </button>
-                      <ScreenPreview
-                        src={`/screen?draft=${encodeDraft(deviceDraftWidgets, deviceDraftBackground)}`}
-                        width={200}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
           </div>
         )}
       </section>
+
+      {(() => {
+        const d = approvedDevices.find((dv) => dv.id === editingDeviceId);
+        return (
+          <Modal
+            open={!!d}
+            onClose={() => setEditingDeviceId(null)}
+            title={d ? `Editing ${d.name ?? d.id.slice(0, 8)}` : undefined}
+          >
+            {d && (
+              <div className="flex flex-col gap-4 h-full">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs text-[var(--muted)] max-w-md">
+                    Editing this screen directly — this only affects this screen. Its assigned preset stays
+                    untouched, and other screens using that preset are unaffected.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) loadDeviceDraftFromPreset(e.target.value);
+                        e.target.value = "";
+                      }}
+                      className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
+                    >
+                      <option value="" disabled>
+                        Start from preset…
+                      </option>
+                      {presets?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    {d.layout && (
+                      <button
+                        onClick={() => revertDeviceToPreset(d)}
+                        disabled={deviceSaving}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40 disabled:opacity-50"
+                      >
+                        Revert to preset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+                  <div className="w-full lg:flex-1 lg:h-full">
+                    <GridEditor
+                      widgets={deviceDraftWidgets}
+                      onChange={setDeviceDraftWidgets}
+                      selectedId={deviceDraftSelected}
+                      onSelect={setDeviceDraftSelected}
+                    />
+                  </div>
+                  <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
+                    <AddWidgetPalette
+                      widgets={deviceDraftWidgets}
+                      onAdd={(w) => setDeviceDraftWidgets([...deviceDraftWidgets, w])}
+                    />
+                    <div className="border-t border-[var(--surface-border)] pt-3">
+                      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                      <BackgroundPicker value={deviceDraftBackground} onChange={setDeviceDraftBackground} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    onClick={() => saveDeviceLayout(d.id)}
+                    disabled={deviceSaving}
+                    className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                  >
+                    {deviceSaving ? "Saving…" : "Save to this screen"}
+                  </button>
+                  <ScreenPreview
+                    src={`/screen?draft=${encodeDraft(deviceDraftWidgets, deviceDraftBackground)}`}
+                    width={200}
+                  />
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
@@ -610,55 +619,73 @@ export default function ControlPage() {
                 </div>
               </div>
 
-              {editingPresetId === p.id && (
-                <div className="mt-4 flex flex-col gap-4 bg-black/20 rounded-xl p-4">
-                  <p className="text-xs text-[var(--muted)]">
-                    Drag widgets to move them, drag the bottom-right corner to resize, click an icon below to add
-                    one. Everything here is live — real data, real background — nothing is published until you
-                    hit publish.
-                  </p>
-                  <div className="flex flex-col lg:flex-row gap-4 items-start">
-                    <div className="w-full lg:w-[480px] shrink-0">
-                      <GridEditor
-                        widgets={draftWidgets}
-                        onChange={setDraftWidgets}
-                        selectedId={draftSelected}
-                        onSelect={setDraftSelected}
-                      />
-                    </div>
-                    <div className="flex-1 flex flex-col gap-4 min-w-0">
-                      <AddWidgetPalette widgets={draftWidgets} onAdd={(w) => setDraftWidgets([...draftWidgets, w])} />
-                      <div className="border-t border-[var(--surface-border)] pt-3">
-                        <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
-                        <BackgroundPicker value={draftBackground} onChange={setDraftBackground} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={publishDraft}
-                      disabled={publishing}
-                      className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                    >
-                      {publishing ? "Publishing…" : "Publish to live devices"}
-                    </button>
-                    <ScreenPreview src={`/screen?draft=${encodeDraft(draftWidgets, draftBackground)}`} width={200} />
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
 
         <div className="flex flex-col gap-4 border-t border-[var(--surface-border)] pt-4">
+          <button
+            onClick={() => setCreatingPreset(true)}
+            className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            + New preset
+          </button>
+        </div>
+      </section>
+
+      {presets?.map((p) => (
+        <Modal
+          key={p.id}
+          open={editingPresetId === p.id}
+          onClose={() => setEditingPresetId(null)}
+          title={`Editing ${p.name}`}
+        >
+          <div className="flex flex-col gap-4 h-full">
+            <p className="text-xs text-[var(--muted)]">
+              Drag widgets to move them, drag the bottom-right corner to resize, click an icon below to add one.
+              Everything here is live — real data, real background — nothing is published until you hit publish.
+            </p>
+            <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+              <div className="w-full lg:flex-1 lg:h-full">
+                <GridEditor
+                  widgets={draftWidgets}
+                  onChange={setDraftWidgets}
+                  selectedId={draftSelected}
+                  onSelect={setDraftSelected}
+                />
+              </div>
+              <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
+                <AddWidgetPalette widgets={draftWidgets} onAdd={(w) => setDraftWidgets([...draftWidgets, w])} />
+                <div className="border-t border-[var(--surface-border)] pt-3">
+                  <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                  <BackgroundPicker value={draftBackground} onChange={setDraftBackground} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={publishDraft}
+                disabled={publishing}
+                className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {publishing ? "Publishing…" : "Publish to live devices"}
+              </button>
+              <ScreenPreview src={`/screen?draft=${encodeDraft(draftWidgets, draftBackground)}`} width={200} />
+            </div>
+          </div>
+        </Modal>
+      ))}
+
+      <Modal open={creatingPreset} onClose={() => setCreatingPreset(false)} title="New preset">
+        <div className="flex flex-col gap-4 h-full">
           <input
             value={newPresetName}
             onChange={(e) => setNewPresetName(e.target.value)}
             placeholder="Preset name (e.g. Kitchen)"
             className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
           />
-          <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <div className="w-full lg:w-[480px] shrink-0">
+          <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+            <div className="w-full lg:flex-1 lg:h-full">
               <GridEditor
                 widgets={newPresetWidgets}
                 onChange={setNewPresetWidgets}
@@ -666,7 +693,7 @@ export default function ControlPage() {
                 onSelect={setNewPresetSelected}
               />
             </div>
-            <div className="flex-1 flex flex-col gap-4 min-w-0">
+            <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
               <AddWidgetPalette widgets={newPresetWidgets} onAdd={(w) => setNewPresetWidgets([...newPresetWidgets, w])} />
               <div className="border-t border-[var(--surface-border)] pt-3">
                 <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
@@ -681,7 +708,7 @@ export default function ControlPage() {
             Create preset
           </button>
         </div>
-      </section>
+      </Modal>
     </main>
   );
 }
