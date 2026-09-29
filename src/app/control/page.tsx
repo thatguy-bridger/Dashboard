@@ -10,6 +10,7 @@ import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { findFreeSpot } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 import { encodeDraft } from "@/lib/draftEncoding";
+import type { MapPlace } from "@/lib/settings";
 
 const WIDGET_LABELS: Record<WidgetType, string> = {
   clock: "Clock",
@@ -18,6 +19,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   news: "News headlines",
   sports: "Sports",
   calendar: "Calendar",
+  traffic: "Traffic",
 };
 
 const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
@@ -65,6 +67,12 @@ export default function ControlPage() {
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [mapHome, setMapHome] = useState<MapPlace | null>(null);
+  const [mapDestination, setMapDestination] = useState<MapPlace | null>(null);
+  const [homeQuery, setHomeQuery] = useState("");
+  const [destQuery, setDestQuery] = useState("");
+  const [mapSaving, setMapSaving] = useState<"home" | "destination" | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const refreshGoogleStatus = useCallback(async () => {
     const res = await fetch("/api/auth/google/status", { cache: "no-store" });
@@ -119,7 +127,11 @@ export default function ControlPage() {
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((res) => res.json())
-      .then((data) => setFavoriteTeam(data.settings.favoriteTeam ?? ""));
+      .then((data) => {
+        setFavoriteTeam(data.settings.favoriteTeam ?? "");
+        setMapHome(data.settings.mapHome ?? null);
+        setMapDestination(data.settings.mapDestination ?? null);
+      });
   }, []);
 
   async function saveFavoriteTeam() {
@@ -130,6 +142,44 @@ export default function ControlPage() {
     });
     setTeamSaved(true);
     setTimeout(() => setTeamSaved(false), 1500);
+  }
+
+  async function saveMapPlace(kind: "home" | "destination") {
+    const query = (kind === "home" ? homeQuery : destQuery).trim();
+    if (!query) return;
+    setMapSaving(kind);
+    setMapError(null);
+    const geo = await fetch(`/api/traffic/geocode?q=${encodeURIComponent(query)}`);
+    if (!geo.ok) {
+      const body = await geo.json().catch(() => ({}));
+      setMapError(body.error ?? "Lookup failed");
+      setMapSaving(null);
+      return;
+    }
+    const place: MapPlace = await geo.json();
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [kind === "home" ? "mapHome" : "mapDestination"]: place }),
+    });
+    if (kind === "home") {
+      setMapHome(place);
+      setHomeQuery("");
+    } else {
+      setMapDestination(place);
+      setDestQuery("");
+    }
+    setMapSaving(null);
+  }
+
+  async function clearMapPlace(kind: "home" | "destination") {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [kind === "home" ? "mapHome" : "mapDestination"]: null }),
+    });
+    if (kind === "home") setMapHome(null);
+    else setMapDestination(null);
   }
 
   async function patchDevice(id: string, body: Record<string, unknown>) {
@@ -479,6 +529,52 @@ export default function ControlPage() {
           >
             {teamSaved ? "Saved" : "Save"}
           </button>
+        </div>
+
+        <div className="mt-5 pt-5 border-t border-[var(--surface-border)] flex flex-col gap-3">
+          <div className="text-xs text-[var(--muted)]">
+            Traffic widget — home and destination, used for the live drive-time estimate. Requires{" "}
+            <code className="text-[10px]">TOMTOM_API_KEY</code> to be set in the environment.
+          </div>
+
+          {(["home", "destination"] as const).map((kind) => {
+            const place = kind === "home" ? mapHome : mapDestination;
+            const query = kind === "home" ? homeQuery : destQuery;
+            const setQuery = kind === "home" ? setHomeQuery : setDestQuery;
+            return (
+              <div key={kind} className="flex items-center gap-2">
+                <span className="text-xs text-[var(--muted)] w-20 capitalize shrink-0">{kind}</span>
+                {place ? (
+                  <>
+                    <span className="text-sm flex-1 truncate">{place.label}</span>
+                    <button
+                      onClick={() => clearMapPlace(kind)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40"
+                    >
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={kind === "home" ? "e.g. 123 Main St, Springfield" : "e.g. Work address"}
+                      className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+                    />
+                    <button
+                      onClick={() => saveMapPlace(kind)}
+                      disabled={mapSaving === kind}
+                      className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-50"
+                    >
+                      {mapSaving === kind ? "Looking up…" : "Set"}
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {mapError && <p className="text-xs text-red-300">{mapError}</p>}
         </div>
       </section>
 

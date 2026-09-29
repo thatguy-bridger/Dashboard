@@ -58,6 +58,22 @@ function SportsIcon({ className }: IconProps) {
   );
 }
 
+function TrafficIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} fill="none">
+      <path
+        d="M9 27c-1-6 1-11 5-14M23 27c1-6-1-11-5-14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <circle cx="16" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
+      <circle cx="9" cy="27" r="2" fill="currentColor" />
+      <circle cx="23" cy="27" r="2" fill="currentColor" />
+    </svg>
+  );
+}
+
 function CalendarIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 32 32" className={className} fill="none">
@@ -75,6 +91,7 @@ const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   news: NewsIcon,
   sports: SportsIcon,
   calendar: CalendarIcon,
+  traffic: TrafficIcon,
 };
 
 export function WidgetIcon({ type, className = "w-6 h-6" }: { type: WidgetType; className?: string }) {

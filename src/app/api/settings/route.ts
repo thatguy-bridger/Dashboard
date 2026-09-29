@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/settings";
+import { getSettings, updateSettings, type MapPlace } from "@/lib/settings";
+
+function parsePlacePatch(raw: unknown): MapPlace | null | undefined {
+  if (raw === null) return null;
+  if (raw && typeof raw === "object") {
+    const label = (raw as { label?: unknown }).label;
+    const lat = (raw as { lat?: unknown }).lat;
+    const lon = (raw as { lon?: unknown }).lon;
+    if (typeof label === "string" && typeof lat === "number" && typeof lon === "number") {
+      return { label, lat, lon };
+    }
+  }
+  return undefined;
+}
 
 export async function GET() {
   const settings = await getSettings();
@@ -8,10 +21,20 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const patch: { favoriteTeam?: string | null } = {};
+  const patch: { favoriteTeam?: string | null; mapHome?: MapPlace | null; mapDestination?: MapPlace | null } = {};
+
   if (body.favoriteTeam === null || typeof body.favoriteTeam === "string") {
     patch.favoriteTeam = body.favoriteTeam;
   }
+  if ("mapHome" in body) {
+    const place = parsePlacePatch(body.mapHome);
+    if (place !== undefined) patch.mapHome = place;
+  }
+  if ("mapDestination" in body) {
+    const place = parsePlacePatch(body.mapDestination);
+    if (place !== undefined) patch.mapDestination = place;
+  }
+
   const settings = await updateSettings(patch);
   return NextResponse.json({ settings });
 }

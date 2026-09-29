@@ -13,6 +13,7 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   news: "News headlines",
   sports: "Sports",
   calendar: "Calendar",
+  traffic: "Traffic",
 };
 
 type DragMode = { kind: "move" | "resize"; id: string; startX: number; startY: number; origin: GridWidget };

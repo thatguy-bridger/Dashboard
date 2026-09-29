@@ -2,7 +2,7 @@ import { d1Query } from "@/lib/d1";
 import { autoLayout, clampWidget, type GridWidget } from "@/lib/grid";
 import { parseBackground, DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 
-export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports", "calendar"] as const;
+export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports", "calendar", "traffic"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 // Kept for widget-internal content-density decisions (derived from grid footprint) and
