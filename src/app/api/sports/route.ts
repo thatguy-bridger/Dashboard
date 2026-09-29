@@ -75,6 +75,8 @@ async function getLeagueScore(league: { id: string; name: string }) {
       away: event.strAwayTeam,
       homeScore: event.intHomeScore,
       awayScore: event.intAwayScore,
+      homeBadge: event.strHomeTeamBadge,
+      awayBadge: event.strAwayTeamBadge,
       date: event.dateEvent,
     };
   } catch {

@@ -98,6 +98,7 @@ export default function ControlPage() {
   ]);
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
+  const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
   const [commuteOrigin, setCommuteOrigin] = useState("");
   const [commuteDest, setCommuteDest] = useState("");
   const [commuteResolved, setCommuteResolved] = useState<{ originLabel: string; destLabel: string } | null>(null);
@@ -155,6 +156,7 @@ export default function ControlPage() {
       .then((res) => res.json())
       .then((data) => {
         setFavoriteTeam(data.settings.favoriteTeam ?? "");
+        setDisplayMode(data.settings.displayMode ?? "color");
         if (data.settings.commuteOriginLabel && data.settings.commuteDestLabel) {
           setCommuteResolved({
             originLabel: data.settings.commuteOriginLabel,
@@ -163,6 +165,15 @@ export default function ControlPage() {
         }
       });
   }, []);
+
+  async function saveDisplayMode(mode: "color" | "image") {
+    setDisplayMode(mode);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayMode: mode }),
+    });
+  }
 
   async function saveCommute() {
     if (!commuteOrigin.trim() || !commuteDest.trim()) return;
@@ -445,6 +456,30 @@ export default function ControlPage() {
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Settings
         </h2>
+        <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
+          <div>
+            <div className="text-sm font-medium">Display mode</div>
+            <p className="text-xs text-[var(--muted)]">
+              Color keeps every widget flat/minimal. Image lets widgets use real photos/logos and atmospheric
+              effects where they have something to show (team badges, news header images, weather backdrops).
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            {(["color", "image"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => saveDisplayMode(mode)}
+                className={`text-xs px-3 py-1.5 rounded-lg border capitalize ${
+                  displayMode === mode
+                    ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
+                    : "border-[var(--surface-border)] text-[var(--muted)]"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <input
             value={favoriteTeam}

@@ -1,5 +1,7 @@
 import { d1Query } from "@/lib/d1";
 
+export type DisplayMode = "color" | "image";
+
 export interface Settings {
   favoriteTeam: string | null;
   commuteOriginLabel: string | null;
@@ -8,6 +10,7 @@ export interface Settings {
   commuteDestLabel: string | null;
   commuteDestLat: number | null;
   commuteDestLon: number | null;
+  displayMode: DisplayMode;
 }
 
 const KEYS = [
@@ -18,6 +21,7 @@ const KEYS = [
   "commuteDestLabel",
   "commuteDestLat",
   "commuteDestLon",
+  "displayMode",
 ] as const;
 
 const NUMERIC_KEYS = new Set(["commuteOriginLat", "commuteOriginLon", "commuteDestLat", "commuteDestLon"]);
@@ -33,6 +37,7 @@ export async function getSettings(): Promise<Settings> {
     const raw = byKey[key] ?? null;
     result[key] = raw !== null && NUMERIC_KEYS.has(key) ? Number(raw) : raw;
   }
+  if (result.displayMode !== "image") result.displayMode = "color";
   return result as unknown as Settings;
 }
 

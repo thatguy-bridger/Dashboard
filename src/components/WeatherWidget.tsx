@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { weatherLabel } from "@/lib/weatherCodes";
-import { weatherGradient, WeatherIcon } from "@/lib/weatherVisuals";
+import { weatherGradient, WeatherIcon, WeatherEffect } from "@/lib/weatherVisuals";
+import { useDisplayMode } from "@/lib/useDisplayMode";
 import type { WidgetSize } from "@/lib/presets";
 
 interface HourForecast {
@@ -49,6 +50,7 @@ function uvLabel(uv: number): string {
  * glass/blur language, rather than trying to look identical asset-for-asset. */
 export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const displayMode = useDisplayMode();
 
   useEffect(() => {
     let cancelled = false;
@@ -84,11 +86,12 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
   if (size === "sm") {
     return (
       <div
-        className={`flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] ${textOnGradient}`}
+        className={`relative flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] overflow-hidden ${textOnGradient}`}
         style={cardStyle}
       >
-        <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-8 h-8 opacity-90" />
-        <div className="text-4xl font-semibold tabular-nums">{weather.tempF}°</div>
+        {displayMode === "image" && <WeatherEffect code={weather.weatherCode} isDay={weather.isDay} />}
+        <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="relative w-8 h-8 opacity-90" />
+        <div className="relative text-4xl font-semibold tabular-nums">{weather.tempF}°</div>
       </div>
     );
   }
@@ -97,13 +100,14 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
   if (size === "md") {
     return (
       <div
-        className={`flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] px-3 ${textOnGradient}`}
+        className={`relative flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] px-3 overflow-hidden ${textOnGradient}`}
         style={cardStyle}
       >
-        <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-10 h-10 opacity-90" />
-        <div className="text-5xl font-semibold tabular-nums">{weather.tempF}°</div>
-        <div className="text-sm opacity-80">{weatherLabel(weather.weatherCode)}</div>
-        <div className="text-xs opacity-70 tabular-nums">
+        {displayMode === "image" && <WeatherEffect code={weather.weatherCode} isDay={weather.isDay} />}
+        <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="relative w-10 h-10 opacity-90" />
+        <div className="relative text-5xl font-semibold tabular-nums">{weather.tempF}°</div>
+        <div className="relative text-sm opacity-80">{weatherLabel(weather.weatherCode)}</div>
+        <div className="relative text-xs opacity-70 tabular-nums">
           H {weather.highF}° · L {weather.lowF}°
         </div>
       </div>
@@ -113,8 +117,12 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
   // lg / xl: full Apple-Weather-style card — big glyph, feels-like, a
   // horizontally scrolling hourly strip, and (xl only) wind/UV/humidity detail tiles.
   return (
-    <div className={`flex flex-col w-full h-full rounded-[inherit] p-4 gap-3 ${textOnGradient}`} style={cardStyle}>
-      <div className="flex items-center justify-between">
+    <div
+      className={`relative flex flex-col w-full h-full rounded-[inherit] p-4 gap-3 overflow-hidden ${textOnGradient}`}
+      style={cardStyle}
+    >
+      {displayMode === "image" && <WeatherEffect code={weather.weatherCode} isDay={weather.isDay} />}
+      <div className="relative flex items-center justify-between">
         <div>
           <div className="text-6xl font-semibold tabular-nums leading-none">{weather.tempF}°</div>
           <div className="text-sm opacity-80 mt-1">{weatherLabel(weather.weatherCode)}</div>
@@ -123,12 +131,12 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
         <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-20 h-20 opacity-90" />
       </div>
 
-      <div className="text-xs opacity-70 tabular-nums">
+      <div className="relative text-xs opacity-70 tabular-nums">
         H {weather.highF}° · L {weather.lowF}°
       </div>
 
       {weather.hourly.length > 0 && (
-        <div className="flex gap-4 overflow-x-hidden pt-2 border-t border-white/15">
+        <div className="relative flex gap-4 overflow-x-hidden pt-2 border-t border-white/15">
           {weather.hourly.slice(0, size === "xl" ? 8 : 5).map((h) => (
             <div key={h.time} className="flex flex-col items-center gap-1 shrink-0">
               <div className="text-[10px] opacity-70">
@@ -142,7 +150,7 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
       )}
 
       {size === "xl" && (
-        <div className="grid grid-cols-3 gap-2 mt-auto pt-2 border-t border-white/15">
+        <div className="relative grid grid-cols-3 gap-2 mt-auto pt-2 border-t border-white/15">
           <div className="flex flex-col gap-0.5">
             <div className="text-[9px] uppercase tracking-widest opacity-60">UV Index</div>
             <div className="text-sm font-medium tabular-nums">{weather.uvIndex}</div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings, updateSettings } from "@/lib/settings";
+import { getSettings, updateSettings, type DisplayMode } from "@/lib/settings";
 
 export async function GET() {
   const settings = await getSettings();
@@ -16,6 +16,7 @@ export async function PATCH(req: NextRequest) {
     commuteDestLabel: string | null;
     commuteDestLat: number | null;
     commuteDestLon: number | null;
+    displayMode: DisplayMode;
   }> = {};
 
   if (body.favoriteTeam === null || typeof body.favoriteTeam === "string") {
@@ -38,6 +39,9 @@ export async function PATCH(req: NextRequest) {
   }
   if (body.commuteDestLon === null || typeof body.commuteDestLon === "number") {
     patch.commuteDestLon = body.commuteDestLon;
+  }
+  if (body.displayMode === "color" || body.displayMode === "image") {
+    patch.displayMode = body.displayMode;
   }
 
   const settings = await updateSettings(patch);

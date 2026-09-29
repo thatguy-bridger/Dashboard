@@ -56,6 +56,83 @@ export function weatherGradient(code: number, isDay: boolean): [string, string] 
   }
 }
 
+/** "Image mode"'s answer for weather: since there's no free photo API worth
+ * pulling a stock photo from per condition, this renders a living CSS
+ * effect instead — drifting clouds, falling rain, a glowing sun — layered
+ * behind the card content. Purely decorative, absolutely positioned,
+ * pointer-events-none. */
+export function WeatherEffect({ code, isDay }: { code: number; isDay: boolean }) {
+  const group = weatherGroup(code);
+
+  if (group === "clear" && isDay) {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-60 animate-[sun-pulse_6s_ease-in-out_infinite]"
+          style={{ background: "radial-gradient(circle, #fff8d6, transparent 70%)" }}
+        />
+      </div>
+    );
+  }
+
+  if (group === "rain" || group === "drizzle" || group === "showers" || group === "thunder") {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 24 }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-px h-6 bg-white/40 animate-[rain-fall_1s_linear_infinite]"
+            style={{
+              left: `${(i * 37) % 100}%`,
+              animationDelay: `${(i % 10) * 0.1}s`,
+              animationDuration: `${0.7 + (i % 5) * 0.1}s`,
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (group === "snow") {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 18 }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-1.5 h-1.5 rounded-full bg-white/70 animate-[snow-fall_4s_linear_infinite]"
+            style={{
+              left: `${(i * 53) % 100}%`,
+              animationDelay: `${(i % 9) * 0.4}s`,
+              animationDuration: `${3 + (i % 4)}s`,
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (group === "cloudy" || group === "fog") {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-white/10 blur-md animate-[cloud-drift_20s_linear_infinite]"
+            style={{
+              width: `${60 + i * 20}px`,
+              height: `${24 + i * 8}px`,
+              top: `${15 + i * 25}%`,
+              animationDelay: `${i * -7}s`,
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function IconBase({ children, className }: { children: React.ReactNode; className: string }) {
   return (
     <svg

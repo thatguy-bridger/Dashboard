@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useDisplayMode } from "@/lib/useDisplayMode";
 
 interface FavoriteData {
   team: { name: string; badge: string } | null;
@@ -14,6 +15,8 @@ interface LeagueScore {
   away: string;
   homeScore: string;
   awayScore: string;
+  homeBadge: string | null;
+  awayBadge: string | null;
   date: string;
 }
 
@@ -22,22 +25,32 @@ interface AllSportsData {
   ticker: string[];
 }
 
-function FavoriteView({ data, size }: { data: FavoriteData | null; size: WidgetSize }) {
+function FavoriteView({ data, size, showImages }: { data: FavoriteData | null; size: WidgetSize; showImages: boolean }) {
   if (!data?.team) {
     return <div className="text-sm text-[var(--muted)]">No favorite team set</div>;
   }
 
   if (size === "sm") {
-    return <div className="text-sm font-medium text-center">{data.team.name}</div>;
+    return showImages && data.team.badge ? (
+      // eslint-disable-next-line @next/next/no-img-element -- external team badge, not worth Next/Image's pipeline for a small kiosk icon
+      <img src={data.team.badge} alt={data.team.name} className="w-12 h-12 object-contain" />
+    ) : (
+      <div className="text-sm font-medium text-center">{data.team.name}</div>
+    );
   }
 
   const big = size === "lg" || size === "xl";
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className={`${big ? "text-sm" : "text-xs"} uppercase tracking-widest text-[var(--muted)]`}>
-        {data.team.name}
-      </div>
+      {showImages && data.team.badge ? (
+        // eslint-disable-next-line @next/next/no-img-element -- external team badge, not worth Next/Image's pipeline for a small kiosk icon
+        <img src={data.team.badge} alt={data.team.name} className={big ? "w-16 h-16 object-contain mb-1" : "w-10 h-10 object-contain"} />
+      ) : (
+        <div className={`${big ? "text-sm" : "text-xs"} uppercase tracking-widest text-[var(--muted)]`}>
+          {data.team.name}
+        </div>
+      )}
       {data.event ? (
         <>
           <div className={big ? "text-2xl font-medium" : "text-lg font-medium"}>
@@ -61,7 +74,7 @@ function FavoriteView({ data, size }: { data: FavoriteData | null; size: WidgetS
 
 /** Rotates through one league's latest score at a time — a lightweight
  * carousel without needing a swipe/drag library for a kiosk display. */
-function ScoreCarousel({ scores, size }: { scores: LeagueScore[]; size: WidgetSize }) {
+function ScoreCarousel({ scores, size, showImages }: { scores: LeagueScore[]; size: WidgetSize; showImages: boolean }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -82,9 +95,21 @@ function ScoreCarousel({ scores, size }: { scores: LeagueScore[]; size: WidgetSi
       <div className={`${big ? "text-sm" : "text-xs"} uppercase tracking-widest text-[var(--muted)]`}>
         {s.league}
       </div>
-      <div className={big ? "text-xl font-medium" : "text-base font-medium"}>
-        {s.home} {s.homeScore} – {s.awayScore} {s.away}
-      </div>
+      {showImages && s.homeBadge && s.awayBadge ? (
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- external team badge, not worth Next/Image's pipeline for a small kiosk icon */}
+          <img src={s.homeBadge} alt={s.home} className="w-8 h-8 object-contain" />
+          <div className={big ? "text-xl font-medium" : "text-base font-medium"}>
+            {s.homeScore} – {s.awayScore}
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element -- external team badge, not worth Next/Image's pipeline for a small kiosk icon */}
+          <img src={s.awayBadge} alt={s.away} className="w-8 h-8 object-contain" />
+        </div>
+      ) : (
+        <div className={big ? "text-xl font-medium" : "text-base font-medium"}>
+          {s.home} {s.homeScore} – {s.awayScore} {s.away}
+        </div>
+      )}
       <div className="text-xs text-[var(--muted)]">{s.date}</div>
       <div className="flex gap-1 mt-1">
         {scores.map((_, i) => (
@@ -120,6 +145,8 @@ export function SportsWidget({ size = "md" }: { size?: WidgetSize }) {
   const [mode, setMode] = useState<"favorite" | "all">("favorite");
   const [favoriteData, setFavoriteData] = useState<FavoriteData | null>(null);
   const [allData, setAllData] = useState<AllSportsData | null>(null);
+  const displayMode = useDisplayMode();
+  const showImages = displayMode === "image";
 
   useEffect(() => {
     let cancelled = false;
@@ -173,10 +200,10 @@ export function SportsWidget({ size = "md" }: { size?: WidgetSize }) {
       )}
 
       {mode === "favorite" || !showToggle ? (
-        <FavoriteView data={favoriteData} size={size} />
+        <FavoriteView data={favoriteData} size={size} showImages={showImages} />
       ) : (
         <>
-          <ScoreCarousel scores={allData?.scores ?? []} size={size} />
+          <ScoreCarousel scores={allData?.scores ?? []} size={size} showImages={showImages} />
           <NewsTicker headlines={allData?.ticker ?? []} />
         </>
       )}
