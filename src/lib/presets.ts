@@ -17,6 +17,7 @@ export const WIDGET_TYPES = [
   "history",
   "stocks",
   "radar",
+  "commute",
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -37,6 +38,7 @@ export const WIDGET_LABELS: Record<WidgetType, string> = {
   history: "On this day",
   stocks: "Stocks",
   radar: "Weather radar",
+  commute: "Commute",
 };
 
 export const WIDGET_SIZES = ["sm", "md", "lg", "xl"] as const;

@@ -98,6 +98,11 @@ export default function ControlPage() {
   ]);
   const [favoriteTeam, setFavoriteTeam] = useState("");
   const [teamSaved, setTeamSaved] = useState(false);
+  const [commuteOrigin, setCommuteOrigin] = useState("");
+  const [commuteDest, setCommuteDest] = useState("");
+  const [commuteResolved, setCommuteResolved] = useState<{ originLabel: string; destLabel: string } | null>(null);
+  const [commuteSaving, setCommuteSaving] = useState(false);
+  const [commuteError, setCommuteError] = useState<string | null>(null);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [countdowns, setCountdowns] = useState<Countdown[] | null>(null);
   const [newCountdownLabel, setNewCountdownLabel] = useState("");
@@ -148,8 +153,39 @@ export default function ControlPage() {
   useEffect(() => {
     fetch("/api/settings", { cache: "no-store" })
       .then((res) => res.json())
-      .then((data) => setFavoriteTeam(data.settings.favoriteTeam ?? ""));
+      .then((data) => {
+        setFavoriteTeam(data.settings.favoriteTeam ?? "");
+        if (data.settings.commuteOriginLabel && data.settings.commuteDestLabel) {
+          setCommuteResolved({
+            originLabel: data.settings.commuteOriginLabel,
+            destLabel: data.settings.commuteDestLabel,
+          });
+        }
+      });
   }, []);
+
+  async function saveCommute() {
+    if (!commuteOrigin.trim() || !commuteDest.trim()) return;
+    setCommuteSaving(true);
+    setCommuteError(null);
+    const res = await fetch("/api/commute/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ originAddress: commuteOrigin.trim(), destAddress: commuteDest.trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setCommuteError(data.error ?? "Could not save commute route");
+    } else {
+      setCommuteResolved({
+        originLabel: data.settings.commuteOriginLabel,
+        destLabel: data.settings.commuteDestLabel,
+      });
+      setCommuteOrigin("");
+      setCommuteDest("");
+    }
+    setCommuteSaving(false);
+  }
 
   async function saveFavoriteTeam() {
     await fetch("/api/settings", {
@@ -422,6 +458,45 @@ export default function ControlPage() {
           >
             {teamSaved ? "Saved" : "Save"}
           </button>
+        </div>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Commute (TomTom)
+        </h2>
+        {commuteResolved && (
+          <p className="text-sm text-[var(--muted)] mb-3">
+            Current route: {commuteResolved.originLabel} → {commuteResolved.destLabel}
+          </p>
+        )}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              value={commuteOrigin}
+              onChange={(e) => setCommuteOrigin(e.target.value)}
+              placeholder="From address (e.g. home)"
+              className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+            />
+            <input
+              value={commuteDest}
+              onChange={(e) => setCommuteDest(e.target.value)}
+              placeholder="To address (e.g. work)"
+              className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+            />
+            <button
+              onClick={saveCommute}
+              disabled={commuteSaving}
+              className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-50"
+            >
+              {commuteSaving ? "Saving…" : "Save"}
+            </button>
+          </div>
+          {commuteError && <p className="text-xs text-red-400">{commuteError}</p>}
+          <p className="text-xs text-[var(--muted)]">
+            Needs TOMTOM_API_KEY set — addresses are geocoded once and stored, the widget itself only queries live
+            traffic time.
+          </p>
         </div>
       </section>
 

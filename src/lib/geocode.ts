@@ -54,10 +54,54 @@ interface NominatimResponse {
   };
 }
 
+interface TomTomReverseResponse {
+  addresses?: {
+    address?: {
+      municipality?: string;
+      countrySecondarySubdivision?: string;
+      freeformAddress?: string;
+      pointOfInterest?: string;
+    };
+  }[];
+}
+
+/** TomTom's reverse geocoding is generally more current than Nominatim's
+ * volunteer-maintained data, so it's tried first once a key is configured —
+ * Nominatim (below) stays as the fallback when there's no key or the call
+ * fails, so this never becomes a hard dependency. */
+async function tomtomReverseGeocode(lat: number, lon: number): Promise<LocationLabel | null> {
+  const apiKey = process.env.TOMTOM_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = new URL(`https://api.tomtom.com/search/2/reverseGeocode/${lat},${lon}.json`);
+    url.searchParams.set("key", apiKey);
+
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data: TomTomReverseResponse = await res.json();
+    const address = data.addresses?.[0]?.address;
+    if (!address) return null;
+
+    return {
+      city: address.municipality ?? address.countrySecondarySubdivision ?? null,
+      place: address.pointOfInterest ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function getLocationLabel(lat: number, lon: number): Promise<LocationLabel> {
   const key = cacheKey(lat, lon);
   const cached = await getCached(key);
   if (cached) return cached;
+
+  const tomtom = await tomtomReverseGeocode(lat, lon);
+  if (tomtom && (tomtom.city || tomtom.place)) {
+    await setCached(key, tomtom);
+    return tomtom;
+  }
 
   try {
     const url = new URL("https://nominatim.openstreetmap.org/reverse");
