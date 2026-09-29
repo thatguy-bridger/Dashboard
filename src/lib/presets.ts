@@ -20,6 +20,7 @@ export const WIDGET_TYPES = [
   "history",
   "stocks",
   "radar",
+  "notifications",
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -41,6 +42,7 @@ export const WIDGET_LABELS: Record<WidgetType, string> = {
   history: "On this day",
   stocks: "Stocks",
   radar: "Weather radar",
+  notifications: "Notifications",
 };
 
 // Kept for widget-internal content-density decisions (derived from grid footprint) and
@@ -111,6 +113,7 @@ export function parseWidgets(raw: unknown): PresetWidget[] {
           y: w.y,
           w: w.w,
           h: w.h,
+          temporary: (w as { temporary?: unknown }).temporary === true,
         })
       );
   }

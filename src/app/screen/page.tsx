@@ -11,6 +11,7 @@ import type { Preset, PresetWidget } from "@/lib/presets";
 import type { DeviceLayout } from "@/lib/registry";
 import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
+import { TemporaryContentProvider } from "@/lib/temporaryContent";
 
 const DEFAULT_WIDGETS: PresetWidget[] = [
   { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
@@ -101,6 +102,17 @@ function StatusBadge({ name, orbState }: { name: string; orbState: "idle" | "act
   );
 }
 
+/** A temporary widget stays mounted (so it keeps polling) but its tile chrome
+ *  only renders once the widget reports it actually has something to show. */
+function TemporaryTile({ children }: { children: React.ReactNode }) {
+  const [hasContent, setHasContent] = useState(true);
+  return (
+    <div style={{ display: hasContent ? "block" : "none", width: "100%", height: "100%" }}>
+      <TemporaryContentProvider onContentChange={setHasContent}>{children}</TemporaryContentProvider>
+    </div>
+  );
+}
+
 function ScreenGrid({
   widgets,
   background,
@@ -118,20 +130,27 @@ function ScreenGrid({
       <StatusBadge name={name} orbState={orbState} />
       <LiveGameBanner />
       <div className="h-full w-full p-[0.9375rem] relative">
-        {widgets.map((w) => (
-          <div
-            key={w.id}
-            className={`tile tile-${w.type} absolute`}
-            style={{
-              left: `calc(${(w.x / GRID_COLS) * 100}% + 0.1875rem)`,
-              top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.1875rem)`,
-              width: `calc(${(w.w / GRID_COLS) * 100}% - 0.375rem)`,
-              height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
-            }}
-          >
-            <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
-          </div>
-        ))}
+        {widgets.map((w) => {
+          const content = (
+            <div className={`tile tile-${w.type} w-full h-full`}>
+              <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
+            </div>
+          );
+          return (
+            <div
+              key={w.id}
+              className="absolute"
+              style={{
+                left: `calc(${(w.x / GRID_COLS) * 100}% + 0.1875rem)`,
+                top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.1875rem)`,
+                width: `calc(${(w.w / GRID_COLS) * 100}% - 0.375rem)`,
+                height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
+              }}
+            >
+              {w.temporary ? <TemporaryTile>{content}</TemporaryTile> : content}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

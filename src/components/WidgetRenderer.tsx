@@ -16,6 +16,7 @@ import { AirQualityWidget } from "@/components/AirQualityWidget";
 import { HistoryWidget } from "@/components/HistoryWidget";
 import { StocksWidget } from "@/components/StocksWidget";
 import { RadarWidget } from "@/components/RadarWidget";
+import { NotificationsWidget } from "@/components/NotificationsWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -53,6 +54,8 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <StocksWidget size={size} />;
     case "radar":
       return <RadarWidget size={size} />;
+    case "notifications":
+      return <NotificationsWidget size={size} />;
     default:
       return null;
   }

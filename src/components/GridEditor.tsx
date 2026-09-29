@@ -3,8 +3,10 @@
 import { useCallback, useRef, useState } from "react";
 import { GRID_COLS, GRID_ROWS, MIN_W, MIN_H, clampWidget, sizeForFootprint, type GridWidget } from "@/lib/grid";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
+import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
+import { WIDGET_LABELS } from "@/lib/presets";
 
 type DragMode = { kind: "move" | "resize"; id: string; startX: number; startY: number; origin: GridWidget };
 
@@ -24,6 +26,7 @@ export function GridEditor({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragMode | null>(null);
+  const [showTemporary, setShowTemporary] = useState(true);
 
   const cellSize = useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -89,13 +92,28 @@ export function GridEditor({
           backgroundSize: `${100 / GRID_COLS}% ${100 / GRID_ROWS}%`,
         }}
       />
+
+      <button
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => setShowTemporary((v) => !v)}
+        className={`absolute top-2 left-2 z-10 text-[10px] uppercase tracking-widest px-2.5 py-1 rounded-full border ${
+          showTemporary
+            ? "border-[var(--surface-border)] text-[var(--muted)] bg-black/40"
+            : "border-[var(--accent)] text-[var(--accent)] bg-black/40"
+        }`}
+        title="Toggle full preview of temporary widgets"
+      >
+        {showTemporary ? "Temporary: shown" : "Temporary: collapsed"}
+      </button>
+
       {widgets.map((w) => {
         const isSelected = selectedId === w.id;
+        const collapsed = w.temporary && !showTemporary;
         return (
           <div
             key={w.id}
             onPointerDown={(e) => startDrag("move", w, e)}
-            className={`group tile tile-${w.type} absolute cursor-grab active:cursor-grabbing transition-shadow ${
+            className={`group ${collapsed ? "" : `tile tile-${w.type}`} absolute cursor-grab active:cursor-grabbing transition-shadow ${
               isSelected ? "ring-2 ring-[var(--accent)]" : ""
             }`}
             style={{
@@ -105,9 +123,31 @@ export function GridEditor({
               height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
             }}
           >
-            <div className="w-full h-full pointer-events-none">
-              <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
-            </div>
+            {collapsed ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-[var(--surface-border)] text-[var(--muted)] pointer-events-none">
+                  <WidgetIcon type={w.type} className="w-3 h-3" />
+                  <span className="text-[10px] uppercase tracking-wide">{WIDGET_LABELS[w.type]}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full h-full pointer-events-none">
+                <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
+              </div>
+            )}
+
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => updateWidget(w.id, { temporary: !w.temporary })}
+              className={`absolute top-1 right-7 w-5 h-5 rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 ${
+                w.temporary
+                  ? "bg-[var(--accent)]/30 text-[var(--accent)]"
+                  : "bg-black/50 text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+              title={w.temporary ? "Temporary — click to make permanent" : "Permanent — click to make temporary"}
+            >
+              *
+            </button>
 
             <button
               onPointerDown={(e) => e.stopPropagation()}

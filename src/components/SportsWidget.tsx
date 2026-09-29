@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useReportContent } from "@/lib/temporaryContent";
 
 interface Game {
   team: string;
@@ -70,6 +71,8 @@ function groupByDate(games: Game[]): Game[][] {
 }
 
 function FavoritesView({ data, size }: { data: FavoritesData | null; size: WidgetSize }) {
+  useReportContent((data?.games.length ?? 0) > 0);
+
   if (!data) return <div className="text-sm text-[var(--muted)]">Loading sports…</div>;
   if (data.teams.length === 0) return <div className="text-sm text-[var(--muted)]">No favorite teams set</div>;
   if (data.games.length === 0) return <div className="text-sm text-[var(--muted)]">No upcoming games found</div>;

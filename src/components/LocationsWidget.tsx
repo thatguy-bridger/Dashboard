@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { LocationsMap } from "@/components/LocationsMap";
+import { useReportContent } from "@/lib/temporaryContent";
 
 interface LocatedDevice {
   id: string;
@@ -49,6 +50,9 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
       clearInterval(id);
     };
   }, []);
+
+  const withFixEarly = data?.devices.filter((d) => d.latitude != null && d.longitude != null) ?? [];
+  useReportContent(data?.status === "connected" && withFixEarly.length > 0);
 
   if (!data) return <div className="text-sm text-[var(--muted)]">Loading locations…</div>;
 
