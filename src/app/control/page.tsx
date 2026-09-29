@@ -13,8 +13,8 @@ import { Modal } from "@/components/Modal";
 import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { findFreeSpot } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
-import { encodeDraft } from "@/lib/draftEncoding";
-import type { MapPlace } from "@/lib/settings";
+import type { MapPlace, FavoriteTeam } from "@/lib/settings";
+import { TeamSearchSelect } from "@/components/TeamSearchSelect";
 
 const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
   { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
@@ -59,8 +59,7 @@ export default function ControlPage() {
   const [newPresetSelected, setNewPresetSelected] = useState<string | null>(null);
   const [newPresetBackground, setNewPresetBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
   const [creatingPreset, setCreatingPreset] = useState(false);
-  const [favoriteTeam, setFavoriteTeam] = useState("");
-  const [teamSaved, setTeamSaved] = useState(false);
+  const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [mapHome, setMapHome] = useState<MapPlace | null>(null);
   const [mapDestination, setMapDestination] = useState<MapPlace | null>(null);
@@ -126,20 +125,19 @@ export default function ControlPage() {
     fetch("/api/settings", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        setFavoriteTeam(data.settings.favoriteTeam ?? "");
+        setFavoriteTeams(data.settings.favoriteTeams ?? []);
         setMapHome(data.settings.mapHome ?? null);
         setMapDestination(data.settings.mapDestination ?? null);
       });
   }, []);
 
-  async function saveFavoriteTeam() {
+  async function saveFavoriteTeams(teams: FavoriteTeam[]) {
+    setFavoriteTeams(teams);
     await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ favoriteTeam: favoriteTeam.trim() || null }),
+      body: JSON.stringify({ favoriteTeams: teams }),
     });
-    setTeamSaved(true);
-    setTimeout(() => setTeamSaved(false), 1500);
   }
 
   async function saveMapPlace(kind: "home" | "destination") {
@@ -370,6 +368,17 @@ export default function ControlPage() {
             open={!!d}
             onClose={() => setEditingDeviceId(null)}
             title={d ? `Editing ${d.name ?? d.id.slice(0, 8)}` : undefined}
+            footer={
+              d && (
+                <button
+                  onClick={() => saveDeviceLayout(d.id)}
+                  disabled={deviceSaving}
+                  className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                >
+                  {deviceSaving ? "Saving…" : "Save to this screen"}
+                </button>
+              )
+            }
           >
             {d && (
               <div className="flex flex-col gap-4 h-full">
@@ -428,20 +437,6 @@ export default function ControlPage() {
                       <BackgroundPicker value={deviceDraftBackground} onChange={setDeviceDraftBackground} />
                     </div>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={() => saveDeviceLayout(d.id)}
-                    disabled={deviceSaving}
-                    className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                  >
-                    {deviceSaving ? "Saving…" : "Save to this screen"}
-                  </button>
-                  <ScreenPreview
-                    src={`/screen?draft=${encodeDraft(deviceDraftWidgets, deviceDraftBackground)}`}
-                    width={200}
-                  />
                 </div>
               </div>
             )}
@@ -579,19 +574,12 @@ export default function ControlPage() {
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Settings
         </h2>
-        <div className="flex items-center gap-2">
-          <input
-            value={favoriteTeam}
-            onChange={(e) => setFavoriteTeam(e.target.value)}
-            placeholder="Favorite team (e.g. Lakers)"
-            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
-          />
-          <button
-            onClick={saveFavoriteTeam}
-            className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
-          >
-            {teamSaved ? "Saved" : "Save"}
-          </button>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-[var(--muted)]">
+            Favorite teams — the Sports widget shows up to 4 upcoming games across all of these. This free sports
+            API only does single best-guess matching, so type the team&apos;s full name for reliable results.
+          </span>
+          <TeamSearchSelect value={favoriteTeams} onChange={saveFavoriteTeams} />
         </div>
 
         <div className="mt-5 pt-5 border-t border-[var(--surface-border)] flex flex-col gap-3">
@@ -758,6 +746,15 @@ export default function ControlPage() {
           open={editingPresetId === p.id}
           onClose={() => setEditingPresetId(null)}
           title={`Editing ${p.name}`}
+          footer={
+            <button
+              onClick={publishDraft}
+              disabled={publishing}
+              className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+            >
+              {publishing ? "Publishing…" : "Publish to live devices"}
+            </button>
+          }
         >
           <div className="flex flex-col gap-4 h-full">
             <p className="text-xs text-[var(--muted)]">
@@ -782,21 +779,23 @@ export default function ControlPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={publishDraft}
-                disabled={publishing}
-                className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-              >
-                {publishing ? "Publishing…" : "Publish to live devices"}
-              </button>
-              <ScreenPreview src={`/screen?draft=${encodeDraft(draftWidgets, draftBackground)}`} width={200} />
-            </div>
           </div>
         </Modal>
       ))}
 
-      <Modal open={creatingPreset} onClose={() => setCreatingPreset(false)} title="New preset">
+      <Modal
+        open={creatingPreset}
+        onClose={() => setCreatingPreset(false)}
+        title="New preset"
+        footer={
+          <button
+            onClick={createPreset}
+            className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Create preset
+          </button>
+        }
+      >
         <div className="flex flex-col gap-4 h-full">
           <input
             value={newPresetName}
@@ -822,12 +821,6 @@ export default function ControlPage() {
               </div>
             </div>
           </div>
-          <button
-            onClick={createPreset}
-            className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
-          >
-            Create preset
-          </button>
         </div>
       </Modal>
     </main>

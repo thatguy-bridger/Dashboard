@@ -6,13 +6,23 @@ export interface MapPlace {
   lon: number;
 }
 
+export interface FavoriteTeam {
+  id: string;
+  name: string;
+  badge: string | null;
+  sport: string | null;
+  league: string | null;
+}
+
 export interface Settings {
+  /** @deprecated superseded by favoriteTeams; kept only so old rows still parse. */
   favoriteTeam: string | null;
+  favoriteTeams: FavoriteTeam[];
   mapHome: MapPlace | null;
   mapDestination: MapPlace | null;
 }
 
-const KEYS = ["favoriteTeam", "mapHome", "mapDestination"] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination"] as const;
 type Key = (typeof KEYS)[number];
 
 function parsePlace(raw: string | null): MapPlace | null {
@@ -28,6 +38,19 @@ function parsePlace(raw: string | null): MapPlace | null {
   return null;
 }
 
+function parseTeams(raw: string | null): FavoriteTeam[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (t): t is FavoriteTeam => t && typeof t === "object" && typeof t.id === "string" && typeof t.name === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function getSettings(): Promise<Settings> {
   const rows = await d1Query<{ key: string; value: string | null }>(
     `SELECT key, value FROM settings WHERE key IN (${KEYS.map(() => "?").join(",")})`,
@@ -36,6 +59,7 @@ export async function getSettings(): Promise<Settings> {
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
   return {
     favoriteTeam: byKey.get("favoriteTeam") ?? null,
+    favoriteTeams: parseTeams(byKey.get("favoriteTeams") ?? null),
     mapHome: parsePlace(byKey.get("mapHome") ?? null),
     mapDestination: parsePlace(byKey.get("mapDestination") ?? null),
   };
@@ -51,6 +75,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   }
 
   if ("favoriteTeam" in patch) await set("favoriteTeam", patch.favoriteTeam ?? null);
+  if ("favoriteTeams" in patch) await set("favoriteTeams", patch.favoriteTeams ? JSON.stringify(patch.favoriteTeams) : null);
   if ("mapHome" in patch) await set("mapHome", patch.mapHome ? JSON.stringify(patch.mapHome) : null);
   if ("mapDestination" in patch) await set("mapDestination", patch.mapDestination ? JSON.stringify(patch.mapDestination) : null);
 

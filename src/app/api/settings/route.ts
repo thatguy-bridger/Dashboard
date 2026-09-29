@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings, updateSettings, type MapPlace } from "@/lib/settings";
+import { getSettings, updateSettings, type MapPlace, type FavoriteTeam } from "@/lib/settings";
+
+function parseTeamsPatch(raw: unknown): FavoriteTeam[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const teams = raw.filter(
+    (t): t is FavoriteTeam =>
+      t && typeof t === "object" && typeof t.id === "string" && typeof t.name === "string"
+  );
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    badge: typeof t.badge === "string" ? t.badge : null,
+    sport: typeof t.sport === "string" ? t.sport : null,
+    league: typeof t.league === "string" ? t.league : null,
+  }));
+}
 
 function parsePlacePatch(raw: unknown): MapPlace | null | undefined {
   if (raw === null) return null;
@@ -21,10 +36,19 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const patch: { favoriteTeam?: string | null; mapHome?: MapPlace | null; mapDestination?: MapPlace | null } = {};
+  const patch: {
+    favoriteTeam?: string | null;
+    favoriteTeams?: FavoriteTeam[];
+    mapHome?: MapPlace | null;
+    mapDestination?: MapPlace | null;
+  } = {};
 
   if (body.favoriteTeam === null || typeof body.favoriteTeam === "string") {
     patch.favoriteTeam = body.favoriteTeam;
+  }
+  if ("favoriteTeams" in body) {
+    const teams = parseTeamsPatch(body.favoriteTeams);
+    if (teams !== undefined) patch.favoriteTeams = teams;
   }
   if ("mapHome" in body) {
     const place = parsePlacePatch(body.mapHome);

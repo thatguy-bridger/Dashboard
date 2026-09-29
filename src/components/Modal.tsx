@@ -8,11 +8,15 @@ export function Modal({
   open,
   onClose,
   title,
+  footer,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Rendered in a fixed bar below the scrollable content — for actions (Save, Publish)
+   *  that must stay reachable even when the content itself is tall (e.g. the grid editor). */
+  footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -44,6 +48,9 @@ export function Modal({
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        {footer && (
+          <div className="shrink-0 px-6 py-4 border-t border-[var(--surface-border)]">{footer}</div>
+        )}
       </div>
     </div>
   );
