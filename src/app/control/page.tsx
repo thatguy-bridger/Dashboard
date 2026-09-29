@@ -187,6 +187,17 @@ export default function ControlPage() {
     refreshDevices();
   }
 
+  async function saveAsNewPreset(widgets: PresetWidget[], background: BackgroundConfig) {
+    const name = window.prompt("Name this preset:")?.trim();
+    if (!name) return;
+    await fetch("/api/presets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, widgets, background }),
+    });
+    await refreshPresets();
+  }
+
   async function createPreset() {
     if (!newPresetName.trim()) return;
     await fetch("/api/presets", {
@@ -370,13 +381,21 @@ export default function ControlPage() {
             title={d ? `Editing ${d.name ?? d.id.slice(0, 8)}` : undefined}
             footer={
               d && (
-                <button
-                  onClick={() => saveDeviceLayout(d.id)}
-                  disabled={deviceSaving}
-                  className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                >
-                  {deviceSaving ? "Saving…" : "Save to this screen"}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => saveDeviceLayout(d.id)}
+                    disabled={deviceSaving}
+                    className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                  >
+                    {deviceSaving ? "Saving…" : "Save to this screen"}
+                  </button>
+                  <button
+                    onClick={() => saveAsNewPreset(deviceDraftWidgets, deviceDraftBackground)}
+                    className="self-start text-xs px-4 py-2 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+                  >
+                    Save as new preset
+                  </button>
+                </div>
               )
             }
           >
@@ -747,13 +766,21 @@ export default function ControlPage() {
           onClose={() => setEditingPresetId(null)}
           title={`Editing ${p.name}`}
           footer={
-            <button
-              onClick={publishDraft}
-              disabled={publishing}
-              className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-            >
-              {publishing ? "Publishing…" : "Publish to live devices"}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={publishDraft}
+                disabled={publishing}
+                className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {publishing ? "Publishing…" : "Publish to live devices"}
+              </button>
+              <button
+                onClick={() => saveAsNewPreset(draftWidgets, draftBackground)}
+                className="self-start text-xs px-4 py-2 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+              >
+                Save as new preset
+              </button>
+            </div>
           }
         >
           <div className="flex flex-col gap-4 h-full">
