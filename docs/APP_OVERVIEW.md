@@ -179,3 +179,34 @@ missionary-tracking tile, hobby widgets, etc. — each tagged Build/Reach/
 not-pursuing after real feasibility research. Ask Bridger for the Artifact
 link if you need it; nothing there is committed to being built yet except
 what's already landed in this repo.
+
+### Next up: Find My "Friends" (non-family location sharing)
+
+Bridger's real Find My app shows dozens of people via Apple's **Friends**
+feature (contacts who share their location with him outside Family
+Sharing) — Snap-Map-style photo bubbles. The Locations widget here only
+ever shows **Family Sharing** members plus his own devices, because that's
+all the `findme` web service (`fmipservice/client/web/refreshClient`,
+`fmly: true`) actually returns — confirmed by reading his live session's
+`accountInfo.webservices` list directly from D1: there is no separate
+Friends/`fmf`-style web service exposed at all, only `findme`.
+
+That's a real signal, not just an unexplored endpoint: Apple's web-facing
+iCloud service discovery for this account doesn't advertise anything for
+Friends, which suggests that feature isn't reachable through the same
+kind of reverse-engineered web-session approach that made the family/
+device integration possible. Confirming that for certain (vs. it being
+gated behind some other account state) would need an actual capture of
+the native Find My app's network traffic (e.g. a proxy tool like
+Proxyman/Charles on the phone while opening the Friends list) to find the
+real request Apple's app makes and try replicating it — guessing endpoint
+paths blind isn't worth the risk of hitting Apple's infra with malformed
+requests repeatedly.
+
+Also requested: showing **profile photos** instead of initials/dots once
+this works. Apple ID contact photos aren't part of the `findme` response
+either way, so that'd need its own source — the most realistic one given
+what's already connected is Google Contacts photos (OAuth already set up
+for Gmail/Calendar/Drive), matched by name/phone, with a manual
+per-person photo override in Control as a fallback for anyone not in
+Google Contacts.
