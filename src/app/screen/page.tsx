@@ -117,16 +117,16 @@ function ScreenGrid({
       <ScreenBackground config={background} />
       <StatusBadge name={name} orbState={orbState} />
       <LiveGameBanner />
-      <div className="h-full w-full p-3 relative">
+      <div className="h-full w-full p-[0.9375rem] relative">
         {widgets.map((w) => (
           <div
             key={w.id}
             className={`tile tile-${w.type} absolute`}
             style={{
-              left: `calc(${(w.x / GRID_COLS) * 100}% + 0.375rem)`,
-              top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.375rem)`,
-              width: `calc(${(w.w / GRID_COLS) * 100}% - 0.75rem)`,
-              height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.75rem)`,
+              left: `calc(${(w.x / GRID_COLS) * 100}% + 0.1875rem)`,
+              top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.1875rem)`,
+              width: `calc(${(w.w / GRID_COLS) * 100}% - 0.375rem)`,
+              height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
             }}
           >
             <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />

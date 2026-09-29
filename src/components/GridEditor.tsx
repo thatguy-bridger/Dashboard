@@ -76,7 +76,7 @@ export function GridEditor({
       onPointerDown={() => onSelect(null)}
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
-      className="relative w-full rounded-xl overflow-hidden border border-[var(--surface-border)] select-none touch-none"
+      className="relative w-full rounded-xl overflow-hidden border border-[var(--surface-border)] select-none touch-none p-[0.9375rem]"
       style={{ aspectRatio: "1280 / 720", backgroundColor: "#05060a" }}
     >
       <ScreenBackground config={background} fixed={false} />
@@ -99,10 +99,10 @@ export function GridEditor({
               isSelected ? "ring-2 ring-[var(--accent)]" : ""
             }`}
             style={{
-              left: `${(w.x / GRID_COLS) * 100}%`,
-              top: `${(w.y / GRID_ROWS) * 100}%`,
-              width: `${(w.w / GRID_COLS) * 100}%`,
-              height: `${(w.h / GRID_ROWS) * 100}%`,
+              left: `calc(${(w.x / GRID_COLS) * 100}% + 0.1875rem)`,
+              top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.1875rem)`,
+              width: `calc(${(w.w / GRID_COLS) * 100}% - 0.375rem)`,
+              height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
             }}
           >
             <div className="w-full h-full pointer-events-none">
