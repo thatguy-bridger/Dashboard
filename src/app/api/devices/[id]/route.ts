@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateDevice, getDevice } from "@/lib/registry";
+import { updateDevice, getDevice, type DeviceLayout } from "@/lib/registry";
+import { parseWidgets } from "@/lib/presets";
+import { parseBackground } from "@/lib/background";
 
 export async function GET(
   _req: NextRequest,
@@ -25,6 +27,7 @@ export async function PATCH(
     status?: "pending" | "approved" | "rejected";
     touchOverride?: boolean | null;
     presetId?: string | null;
+    layout?: DeviceLayout | null;
   } = {};
   if (typeof body.name === "string") patch.name = body.name;
   if (body.status === "pending" || body.status === "approved" || body.status === "rejected") {
@@ -35,6 +38,14 @@ export async function PATCH(
   }
   if (body.presetId === null || typeof body.presetId === "string") {
     patch.presetId = body.presetId;
+  }
+  if (body.layout === null) {
+    patch.layout = null;
+  } else if (body.layout && typeof body.layout === "object") {
+    patch.layout = {
+      widgets: parseWidgets(body.layout.widgets),
+      background: parseBackground(body.layout.background),
+    };
   }
 
   const device = await updateDevice(id, patch);

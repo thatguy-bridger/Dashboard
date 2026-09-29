@@ -20,6 +20,11 @@ const WIDGET_LABELS: Record<WidgetType, string> = {
   calendar: "Calendar",
 };
 
+const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
+  { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+  { id: "weather-default", type: "weather", x: 6, y: 0, w: 4, h: 3 },
+];
+
 function summarize(widgets: PresetWidget[]) {
   return widgets.map((w) => WIDGET_LABELS[w.type]).join(", ") || "no widgets";
 }
@@ -80,6 +85,12 @@ export default function ControlPage() {
   const [draftBackground, setDraftBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
   const [draftSelected, setDraftSelected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [deviceDraftWidgets, setDeviceDraftWidgets] = useState<PresetWidget[]>([]);
+  const [deviceDraftBackground, setDeviceDraftBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [deviceDraftSelected, setDeviceDraftSelected] = useState<string | null>(null);
+  const [deviceSaving, setDeviceSaving] = useState(false);
 
   const refreshDevices = useCallback(async () => {
     const res = await fetch("/api/devices", { cache: "no-store" });
@@ -171,6 +182,53 @@ export default function ControlPage() {
     setPublishing(false);
   }
 
+  function loadDeviceDraftFromPreset(presetId: string) {
+    const preset = presets?.find((p) => p.id === presetId);
+    if (!preset) return;
+    setDeviceDraftWidgets(preset.widgets);
+    setDeviceDraftBackground(preset.background);
+    setDeviceDraftSelected(null);
+  }
+
+  function startEditingDevice(d: Device) {
+    setEditingDeviceId((current) => (current === d.id ? null : d.id));
+    if (editingDeviceId === d.id) return;
+    if (d.layout) {
+      setDeviceDraftWidgets(d.layout.widgets);
+      setDeviceDraftBackground(d.layout.background);
+    } else {
+      const preset = presets?.find((p) => p.id === d.presetId);
+      setDeviceDraftWidgets(preset?.widgets ?? DEFAULT_DEVICE_WIDGETS);
+      setDeviceDraftBackground(preset?.background ?? DEFAULT_BACKGROUND);
+    }
+    setDeviceDraftSelected(null);
+  }
+
+  async function saveDeviceLayout(id: string) {
+    setDeviceSaving(true);
+    await fetch(`/api/devices/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout: { widgets: deviceDraftWidgets, background: deviceDraftBackground } }),
+    });
+    await refreshDevices();
+    setDeviceSaving(false);
+  }
+
+  async function revertDeviceToPreset(d: Device) {
+    setDeviceSaving(true);
+    await fetch(`/api/devices/${d.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout: null }),
+    });
+    await refreshDevices();
+    const preset = presets?.find((p) => p.id === d.presetId);
+    setDeviceDraftWidgets(preset?.widgets ?? DEFAULT_DEVICE_WIDGETS);
+    setDeviceDraftBackground(preset?.background ?? DEFAULT_BACKGROUND);
+    setDeviceSaving(false);
+  }
+
   const approvedDevices = devices?.filter((d) => d.status === "approved") ?? [];
 
   return (
@@ -191,13 +249,106 @@ export default function ControlPage() {
             No approved devices yet — approved screens will mirror live here.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-4">
-            {approvedDevices.map((d) => (
-              <div key={d.id} className="flex flex-col gap-1">
-                <ScreenPreview src={`/screen?preview=${d.id}`} width={260} />
-                <span className="text-xs text-[var(--muted)] text-center">{d.name ?? d.id.slice(0, 8)}</span>
-              </div>
-            ))}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-4">
+              {approvedDevices.map((d) => (
+                <div key={d.id} className="flex flex-col gap-1">
+                  <button
+                    onClick={() => startEditingDevice(d)}
+                    className={`block rounded-xl overflow-hidden ${
+                      editingDeviceId === d.id ? "ring-2 ring-[var(--accent)]" : "hover:ring-2 hover:ring-white/20"
+                    }`}
+                    title="Click to edit this screen"
+                  >
+                    <ScreenPreview src={`/screen?preview=${d.id}`} width={260} />
+                  </button>
+                  <span className="text-xs text-[var(--muted)] text-center">
+                    {d.name ?? d.id.slice(0, 8)}
+                    {d.layout && " · custom"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {editingDeviceId &&
+              (() => {
+                const d = approvedDevices.find((dv) => dv.id === editingDeviceId);
+                if (!d) return null;
+                return (
+                  <div className="flex flex-col gap-4 bg-black/20 rounded-xl p-4">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <p className="text-xs text-[var(--muted)] max-w-md">
+                        Editing <span className="text-[var(--foreground)]">{d.name ?? d.id.slice(0, 8)}</span>{" "}
+                        directly — this only affects this screen. Its assigned preset stays untouched, and other
+                        screens using that preset are unaffected.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) loadDeviceDraftFromPreset(e.target.value);
+                            e.target.value = "";
+                          }}
+                          className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
+                        >
+                          <option value="" disabled>
+                            Start from preset…
+                          </option>
+                          {presets?.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        {d.layout && (
+                          <button
+                            onClick={() => revertDeviceToPreset(d)}
+                            disabled={deviceSaving}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40 disabled:opacity-50"
+                          >
+                            Revert to preset
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row gap-4 items-start">
+                      <div className="w-full lg:w-[480px] shrink-0">
+                        <GridEditor
+                          widgets={deviceDraftWidgets}
+                          onChange={setDeviceDraftWidgets}
+                          selectedId={deviceDraftSelected}
+                          onSelect={setDeviceDraftSelected}
+                        />
+                      </div>
+                      <div className="flex-1 flex flex-col gap-4 min-w-0">
+                        <AddWidgetPalette
+                          widgets={deviceDraftWidgets}
+                          onAdd={(w) => setDeviceDraftWidgets([...deviceDraftWidgets, w])}
+                        />
+                        <div className="border-t border-[var(--surface-border)] pt-3">
+                          <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                          <BackgroundPicker value={deviceDraftBackground} onChange={setDeviceDraftBackground} />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => saveDeviceLayout(d.id)}
+                        disabled={deviceSaving}
+                        className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                      >
+                        {deviceSaving ? "Saving…" : "Save to this screen"}
+                      </button>
+                      <ScreenPreview
+                        src={`/screen?draft=${encodeDraft(deviceDraftWidgets, deviceDraftBackground)}`}
+                        width={200}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
           </div>
         )}
       </section>

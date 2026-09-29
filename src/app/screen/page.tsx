@@ -7,6 +7,7 @@ import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import type { Preset, PresetWidget } from "@/lib/presets";
+import type { DeviceLayout } from "@/lib/registry";
 import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 
@@ -28,9 +29,12 @@ function parseDraft(raw: string): { widgets: PresetWidget[]; background: Backgro
 
 /** Polls a device's own record by id — used for the controller's live mirror. */
 function usePreviewDevice(deviceId: string | null) {
-  const [device, setDevice] = useState<{ status: string; name: string | null; presetId: string | null } | null>(
-    null
-  );
+  const [device, setDevice] = useState<{
+    status: string;
+    name: string | null;
+    presetId: string | null;
+    layout: DeviceLayout | null;
+  } | null>(null);
   useEffect(() => {
     if (!deviceId) return;
     let cancelled = false;
@@ -161,9 +165,12 @@ function ScreenPageInner() {
   const device = isPreview ? previewDevice : ownDevice.device;
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
   const approved = isDraft || device?.status === "approved";
-  const preset = usePreset(isDraft ? null : device?.presetId ?? null);
-  const widgets = isDraft ? draft!.widgets : (preset?.widgets ?? DEFAULT_WIDGETS);
-  const background = isDraft ? draft!.background : (preset?.background ?? DEFAULT_BACKGROUND);
+  const usesPreset = !isDraft && !device?.layout;
+  const preset = usePreset(usesPreset ? device?.presetId ?? null : null);
+  const widgets = isDraft ? draft!.widgets : (device?.layout?.widgets ?? preset?.widgets ?? DEFAULT_WIDGETS);
+  const background = isDraft
+    ? draft!.background
+    : (device?.layout?.background ?? preset?.background ?? DEFAULT_BACKGROUND);
 
   if (!approved) {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
