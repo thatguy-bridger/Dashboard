@@ -3,6 +3,8 @@ import { d1Query } from "@/lib/d1";
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  "https://www.googleapis.com/auth/photospicker.mediaitems.readonly",
 ].join(" ");
 
 export function getGoogleAuthUrl(): string {

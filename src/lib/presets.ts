@@ -2,8 +2,46 @@ import { d1Query } from "@/lib/d1";
 import { autoLayout, clampWidget, type GridWidget } from "@/lib/grid";
 import { parseBackground, DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 
-export const WIDGET_TYPES = ["clock", "weather", "worldclocks", "news", "sports", "calendar", "traffic"] as const;
+export const WIDGET_TYPES = [
+  "clock",
+  "weather",
+  "worldclocks",
+  "news",
+  "sports",
+  "calendar",
+  "traffic",
+  "locations",
+  "gmail",
+  "drive",
+  "photos",
+  "trafficcamera",
+  "countdown",
+  "airquality",
+  "history",
+  "stocks",
+  "radar",
+] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
+
+export const WIDGET_LABELS: Record<WidgetType, string> = {
+  clock: "Clock",
+  weather: "Weather",
+  worldclocks: "World clocks",
+  news: "News",
+  sports: "Sports",
+  calendar: "Calendar",
+  traffic: "Traffic",
+  locations: "Locations",
+  gmail: "Gmail",
+  drive: "Drive files",
+  photos: "Photos",
+  trafficcamera: "Traffic camera",
+  countdown: "Countdown",
+  airquality: "Air quality",
+  history: "On this day",
+  stocks: "Stocks",
+  radar: "Weather radar",
+};
 
 // Kept for widget-internal content-density decisions (derived from grid footprint) and
 // for parsing very old presets — layout itself is now x/y/w/h on the grid.
@@ -24,6 +62,7 @@ export interface Preset {
   name: string;
   widgets: PresetWidget[];
   background: BackgroundConfig;
+  isDefault: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -32,6 +71,7 @@ interface PresetRow {
   id: string;
   name: string;
   widgets: string;
+  is_default: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -114,18 +154,40 @@ function fromRow(row: PresetRow): Preset {
     name: row.name,
     widgets,
     background,
+    isDefault: Boolean(row.is_default),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
+/** The `presets` table predates the default-preset flag — add the column lazily
+ *  instead of requiring an out-of-band migration. Safe to call repeatedly. */
+let defaultColumnReady: Promise<void> | null = null;
+function ensureDefaultColumn(): Promise<void> {
+  if (!defaultColumnReady) {
+    defaultColumnReady = d1Query("ALTER TABLE presets ADD COLUMN is_default INTEGER").then(
+      () => undefined,
+      () => undefined // already exists
+    );
+  }
+  return defaultColumnReady;
+}
+
 export async function listPresets(): Promise<Preset[]> {
+  await ensureDefaultColumn();
   const rows = await d1Query<PresetRow>("SELECT * FROM presets ORDER BY updated_at DESC");
   return rows.map(fromRow);
 }
 
 export async function getPreset(id: string): Promise<Preset | null> {
+  await ensureDefaultColumn();
   const rows = await d1Query<PresetRow>("SELECT * FROM presets WHERE id = ?", [id]);
+  return rows[0] ? fromRow(rows[0]) : null;
+}
+
+export async function getDefaultPreset(): Promise<Preset | null> {
+  await ensureDefaultColumn();
+  const rows = await d1Query<PresetRow>("SELECT * FROM presets WHERE is_default = 1 LIMIT 1");
   return rows[0] ? fromRow(rows[0]) : null;
 }
 
@@ -140,7 +202,18 @@ export async function createPreset(
     "INSERT INTO presets (id, name, widgets, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     [id, name, serializePresetData(widgets, background), now, now]
   );
-  return { id, name, widgets, background, createdAt: now, updatedAt: now };
+  return { id, name, widgets, background, isDefault: false, createdAt: now, updatedAt: now };
+}
+
+/** Marks one preset as the default new devices land on. Only one preset can
+ * be default at a time, so this clears the flag off every other preset. */
+export async function setDefaultPreset(id: string): Promise<Preset | null> {
+  await ensureDefaultColumn();
+  const existing = await getPreset(id);
+  if (!existing) return null;
+  await d1Query("UPDATE presets SET is_default = 0");
+  await d1Query("UPDATE presets SET is_default = 1 WHERE id = ?", [id]);
+  return getPreset(id);
 }
 
 export async function updatePreset(

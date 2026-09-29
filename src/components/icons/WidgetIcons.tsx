@@ -84,6 +84,15 @@ function CalendarIcon({ className }: IconProps) {
   );
 }
 
+function GenericTileIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} fill="none">
+      <rect x="5" y="5" width="22" height="22" rx="4" stroke="currentColor" strokeWidth="2" />
+      <circle cx="16" cy="16" r="4" fill="currentColor" />
+    </svg>
+  );
+}
+
 const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   clock: ClockIcon,
   weather: WeatherIcon,
@@ -92,6 +101,16 @@ const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   sports: SportsIcon,
   calendar: CalendarIcon,
   traffic: TrafficIcon,
+  locations: GenericTileIcon,
+  gmail: GenericTileIcon,
+  drive: GenericTileIcon,
+  photos: GenericTileIcon,
+  trafficcamera: GenericTileIcon,
+  countdown: GenericTileIcon,
+  airquality: GenericTileIcon,
+  history: GenericTileIcon,
+  stocks: GenericTileIcon,
+  radar: GenericTileIcon,
 };
 
 export function WidgetIcon({ type, className = "w-6 h-6" }: { type: WidgetType; className?: string }) {

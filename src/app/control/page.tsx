@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
-import { WIDGET_TYPES, type Preset, type PresetWidget, type WidgetType } from "@/lib/presets";
+import type { Countdown } from "@/lib/countdowns";
+import { WIDGET_TYPES, WIDGET_LABELS, type Preset, type PresetWidget } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
+import { FindMyConnect } from "@/components/FindMyConnect";
+import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { Modal } from "@/components/Modal";
@@ -12,16 +15,6 @@ import { findFreeSpot } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 import { encodeDraft } from "@/lib/draftEncoding";
 import type { MapPlace } from "@/lib/settings";
-
-const WIDGET_LABELS: Record<WidgetType, string> = {
-  clock: "Clock",
-  weather: "Weather",
-  worldclocks: "World clocks",
-  news: "News headlines",
-  sports: "Sports",
-  calendar: "Calendar",
-  traffic: "Traffic",
-};
 
 const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
   { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
@@ -75,6 +68,9 @@ export default function ControlPage() {
   const [destQuery, setDestQuery] = useState("");
   const [mapSaving, setMapSaving] = useState<"home" | "destination" | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [countdowns, setCountdowns] = useState<Countdown[] | null>(null);
+  const [newCountdownLabel, setNewCountdownLabel] = useState("");
+  const [newCountdownDate, setNewCountdownDate] = useState("");
 
   const refreshGoogleStatus = useCallback(async () => {
     const res = await fetch("/api/auth/google/status", { cache: "no-store" });
@@ -216,6 +212,15 @@ export default function ControlPage() {
     refreshPresets();
   }
 
+  async function setDefaultPreset(id: string) {
+    await fetch(`/api/presets/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isDefault: true }),
+    });
+    refreshPresets();
+  }
+
   function startEditing(preset: Preset) {
     setEditingPresetId(preset.id);
     setDraftWidgets(preset.widgets);
@@ -280,6 +285,37 @@ export default function ControlPage() {
     setDeviceDraftWidgets(preset?.widgets ?? DEFAULT_DEVICE_WIDGETS);
     setDeviceDraftBackground(preset?.background ?? DEFAULT_BACKGROUND);
     setDeviceSaving(false);
+  }
+
+  const refreshCountdowns = useCallback(async () => {
+    const res = await fetch("/api/countdowns", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setCountdowns(data.countdowns);
+  }, []);
+
+  useEffect(() => {
+    refreshCountdowns();
+  }, [refreshCountdowns]);
+
+  async function createCountdown() {
+    if (!newCountdownLabel.trim() || !newCountdownDate) return;
+    await fetch("/api/countdowns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: newCountdownLabel.trim(),
+        targetDate: new Date(newCountdownDate).getTime(),
+      }),
+    });
+    setNewCountdownLabel("");
+    setNewCountdownDate("");
+    refreshCountdowns();
+  }
+
+  async function deleteCountdown(id: string) {
+    await fetch(`/api/countdowns/${id}`, { method: "DELETE" });
+    refreshCountdowns();
   }
 
   const approvedDevices = devices?.filter((d) => d.status === "approved") ?? [];
@@ -415,6 +451,13 @@ export default function ControlPage() {
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          iCloud Find My
+        </h2>
+        <FindMyConnect />
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Devices
         </h2>
 
@@ -454,6 +497,11 @@ export default function ControlPage() {
                   >
                     {d.status}
                   </span>
+                  {d.presetId === null && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)]">
+                      new
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-[var(--muted)] font-mono truncate">
                   {d.id} · {d.ip ?? "unknown ip"} · {d.touchCapable ? "touch" : "no-touch"}
@@ -520,6 +568,11 @@ export default function ControlPage() {
         <p className="text-xs text-[var(--muted)] mt-2">
           Signing in here shares your calendar/email with every screen — no need to sign in on each device.
         </p>
+        {googleStatus?.connected && (
+          <div className="mt-4 pt-4 border-t border-[var(--surface-border)]">
+            <GooglePhotosConnect />
+          </div>
+        )}
       </section>
 
       <section className="glass-panel p-6">
@@ -590,6 +643,56 @@ export default function ControlPage() {
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Countdowns
+        </h2>
+        <div className="flex flex-col gap-2 mb-4">
+          {countdowns?.length === 0 && (
+            <p className="text-sm text-[var(--muted)]">No countdowns yet — add one below.</p>
+          )}
+          {countdowns?.map((c) => (
+            <div
+              key={c.id}
+              className="flex items-center justify-between border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            >
+              <div>
+                <span className="text-sm font-medium">{c.label}</span>
+                <span className="text-xs text-[var(--muted)] ml-2">
+                  {new Date(c.targetDate).toLocaleDateString()}
+                </span>
+              </div>
+              <button
+                onClick={() => deleteCountdown(c.id)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            value={newCountdownLabel}
+            onChange={(e) => setNewCountdownLabel(e.target.value)}
+            placeholder="Label (e.g. Disneyland trip)"
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+          />
+          <input
+            type="date"
+            value={newCountdownDate}
+            onChange={(e) => setNewCountdownDate(e.target.value)}
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          />
+          <button
+            onClick={createCountdown}
+            className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Add
+          </button>
+        </div>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Presets
         </h2>
 
@@ -601,10 +704,25 @@ export default function ControlPage() {
             <div key={p.id} className="border-t border-[var(--surface-border)] pt-3 first:border-t-0 first:pt-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium">{p.name}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-medium">{p.name}</div>
+                    {p.isDefault && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent)]/20 text-[var(--accent)]">
+                        default
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-[var(--muted)]">{summarize(p.widgets)}</div>
                 </div>
                 <div className="flex gap-2">
+                  {!p.isDefault && (
+                    <button
+                      onClick={() => setDefaultPreset(p.id)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      Set default
+                    </button>
+                  )}
                   <button
                     onClick={() => (editingPresetId === p.id ? setEditingPresetId(null) : startEditing(p))}
                     className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
