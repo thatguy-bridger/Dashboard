@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useDisplayMode } from "@/lib/useDisplayMode";
 
 interface GmailMessage {
   from: string;
   subject: string;
   snippet: string;
+  labelColor: string | null;
 }
 
 interface GmailData {
@@ -17,6 +19,7 @@ interface GmailData {
 
 export function GmailWidget({ size = "md" }: { size?: WidgetSize }) {
   const [data, setData] = useState<GmailData | null>(null);
+  const displayMode = useDisplayMode();
 
   useEffect(() => {
     let cancelled = false;
@@ -63,11 +66,22 @@ export function GmailWidget({ size = "md" }: { size?: WidgetSize }) {
       </div>
       <ul className="flex flex-col gap-2">
         {data.messages.slice(0, count).map((m, i) => (
-          <li key={i} className="text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0">
-            <div className="flex justify-between gap-3">
-              <span className="font-medium truncate">{m.from}</span>
+          <li
+            key={i}
+            className="flex items-start gap-2 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+          >
+            {displayMode === "image" && (
+              <span
+                className="w-2 h-2 rounded-full shrink-0 mt-1.5"
+                style={{ background: m.labelColor ?? "transparent" }}
+              />
+            )}
+            <div className="min-w-0">
+              <div className="flex justify-between gap-3">
+                <span className="font-medium truncate">{m.from}</span>
+              </div>
+              <div className="text-[var(--muted)] text-xs truncate">{m.subject}</div>
             </div>
-            <div className="text-[var(--muted)] text-xs truncate">{m.subject}</div>
           </li>
         ))}
       </ul>

@@ -7,6 +7,7 @@ interface CalendarEvent {
   start: string;
   allDay: boolean;
   source: string;
+  colorId: string | null;
 }
 
 async function fetchGoogleEvents(): Promise<CalendarEvent[]> {
@@ -26,11 +27,14 @@ async function fetchGoogleEvents(): Promise<CalendarEvent[]> {
   if (!res.ok) return [];
   const data = await res.json();
 
-  return (data.items ?? []).map((e: { summary?: string; start: { dateTime?: string; date?: string } }) => ({
+  return (
+    data.items ?? []
+  ).map((e: { summary?: string; start: { dateTime?: string; date?: string }; colorId?: string }) => ({
     summary: e.summary ?? "(no title)",
     start: e.start.dateTime ?? e.start.date,
     allDay: !e.start.dateTime,
     source: "Google",
+    colorId: e.colorId ?? null,
   }));
 }
 
@@ -42,6 +46,7 @@ async function fetchICloudEvents(): Promise<CalendarEvent[]> {
       start: e.start,
       allDay: e.start.length === 8,
       source: e.calendar,
+      colorId: null,
     }));
   } catch {
     return [];

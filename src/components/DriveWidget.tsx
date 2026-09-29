@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useDisplayMode } from "@/lib/useDisplayMode";
+import { driveTypeColor } from "@/lib/driveColors";
 
 interface DriveFile {
   id: string;
   name: string;
   modifiedTime: string;
+  mimeType: string;
 }
 
 interface DriveData {
@@ -23,6 +26,7 @@ function formatAge(iso: string) {
 
 export function DriveWidget({ size = "md" }: { size?: WidgetSize }) {
   const [data, setData] = useState<DriveData | null>(null);
+  const displayMode = useDisplayMode();
 
   useEffect(() => {
     let cancelled = false;
@@ -59,9 +63,17 @@ export function DriveWidget({ size = "md" }: { size?: WidgetSize }) {
         {data.files.slice(0, count).map((f) => (
           <li
             key={f.id}
-            className="flex justify-between gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            className="flex items-center justify-between gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
           >
-            <span className="truncate">{f.name}</span>
+            <span className="flex items-center gap-2 min-w-0">
+              {displayMode === "image" && (
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ background: driveTypeColor(f.mimeType) }}
+                />
+              )}
+              <span className="truncate">{f.name}</span>
+            </span>
             <span className="text-[var(--muted)] text-xs whitespace-nowrap">{formatAge(f.modifiedTime)}</span>
           </li>
         ))}

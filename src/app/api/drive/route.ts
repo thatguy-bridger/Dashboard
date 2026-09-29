@@ -7,6 +7,7 @@ interface DriveFile {
   modifiedTime: string;
   webViewLink: string;
   iconLink: string;
+  mimeType: string;
 }
 
 export async function GET() {
@@ -18,7 +19,7 @@ export async function GET() {
   const url = new URL("https://www.googleapis.com/drive/v3/files");
   url.searchParams.set("pageSize", "8");
   url.searchParams.set("orderBy", "modifiedTime desc");
-  url.searchParams.set("fields", "files(id,name,modifiedTime,webViewLink,iconLink)");
+  url.searchParams.set("fields", "files(id,name,modifiedTime,webViewLink,iconLink,mimeType)");
   url.searchParams.set("q", "trashed = false");
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
