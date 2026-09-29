@@ -2,19 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 import { GRID_COLS, GRID_ROWS, MIN_W, MIN_H, clampWidget, sizeForFootprint, type GridWidget } from "@/lib/grid";
-import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
-import type { WidgetType } from "@/lib/presets";
-
-const WIDGET_LABELS: Record<WidgetType, string> = {
-  clock: "Clock",
-  weather: "Weather",
-  worldclocks: "World clocks",
-  news: "News headlines",
-  sports: "Sports",
-  calendar: "Calendar",
-  traffic: "Traffic",
-};
+import { ScreenBackground } from "@/components/ScreenBackground";
+import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 
 type DragMode = { kind: "move" | "resize"; id: string; startX: number; startY: number; origin: GridWidget };
 
@@ -23,11 +13,14 @@ export function GridEditor({
   onChange,
   selectedId,
   onSelect,
+  background = DEFAULT_BACKGROUND,
 }: {
   widgets: GridWidget[];
   onChange: (widgets: GridWidget[]) => void;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Rendered live behind the widgets so the editor matches what the real screen looks like. */
+  background?: BackgroundConfig;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragMode | null>(null);
@@ -84,22 +77,25 @@ export function GridEditor({
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       className="relative w-full rounded-xl overflow-hidden border border-[var(--surface-border)] select-none touch-none"
-      style={{
-        aspectRatio: "1280 / 720",
-        backgroundColor: "#05060a",
-        backgroundImage:
-          `linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),` +
-          `linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)`,
-        backgroundSize: `${100 / GRID_COLS}% ${100 / GRID_ROWS}%`,
-      }}
+      style={{ aspectRatio: "1280 / 720", backgroundColor: "#05060a" }}
     >
+      <ScreenBackground config={background} fixed={false} />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage:
+            `linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px),` +
+            `linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px)`,
+          backgroundSize: `${100 / GRID_COLS}% ${100 / GRID_ROWS}%`,
+        }}
+      />
       {widgets.map((w) => {
         const isSelected = selectedId === w.id;
         return (
           <div
             key={w.id}
             onPointerDown={(e) => startDrag("move", w, e)}
-            className={`tile tile-${w.type} absolute cursor-grab active:cursor-grabbing !p-2 transition-shadow ${
+            className={`group tile tile-${w.type} absolute cursor-grab active:cursor-grabbing transition-shadow ${
               isSelected ? "ring-2 ring-[var(--accent)]" : ""
             }`}
             style={{
@@ -109,29 +105,22 @@ export function GridEditor({
               height: `${(w.h / GRID_ROWS) * 100}%`,
             }}
           >
-            <div className="absolute top-1 left-1.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-[var(--muted)] pointer-events-none">
-              <WidgetIcon type={w.type} className="w-3 h-3" />
-              {WIDGET_LABELS[w.type]}
+            <div className="w-full h-full pointer-events-none">
+              <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
             </div>
 
             <button
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => removeWidget(w.id)}
-              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/40 text-[var(--muted)] hover:text-red-300 hover:bg-red-500/20 text-xs leading-none flex items-center justify-center"
+              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/50 text-[var(--muted)] hover:text-red-300 hover:bg-red-500/30 text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100"
               title="Remove"
             >
               ×
             </button>
 
-            <div className="w-full h-full flex items-center justify-center overflow-hidden pointer-events-none">
-              <div className="scale-[0.85] origin-center">
-                <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
-              </div>
-            </div>
-
             <div
               onPointerDown={(e) => startDrag("resize", w, e)}
-              className="absolute bottom-0.5 right-0.5 w-4 h-4 cursor-se-resize rounded-sm bg-[var(--accent)]/40 hover:bg-[var(--accent)]/70"
+              className="absolute bottom-0.5 right-0.5 w-4 h-4 cursor-se-resize rounded-sm bg-[var(--accent)]/40 hover:bg-[var(--accent)]/70 opacity-0 group-hover:opacity-100"
               title="Resize"
             />
           </div>

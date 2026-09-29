@@ -379,6 +379,7 @@ export default function ControlPage() {
                       onChange={setDeviceDraftWidgets}
                       selectedId={deviceDraftSelected}
                       onSelect={setDeviceDraftSelected}
+                      background={deviceDraftBackground}
                     />
                   </div>
                   <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
@@ -652,6 +653,7 @@ export default function ControlPage() {
                   onChange={setDraftWidgets}
                   selectedId={draftSelected}
                   onSelect={setDraftSelected}
+                  background={draftBackground}
                 />
               </div>
               <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
@@ -691,6 +693,7 @@ export default function ControlPage() {
                 onChange={setNewPresetWidgets}
                 selectedId={newPresetSelected}
                 onSelect={setNewPresetSelected}
+                background={newPresetBackground}
               />
             </div>
             <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">

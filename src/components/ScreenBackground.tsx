@@ -175,9 +175,17 @@ function RotatingBackground({ config }: { config: BackgroundConfig }) {
   );
 }
 
-export function ScreenBackground({ config }: { config: BackgroundConfig }) {
+export function ScreenBackground({
+  config,
+  fixed = true,
+}: {
+  config: BackgroundConfig;
+  /** false embeds the background inside its own positioned container (e.g. the grid editor)
+   *  instead of pinning it to the viewport. */
+  fixed?: boolean;
+}) {
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden">
+    <div className={`${fixed ? "fixed" : "absolute"} inset-0 -z-10 overflow-hidden`}>
       <BackgroundLayer config={config} />
     </div>
   );
