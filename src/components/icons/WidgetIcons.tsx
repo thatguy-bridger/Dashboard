@@ -112,6 +112,7 @@ const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   stocks: GenericTileIcon,
   radar: GenericTileIcon,
   notifications: GenericTileIcon,
+  lyrics: GenericTileIcon,
 };
 
 export function WidgetIcon({ type, className = "w-6 h-6" }: { type: WidgetType; className?: string }) {

@@ -21,6 +21,7 @@ export const WIDGET_TYPES = [
   "stocks",
   "radar",
   "notifications",
+  "lyrics",
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
@@ -43,6 +44,13 @@ export const WIDGET_LABELS: Record<WidgetType, string> = {
   stocks: "Stocks",
   radar: "Weather radar",
   notifications: "Notifications",
+  lyrics: "Lyrics",
+};
+
+/** Grid footprint a widget starts at when dropped in from the palette —
+ *  most default to a generic 4x3, but some read better narrower/taller. */
+export const PREFERRED_SIZE: Partial<Record<WidgetType, { w: number; h: number }>> = {
+  lyrics: { w: 2, h: 5 },
 };
 
 // Kept for widget-internal content-density decisions (derived from grid footprint) and

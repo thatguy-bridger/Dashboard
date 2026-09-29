@@ -7,6 +7,7 @@ import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { LiveGameBanner } from "@/components/LiveGameBanner";
+import { SpotifyIsland } from "@/components/SpotifyIsland";
 import type { Preset, PresetWidget } from "@/lib/presets";
 import type { DeviceLayout } from "@/lib/registry";
 import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
@@ -93,11 +94,10 @@ function usePreset(presetId: string | null | undefined) {
   return preset;
 }
 
-function StatusBadge({ name, orbState }: { name: string; orbState: "idle" | "active" | "alert" }) {
+function StatusBadge({ orbState }: { orbState: "idle" | "active" | "alert" }) {
   return (
-    <div className="fixed top-4 left-4 flex items-center gap-2 z-10 pointer-events-none">
+    <div className="fixed top-4 left-4 z-10 pointer-events-none">
       <LivingOrb state={orbState} size={16} />
-      <span className="text-xs text-[var(--muted)] uppercase tracking-widest">{name}</span>
     </div>
   );
 }
@@ -127,8 +127,9 @@ function ScreenGrid({
   return (
     <div className="h-screen w-screen relative">
       <ScreenBackground config={background} />
-      <StatusBadge name={name} orbState={orbState} />
+      <StatusBadge orbState={orbState} />
       <LiveGameBanner />
+      <SpotifyIsland />
       <div className="h-full w-full p-[0.9375rem] relative">
         {widgets.map((w) => {
           const content = (

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Device } from "@/lib/registry";
 import type { Countdown } from "@/lib/countdowns";
-import { WIDGET_TYPES, WIDGET_LABELS, type Preset, type PresetWidget } from "@/lib/presets";
+import { WIDGET_TYPES, WIDGET_LABELS, PREFERRED_SIZE, type Preset, type PresetWidget } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
@@ -33,8 +33,7 @@ function AddWidgetPalette({ widgets, onAdd }: { widgets: PresetWidget[]; onAdd: 
         <button
           key={type}
           onClick={() => {
-            const w = 4;
-            const h = 3;
+            const { w, h } = PREFERRED_SIZE[type] ?? { w: 4, h: 3 };
             const { x, y } = findFreeSpot(widgets, w, h);
             onAdd({ id: `${type}-${Date.now().toString(36)}`, type, x, y, w, h });
           }}
@@ -61,6 +60,7 @@ export default function ControlPage() {
   const [creatingPreset, setCreatingPreset] = useState(false);
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
   const [mapHome, setMapHome] = useState<MapPlace | null>(null);
   const [mapDestination, setMapDestination] = useState<MapPlace | null>(null);
   const [homeQuery, setHomeQuery] = useState("");
@@ -83,6 +83,20 @@ export default function ControlPage() {
   async function disconnectGoogle() {
     await fetch("/api/auth/google/status", { method: "DELETE" });
     refreshGoogleStatus();
+  }
+
+  const refreshSpotifyStatus = useCallback(async () => {
+    const res = await fetch("/api/auth/spotify/status", { cache: "no-store" });
+    if (res.ok) setSpotifyStatus(await res.json());
+  }, []);
+
+  useEffect(() => {
+    refreshSpotifyStatus();
+  }, [refreshSpotifyStatus]);
+
+  async function disconnectSpotify() {
+    await fetch("/api/auth/spotify/status", { method: "DELETE" });
+    refreshSpotifyStatus();
   }
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
@@ -587,6 +601,35 @@ export default function ControlPage() {
             <GooglePhotosConnect />
           </div>
         )}
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Spotify
+        </h2>
+        {spotifyStatus?.connected ? (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">Connected</span>
+            <button
+              onClick={disconnectSpotify}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <a
+            href="/api/auth/spotify/start"
+            className="inline-block text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Sign in with Spotify
+          </a>
+        )}
+        <p className="text-xs text-[var(--muted)] mt-2">
+          Powers the always-on now-playing overlay on every screen, plus the optional Lyrics widget. Needs whatever
+          account is actively playing to have playback visible to the Spotify app (not in a private/incognito
+          session).
+        </p>
       </section>
 
       <section className="glass-panel p-6">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useFadeSignal } from "@/lib/useFadeSignal";
 
 export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
   const [headlines, setHeadlines] = useState<string[] | null>(null);
@@ -33,13 +34,17 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     return () => clearInterval(id);
   }, [headlines]);
 
+  const visible = useFadeSignal(headlines?.[index]);
+
   if (!headlines?.length) {
     return <div className="text-sm text-[var(--muted)]">Loading news…</div>;
   }
 
+  const fade = `transition-opacity duration-500 ease-out ${visible ? "opacity-100" : "opacity-0"}`;
+
   // sm: a single rotating headline, no label — too tight for anything else.
   if (size === "sm") {
-    return <div className="text-xs text-center line-clamp-3">{headlines[index]}</div>;
+    return <div className={`text-xs text-center line-clamp-3 ${fade}`}>{headlines[index]}</div>;
   }
 
   // md: label + one rotating headline (the original behavior).
@@ -47,7 +52,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     return (
       <div className="max-w-xs text-center">
         <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-1">News</div>
-        <div className="text-sm">{headlines[index]}</div>
+        <div className={`text-sm ${fade}`}>{headlines[index]}</div>
       </div>
     );
   }
