@@ -1,18 +1,9 @@
-import Link from "next/link";
-import { LivingOrb } from "@/components/LivingOrb";
+import { redirect } from "next/navigation";
 
+// Opening the app always means "show the kiosk" — there's no chooser
+// screen to tap through. Control is reachable only by navigating to
+// /control directly, deliberately: it's an admin surface, not something
+// offered as an equal option every time the app launches.
 export default function Home() {
-  return (
-    <main className="flex-1 flex flex-col items-center justify-center gap-8 p-8">
-      <LivingOrb size={40} />
-      <div className="flex gap-4">
-        <Link href="/screen" className="glass-panel px-6 py-4 hover:opacity-80">
-          Open as Screen
-        </Link>
-        <Link href="/control" className="glass-panel px-6 py-4 hover:opacity-80">
-          Open Controller
-        </Link>
-      </div>
-    </main>
-  );
+  redirect("/screen");
 }
