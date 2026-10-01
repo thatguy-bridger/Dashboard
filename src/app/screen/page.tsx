@@ -8,6 +8,7 @@ import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { LiveGameBanner } from "@/components/LiveGameBanner";
 import type { Preset, PresetWidget, WidgetSize, WidgetType } from "@/lib/presets";
 import { WIDGET_TYPES, WIDGET_SIZES, WIDGET_LABELS, SIZE_SPANS } from "@/lib/presets";
+import { isWidgetVisible, visibilityNeedsWeather, visibilityNeedsCalendar, type VisibilityContext } from "@/lib/visibility";
 
 const DEFAULT_WIDGETS: PresetWidget[] = [
   { type: "clock", size: "lg" },
@@ -100,7 +101,72 @@ function WidgetBadge({ type }: { type: WidgetType }) {
   );
 }
 
+/** Re-evaluates every 30s (enough to catch a time-range boundary without
+ * being wasteful) and only fetches weather/calendar at all when some widget
+ * in the current layout actually has a rule that needs them. */
+function useVisibilityContext(widgets: PresetWidget[]): VisibilityContext {
+  const [now, setNow] = useState(() => new Date());
+  const [weatherCode, setWeatherCode] = useState<number | null>(null);
+  const [todaysEventTitles, setTodaysEventTitles] = useState<string[]>([]);
+
+  const needsWeather = visibilityNeedsWeather(widgets);
+  const needsCalendar = visibilityNeedsCalendar(widgets);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!needsWeather) return;
+    let cancelled = false;
+    function load() {
+      fetch("/api/weather")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!cancelled && data) setWeatherCode(data.weatherCode);
+        })
+        .catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 10 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [needsWeather]);
+
+  useEffect(() => {
+    if (!needsCalendar) return;
+    let cancelled = false;
+    function load() {
+      fetch("/api/calendar")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (cancelled || !data) return;
+          const today = new Date().toDateString();
+          const titles = (data.events ?? [])
+            .filter((e: { start: string }) => new Date(e.start).toDateString() === today)
+            .map((e: { summary: string }) => e.summary);
+          setTodaysEventTitles(titles);
+        })
+        .catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [needsCalendar]);
+
+  return { now, weatherCode, todaysEventTitles };
+}
+
 function ScreenGrid({ widgets }: { widgets: PresetWidget[] }) {
+  const visibilityCtx = useVisibilityContext(widgets);
+  const visibleWidgets = widgets.filter((w) => isWidgetVisible(w.visibility, visibilityCtx));
+
   return (
     <div className="h-screen w-screen relative">
       <LiveGameBanner />
@@ -112,7 +178,7 @@ function ScreenGrid({ widgets }: { widgets: PresetWidget[] }) {
           gridAutoFlow: "row dense",
         }}
       >
-        {widgets.map((w, i) => {
+        {visibleWidgets.map((w, i) => {
           const span = SIZE_SPANS[w.size];
           return (
             <div

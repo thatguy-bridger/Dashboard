@@ -52,9 +52,31 @@ export const SIZE_SPANS: Record<WidgetSize, { col: number; row: number }> = {
   xl: { col: 4, row: 2 },
 };
 
+// Simple weather-condition groups a rule can match against — mirrors the
+// same grouping weatherVisuals.ts uses for icons/gradients, not raw WMO codes.
+export const VISIBILITY_WEATHER_CONDITIONS = ["clear", "cloudy", "rain", "snow", "storm"] as const;
+export type VisibilityWeatherCondition = (typeof VISIBILITY_WEATHER_CONDITIONS)[number];
+
+/** Every condition set on a widget must pass for it to show — this is
+ * deliberately AND-only (no OR groups) since that covers "show this during
+ * the morning window AND only if it's snowing" style rules without needing
+ * a rule-builder UI. Omitted fields mean "don't constrain on this." */
+export interface WidgetVisibility {
+  /** 24h "HH:MM" strings. A range crossing midnight (e.g. 22:00-06:00) is
+   * supported by treating end < start as wrapping past midnight. */
+  timeStart?: string;
+  timeEnd?: string;
+  weather?: VisibilityWeatherCondition;
+  /** Case-insensitive substring match against today's calendar event titles
+   * (from /api/calendar) — e.g. "ski" only shows the widget on days with a
+   * matching event. */
+  calendarKeyword?: string;
+}
+
 export interface PresetWidget {
   type: WidgetType;
   size: WidgetSize;
+  visibility?: WidgetVisibility;
 }
 
 export interface Preset {
@@ -83,6 +105,21 @@ function isWidgetSize(v: unknown): v is WidgetSize {
   return typeof v === "string" && (WIDGET_SIZES as readonly string[]).includes(v);
 }
 
+function parseVisibility(raw: unknown): WidgetVisibility | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const v = raw as Record<string, unknown>;
+  const result: WidgetVisibility = {};
+  if (typeof v.timeStart === "string") result.timeStart = v.timeStart;
+  if (typeof v.timeEnd === "string") result.timeEnd = v.timeEnd;
+  if (typeof v.weather === "string" && (VISIBILITY_WEATHER_CONDITIONS as readonly string[]).includes(v.weather)) {
+    result.weather = v.weather as VisibilityWeatherCondition;
+  }
+  if (typeof v.calendarKeyword === "string" && v.calendarKeyword.trim()) {
+    result.calendarKeyword = v.calendarKeyword.trim();
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 /** Accepts both the new {type,size}[] shape and the old string[] shape (pre-resize presets). */
 export function parseWidgets(raw: unknown): PresetWidget[] {
   if (!Array.isArray(raw)) return [];
@@ -91,7 +128,8 @@ export function parseWidgets(raw: unknown): PresetWidget[] {
       if (isWidgetType(item)) return { type: item, size: "md" };
       if (item && typeof item === "object" && isWidgetType((item as { type?: unknown }).type)) {
         const size = isWidgetSize((item as { size?: unknown }).size) ? (item as { size: WidgetSize }).size : "md";
-        return { type: (item as { type: WidgetType }).type, size };
+        const visibility = parseVisibility((item as { visibility?: unknown }).visibility);
+        return { type: (item as { type: WidgetType }).type, size, ...(visibility ? { visibility } : {}) };
       }
       return null;
     })

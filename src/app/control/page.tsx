@@ -7,10 +7,13 @@ import {
   WIDGET_TYPES,
   WIDGET_SIZES,
   WIDGET_LABELS,
+  VISIBILITY_WEATHER_CONDITIONS,
   type Preset,
   type PresetWidget,
   type WidgetType,
   type WidgetSize,
+  type WidgetVisibility,
+  type VisibilityWeatherCondition,
 } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { FindMyConnect } from "@/components/FindMyConnect";
@@ -26,6 +29,76 @@ function summarize(widgets: PresetWidget[]) {
   return widgets.map((w) => `${WIDGET_LABELS[w.type]} (${SIZE_LABELS[w.size]})`).join(", ") || "no widgets";
 }
 
+function hasAnyRule(v: WidgetVisibility | undefined): boolean {
+  return Boolean(v && (v.timeStart || v.timeEnd || v.weather || v.calendarKeyword));
+}
+
+/** Inline editor for one widget's visibility rules — all three are
+ * optional and AND together (see WidgetVisibility). Clearing every field
+ * removes the rule entirely rather than leaving an empty-but-present object. */
+function RulesEditor({
+  visibility,
+  onChange,
+}: {
+  visibility: WidgetVisibility | undefined;
+  onChange: (visibility: WidgetVisibility | undefined) => void;
+}) {
+  function patch(partial: Partial<WidgetVisibility>) {
+    const next: WidgetVisibility = { ...visibility, ...partial };
+    if (!next.timeStart) delete next.timeStart;
+    if (!next.timeEnd) delete next.timeEnd;
+    if (!next.weather) delete next.weather;
+    if (!next.calendarKeyword) delete next.calendarKeyword;
+    onChange(Object.keys(next).length > 0 ? next : undefined);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 bg-black/20 rounded-lg p-3 mt-1 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--muted)] w-20 shrink-0">Time window</span>
+        <input
+          type="time"
+          value={visibility?.timeStart ?? ""}
+          onChange={(e) => patch({ timeStart: e.target.value || undefined })}
+          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1"
+        />
+        <span className="text-[var(--muted)]">to</span>
+        <input
+          type="time"
+          value={visibility?.timeEnd ?? ""}
+          onChange={(e) => patch({ timeEnd: e.target.value || undefined })}
+          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--muted)] w-20 shrink-0">Weather</span>
+        <select
+          value={visibility?.weather ?? ""}
+          onChange={(e) => patch({ weather: (e.target.value || undefined) as VisibilityWeatherCondition | undefined })}
+          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1 capitalize"
+        >
+          <option value="">Any</option>
+          {VISIBILITY_WEATHER_CONDITIONS.map((c) => (
+            <option key={c} value={c} className="bg-[var(--bg)] capitalize">
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[var(--muted)] w-20 shrink-0">Calendar has</span>
+        <input
+          value={visibility?.calendarKeyword ?? ""}
+          onChange={(e) => patch({ calendarKeyword: e.target.value || undefined })}
+          placeholder="keyword, e.g. ski"
+          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1 flex-1"
+        />
+      </div>
+      <p className="text-[var(--muted)]">All set rules must match — leave any blank to not constrain on it.</p>
+    </div>
+  );
+}
+
 /** A row of widget-type toggles where each active widget also gets a size selector. */
 function WidgetPicker({
   widgets,
@@ -34,13 +107,16 @@ function WidgetPicker({
   widgets: PresetWidget[];
   onChange: (widgets: PresetWidget[]) => void;
 }) {
-  function sizeOf(type: WidgetType): WidgetSize | null {
-    return widgets.find((w) => w.type === type)?.size ?? null;
+  const [rulesOpenFor, setRulesOpenFor] = useState<WidgetType | null>(null);
+
+  function widgetOf(type: WidgetType): PresetWidget | undefined {
+    return widgets.find((w) => w.type === type);
   }
 
   function setSize(type: WidgetType, size: WidgetSize | null) {
     if (size === null) {
       onChange(widgets.filter((w) => w.type !== type));
+      if (rulesOpenFor === type) setRulesOpenFor(null);
     } else if (widgets.some((w) => w.type === type)) {
       onChange(widgets.map((w) => (w.type === type ? { ...w, size } : w)));
     } else {
@@ -48,38 +124,60 @@ function WidgetPicker({
     }
   }
 
+  function setVisibility(type: WidgetType, visibility: WidgetVisibility | undefined) {
+    onChange(widgets.map((w) => (w.type === type ? { ...w, visibility } : w)));
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {WIDGET_TYPES.map((type) => {
-        const active = sizeOf(type);
+        const widget = widgetOf(type);
+        const active = widget?.size ?? null;
         return (
-          <div key={type} className="flex items-center gap-2">
-            <button
-              onClick={() => setSize(type, active ? null : "md")}
-              className={`text-xs px-3 py-1.5 rounded-lg border w-32 text-left ${
-                active
-                  ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
-                  : "border-[var(--surface-border)] text-[var(--muted)]"
-              }`}
-            >
-              {WIDGET_LABELS[type]}
-            </button>
-            {active && (
-              <div className="flex gap-1">
-                {WIDGET_SIZES.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => setSize(type, size)}
-                    className={`text-xs w-8 h-8 rounded-lg border ${
-                      active === size
-                        ? "bg-[var(--accent)] text-black border-[var(--accent)]"
-                        : "border-[var(--surface-border)] text-[var(--muted)]"
-                    }`}
-                  >
-                    {SIZE_LABELS[size]}
-                  </button>
-                ))}
-              </div>
+          <div key={type}>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSize(type, active ? null : "md")}
+                className={`text-xs px-3 py-1.5 rounded-lg border w-32 text-left ${
+                  active
+                    ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
+                    : "border-[var(--surface-border)] text-[var(--muted)]"
+                }`}
+              >
+                {WIDGET_LABELS[type]}
+              </button>
+              {active && (
+                <div className="flex gap-1">
+                  {WIDGET_SIZES.map((size) => (
+                    <button
+                      key={size}
+                      onClick={() => setSize(type, size)}
+                      className={`text-xs w-8 h-8 rounded-lg border ${
+                        active === size
+                          ? "bg-[var(--accent)] text-black border-[var(--accent)]"
+                          : "border-[var(--surface-border)] text-[var(--muted)]"
+                      }`}
+                    >
+                      {SIZE_LABELS[size]}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {active && (
+                <button
+                  onClick={() => setRulesOpenFor(rulesOpenFor === type ? null : type)}
+                  className={`text-xs px-2.5 py-1.5 rounded-lg border ${
+                    hasAnyRule(widget?.visibility)
+                      ? "border-[var(--accent)] text-[var(--accent)]"
+                      : "border-[var(--surface-border)] text-[var(--muted)]"
+                  }`}
+                >
+                  Rules{hasAnyRule(widget?.visibility) ? " •" : ""}
+                </button>
+              )}
+            </div>
+            {active && rulesOpenFor === type && (
+              <RulesEditor visibility={widget?.visibility} onChange={(v) => setVisibility(type, v)} />
             )}
           </div>
         );
