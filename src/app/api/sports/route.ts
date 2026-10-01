@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/settings";
+import type { FavoriteTeam } from "@/lib/settings";
 
 // TheSportsDB's public test key ("3") — fine for low-volume personal use;
 // swap for a real key at thesportsdb.com/api.php if this ever needs more headroom.
@@ -19,42 +20,107 @@ const LEAGUES = [
 
 const SPORTS_NEWS_FEED = "https://www.espn.com/espn/rss/news";
 
-async function getFavorite() {
-  const { favoriteTeam } = await getSettings();
-  if (!favoriteTeam) {
-    return { team: null, event: null };
-  }
+interface RawEvent {
+  dateEvent: string;
+  strTime: string | null;
+  strHomeTeam: string;
+  strAwayTeam: string;
+  strLeague: string;
+}
 
-  const searchRes = await fetch(`${BASE}/searchteams.php?t=${encodeURIComponent(favoriteTeam)}`, {
-    next: { revalidate: 3600 },
-  });
-  if (!searchRes.ok) {
-    return { error: "team search failed" };
-  }
-  const searchData = await searchRes.json();
-  const team = searchData.teams?.[0];
-  if (!team) {
-    return { team: null, event: null };
-  }
+export interface GameSummary {
+  team: string;
+  teamBadge: string | null;
+  opponent: string;
+  isHome: boolean;
+  date: string;
+  time: string | null;
+  league: string;
+}
 
-  const eventsRes = await fetch(`${BASE}/eventsnext.php?id=${team.idTeam}`, {
-    next: { revalidate: 900 },
-  });
-  const eventsData = eventsRes.ok ? await eventsRes.json() : null;
-  const nextEvent = eventsData?.events?.[0] ?? null;
+async function fetchUpcomingEvents(teamId: string): Promise<RawEvent[]> {
+  const res = await fetch(`${BASE}/eventsnext.php?id=${teamId}`, { next: { revalidate: 900 } });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.events ?? [];
+}
 
+function eventTimestamp(ev: RawEvent): number {
+  return new Date(`${ev.dateEvent}T${ev.strTime || "00:00:00"}`).getTime();
+}
+
+function toSummary(team: FavoriteTeam, ev: RawEvent): GameSummary {
+  const isHome = ev.strHomeTeam === team.name;
   return {
-    team: { name: team.strTeam, badge: team.strTeamBadge },
-    event: nextEvent
-      ? {
-          opponent: nextEvent.strAwayTeam === team.strTeam ? nextEvent.strHomeTeam : nextEvent.strAwayTeam,
-          isHome: nextEvent.strHomeTeam === team.strTeam,
-          date: nextEvent.dateEvent,
-          time: nextEvent.strTime,
-          league: nextEvent.strLeague,
-        }
-      : null,
+    team: team.name,
+    teamBadge: team.badge,
+    opponent: isHome ? ev.strAwayTeam : ev.strHomeTeam,
+    isHome,
+    date: ev.dateEvent,
+    time: ev.strTime,
+    league: ev.strLeague,
   };
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Up to 4 upcoming games, one per favorite team by default — except a team's
+ * *second* upcoming game is also included (filling remaining slots, soonest
+ * first) when it falls within a week of that team's first, so a busy
+ * back-to-back stretch isn't hidden behind the one-per-team cap. Two favorite
+ * teams playing each other collapses to a single entry.
+ */
+function selectGames(perTeam: { team: FavoriteTeam; events: RawEvent[] }[]): GameSummary[] {
+  type Candidate = { summary: GameSummary; ts: number };
+
+  const primary: Candidate[] = [];
+  for (const { team, events } of perTeam) {
+    if (events.length === 0) continue;
+    primary.push({ summary: toSummary(team, events[0]), ts: eventTimestamp(events[0]) });
+  }
+  primary.sort((a, b) => a.ts - b.ts);
+
+  const selected = [...primary];
+  if (selected.length < 4) {
+    const extras: Candidate[] = [];
+    for (const { team, events } of perTeam) {
+      if (events.length < 2) continue;
+      const firstTs = eventTimestamp(events[0]);
+      const secondTs = eventTimestamp(events[1]);
+      if (secondTs - firstTs <= WEEK_MS) {
+        extras.push({ summary: toSummary(team, events[1]), ts: secondTs });
+      }
+    }
+    extras.sort((a, b) => a.ts - b.ts);
+    for (const extra of extras) {
+      if (selected.length >= 4) break;
+      selected.push(extra);
+    }
+  }
+  selected.sort((a, b) => a.ts - b.ts);
+
+  const seen = new Set<string>();
+  const deduped: Candidate[] = [];
+  for (const c of selected) {
+    const key = `${c.summary.date}|${[c.summary.team, c.summary.opponent].sort().join("-")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(c);
+  }
+
+  return deduped.slice(0, 4).map((c) => c.summary);
+}
+
+async function getFavorites() {
+  const { favoriteTeams } = await getSettings();
+  if (favoriteTeams.length === 0) {
+    return { teams: [], games: [] };
+  }
+  const perTeam = await Promise.all(
+    favoriteTeams.map(async (team) => ({ team, events: await fetchUpcomingEvents(team.id) }))
+  );
+  return { teams: favoriteTeams, games: selectGames(perTeam) };
 }
 
 async function getLeagueScore(league: { id: string; name: string }) {
@@ -106,10 +172,7 @@ async function getTicker() {
 }
 
 async function getAll() {
-  const [scores, ticker] = await Promise.all([
-    Promise.all(LEAGUES.map(getLeagueScore)),
-    getTicker(),
-  ]);
+  const [scores, ticker] = await Promise.all([Promise.all(LEAGUES.map(getLeagueScore)), getTicker()]);
   return { scores: scores.filter((s) => s !== null), ticker };
 }
 
@@ -123,21 +186,23 @@ interface LiveScoreEntry {
 }
 
 /** The livescore endpoint has no team filter, so this pulls every live game
- * and matches the favorite team's name client-side — cheap since there are
+ * and matches any favorite team's name client-side — cheap since there are
  * only ever a handful of live games at once. */
 async function getLiveGame() {
-  const { favoriteTeam } = await getSettings();
-  if (!favoriteTeam) return { live: null };
+  const { favoriteTeams } = await getSettings();
+  if (favoriteTeams.length === 0) return { live: null };
 
   try {
     const res = await fetch(`${BASE}/livescore.php`, { cache: "no-store" });
     if (!res.ok) return { live: null };
     const data = await res.json();
     const entries: LiveScoreEntry[] = data.livescore ?? [];
-    const match = entries.find(
-      (e) =>
-        e.strHomeTeam.toLowerCase().includes(favoriteTeam.toLowerCase()) ||
-        e.strAwayTeam.toLowerCase().includes(favoriteTeam.toLowerCase())
+    const match = entries.find((e) =>
+      favoriteTeams.some(
+        (team) =>
+          e.strHomeTeam.toLowerCase().includes(team.name.toLowerCase()) ||
+          e.strAwayTeam.toLowerCase().includes(team.name.toLowerCase())
+      )
     );
     if (!match) return { live: null };
     return {
@@ -160,9 +225,8 @@ export async function GET(req: NextRequest) {
   if (mode === "live") {
     return NextResponse.json(await getLiveGame());
   }
-  const result = mode === "all" ? await getAll() : await getFavorite();
-  if ("error" in result) {
-    return NextResponse.json(result, { status: 502 });
+  if (mode === "all") {
+    return NextResponse.json(await getAll());
   }
-  return NextResponse.json(result);
+  return NextResponse.json(await getFavorites());
 }

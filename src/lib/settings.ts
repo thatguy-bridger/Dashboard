@@ -2,55 +2,88 @@ import { d1Query } from "@/lib/d1";
 
 export type DisplayMode = "color" | "image";
 
+export interface MapPlace {
+  label: string;
+  lat: number;
+  lon: number;
+}
+
+export interface FavoriteTeam {
+  id: string;
+  name: string;
+  badge: string | null;
+  sport: string | null;
+  league: string | null;
+}
+
 export interface Settings {
+  /** @deprecated superseded by favoriteTeams; kept only so old rows still parse. */
   favoriteTeam: string | null;
-  commuteOriginLabel: string | null;
-  commuteOriginLat: number | null;
-  commuteOriginLon: number | null;
-  commuteDestLabel: string | null;
-  commuteDestLat: number | null;
-  commuteDestLon: number | null;
+  favoriteTeams: FavoriteTeam[];
+  mapHome: MapPlace | null;
+  mapDestination: MapPlace | null;
   displayMode: DisplayMode;
 }
 
-const KEYS = [
-  "favoriteTeam",
-  "commuteOriginLabel",
-  "commuteOriginLat",
-  "commuteOriginLon",
-  "commuteDestLabel",
-  "commuteDestLat",
-  "commuteDestLon",
-  "displayMode",
-] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode"] as const;
+type Key = (typeof KEYS)[number];
 
-const NUMERIC_KEYS = new Set(["commuteOriginLat", "commuteOriginLon", "commuteDestLat", "commuteDestLon"]);
+function parsePlace(raw: string | null): MapPlace | null {
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (typeof obj?.label === "string" && typeof obj?.lat === "number" && typeof obj?.lon === "number") {
+      return obj as MapPlace;
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+function parseTeams(raw: string | null): FavoriteTeam[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (t): t is FavoriteTeam => t && typeof t === "object" && typeof t.id === "string" && typeof t.name === "string"
+    );
+  } catch {
+    return [];
+  }
+}
 
 export async function getSettings(): Promise<Settings> {
   const rows = await d1Query<{ key: string; value: string | null }>(
     `SELECT key, value FROM settings WHERE key IN (${KEYS.map(() => "?").join(",")})`,
     [...KEYS]
   );
-  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-  const result: Record<string, string | number | null> = {};
-  for (const key of KEYS) {
-    const raw = byKey[key] ?? null;
-    result[key] = raw !== null && NUMERIC_KEYS.has(key) ? Number(raw) : raw;
-  }
-  if (result.displayMode !== "image") result.displayMode = "color";
-  return result as unknown as Settings;
+  const byKey = new Map(rows.map((r) => [r.key, r.value]));
+  const displayMode = byKey.get("displayMode");
+  return {
+    favoriteTeam: byKey.get("favoriteTeam") ?? null,
+    favoriteTeams: parseTeams(byKey.get("favoriteTeams") ?? null),
+    mapHome: parsePlace(byKey.get("mapHome") ?? null),
+    mapDestination: parsePlace(byKey.get("mapDestination") ?? null),
+    displayMode: displayMode === "image" ? "image" : "color",
+  };
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  for (const key of KEYS) {
-    if (key in patch) {
-      const value = patch[key];
-      await d1Query(
-        `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        [key, value === null || value === undefined ? null : String(value)]
-      );
-    }
+  async function set(key: Key, value: string | null) {
+    await d1Query(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [key, value]
+    );
   }
+
+  if ("favoriteTeam" in patch) await set("favoriteTeam", patch.favoriteTeam ?? null);
+  if ("favoriteTeams" in patch) await set("favoriteTeams", patch.favoriteTeams ? JSON.stringify(patch.favoriteTeams) : null);
+  if ("mapHome" in patch) await set("mapHome", patch.mapHome ? JSON.stringify(patch.mapHome) : null);
+  if ("mapDestination" in patch) await set("mapDestination", patch.mapDestination ? JSON.stringify(patch.mapDestination) : null);
+  if ("displayMode" in patch) await set("displayMode", patch.displayMode ?? null);
+
   return getSettings();
 }

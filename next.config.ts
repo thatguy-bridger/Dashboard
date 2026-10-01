@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   // binary that the bundler can't place in an ESM chunk. Keep it external
   // so it's just `require()`d from node_modules at runtime instead.
   serverExternalPackages: ["keytar"],
+  // Spotify OAuth's redirect URI must be 127.0.0.1 (not localhost) in dev,
+  // so local testing needs that origin allowed for HMR/dev-resource requests.
+  allowedDevOrigins: ["127.0.0.1"],
 };
 
 export default nextConfig;

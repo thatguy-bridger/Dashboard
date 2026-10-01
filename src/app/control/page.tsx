@@ -5,28 +5,33 @@ import type { Device } from "@/lib/registry";
 import type { Countdown } from "@/lib/countdowns";
 import {
   WIDGET_TYPES,
-  WIDGET_SIZES,
   WIDGET_LABELS,
+  PREFERRED_SIZE,
   VISIBILITY_WEATHER_CONDITIONS,
   type Preset,
   type PresetWidget,
-  type WidgetType,
-  type WidgetSize,
   type WidgetVisibility,
   type VisibilityWeatherCondition,
 } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
 import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
+import { GridEditor } from "@/components/GridEditor";
+import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { Modal } from "@/components/Modal";
+import { WidgetIcon } from "@/components/icons/WidgetIcons";
+import { findFreeSpot } from "@/lib/grid";
+import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
+import type { MapPlace, FavoriteTeam } from "@/lib/settings";
+import { TeamSearchSelect } from "@/components/TeamSearchSelect";
 
-const SIZE_LABELS: Record<WidgetSize, string> = { sm: "S", md: "M", lg: "L", xl: "XL" };
-
-function widgetsToDraftParam(widgets: PresetWidget[]) {
-  return widgets.map((w) => `${w.type}:${w.size}`).join(",");
-}
+const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
+  { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+  { id: "weather-default", type: "weather", x: 6, y: 0, w: 4, h: 3 },
+];
 
 function summarize(widgets: PresetWidget[]) {
-  return widgets.map((w) => `${WIDGET_LABELS[w.type]} (${SIZE_LABELS[w.size]})`).join(", ") || "no widgets";
+  return widgets.map((w) => WIDGET_LABELS[w.type]).join(", ") || "no widgets";
 }
 
 function hasAnyRule(v: WidgetVisibility | undefined): boolean {
@@ -99,89 +104,54 @@ function RulesEditor({
   );
 }
 
-/** A row of widget-type toggles where each active widget also gets a size selector. */
-function WidgetPicker({
+/** Rules editor for whichever widget is currently selected in the GridEditor
+ * next to it — renders nothing when no widget is selected, since there's no
+ * per-widget settings panel elsewhere in this editor. */
+function SelectedWidgetRules({
   widgets,
+  selectedId,
   onChange,
 }: {
   widgets: PresetWidget[];
+  selectedId: string | null;
   onChange: (widgets: PresetWidget[]) => void;
 }) {
-  const [rulesOpenFor, setRulesOpenFor] = useState<WidgetType | null>(null);
+  const selected = widgets.find((w) => w.id === selectedId);
+  if (!selected) return null;
 
-  function widgetOf(type: WidgetType): PresetWidget | undefined {
-    return widgets.find((w) => w.type === type);
-  }
-
-  function setSize(type: WidgetType, size: WidgetSize | null) {
-    if (size === null) {
-      onChange(widgets.filter((w) => w.type !== type));
-      if (rulesOpenFor === type) setRulesOpenFor(null);
-    } else if (widgets.some((w) => w.type === type)) {
-      onChange(widgets.map((w) => (w.type === type ? { ...w, size } : w)));
-    } else {
-      onChange([...widgets, { type, size }]);
-    }
-  }
-
-  function setVisibility(type: WidgetType, visibility: WidgetVisibility | undefined) {
-    onChange(widgets.map((w) => (w.type === type ? { ...w, visibility } : w)));
+  function setVisibility(visibility: WidgetVisibility | undefined) {
+    onChange(widgets.map((w) => (w.id === selectedId ? { ...w, visibility } : w)));
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {WIDGET_TYPES.map((type) => {
-        const widget = widgetOf(type);
-        const active = widget?.size ?? null;
-        return (
-          <div key={type}>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSize(type, active ? null : "md")}
-                className={`text-xs px-3 py-1.5 rounded-lg border w-32 text-left ${
-                  active
-                    ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
-                    : "border-[var(--surface-border)] text-[var(--muted)]"
-                }`}
-              >
-                {WIDGET_LABELS[type]}
-              </button>
-              {active && (
-                <div className="flex gap-1">
-                  {WIDGET_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => setSize(type, size)}
-                      className={`text-xs w-8 h-8 rounded-lg border ${
-                        active === size
-                          ? "bg-[var(--accent)] text-black border-[var(--accent)]"
-                          : "border-[var(--surface-border)] text-[var(--muted)]"
-                      }`}
-                    >
-                      {SIZE_LABELS[size]}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {active && (
-                <button
-                  onClick={() => setRulesOpenFor(rulesOpenFor === type ? null : type)}
-                  className={`text-xs px-2.5 py-1.5 rounded-lg border ${
-                    hasAnyRule(widget?.visibility)
-                      ? "border-[var(--accent)] text-[var(--accent)]"
-                      : "border-[var(--surface-border)] text-[var(--muted)]"
-                  }`}
-                >
-                  Rules{hasAnyRule(widget?.visibility) ? " •" : ""}
-                </button>
-              )}
-            </div>
-            {active && rulesOpenFor === type && (
-              <RulesEditor visibility={widget?.visibility} onChange={(v) => setVisibility(type, v)} />
-            )}
-          </div>
-        );
-      })}
+    <div className="border-t border-[var(--surface-border)] pt-3">
+      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">
+        Rules — {WIDGET_LABELS[selected.type]}
+        {hasAnyRule(selected.visibility) ? " •" : ""}
+      </div>
+      <RulesEditor visibility={selected.visibility} onChange={setVisibility} />
+    </div>
+  );
+}
+
+/** Icon tiles for adding a new widget type to the grid — click to drop it in an open spot. */
+function AddWidgetPalette({ widgets, onAdd }: { widgets: PresetWidget[]; onAdd: (widget: PresetWidget) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {WIDGET_TYPES.map((type) => (
+        <button
+          key={type}
+          onClick={() => {
+            const { w, h } = PREFERRED_SIZE[type] ?? { w: 4, h: 3 };
+            const { x, y } = findFreeSpot(widgets, w, h);
+            onAdd({ id: `${type}-${Date.now().toString(36)}`, type, x, y, w, h });
+          }}
+          className="flex flex-col items-center gap-1 w-20 py-2.5 rounded-lg border border-[var(--surface-border)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[var(--muted)]"
+        >
+          <WidgetIcon type={type} className="w-6 h-6" />
+          <span className="text-[10px]">{WIDGET_LABELS[type]}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -191,18 +161,22 @@ export default function ControlPage() {
   const [presets, setPresets] = useState<Preset[] | null>(null);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetWidgets, setNewPresetWidgets] = useState<PresetWidget[]>([
-    { type: "clock", size: "lg" },
-    { type: "weather", size: "md" },
+    { id: "clock-new", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+    { id: "weather-new", type: "weather", x: 6, y: 0, w: 4, h: 3 },
   ]);
-  const [favoriteTeam, setFavoriteTeam] = useState("");
-  const [teamSaved, setTeamSaved] = useState(false);
+  const [newPresetSelected, setNewPresetSelected] = useState<string | null>(null);
+  const [newPresetBackground, setNewPresetBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [creatingPreset, setCreatingPreset] = useState(false);
+  const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
-  const [commuteOrigin, setCommuteOrigin] = useState("");
-  const [commuteDest, setCommuteDest] = useState("");
-  const [commuteResolved, setCommuteResolved] = useState<{ originLabel: string; destLabel: string } | null>(null);
-  const [commuteSaving, setCommuteSaving] = useState(false);
-  const [commuteError, setCommuteError] = useState<string | null>(null);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
+  const [mapHome, setMapHome] = useState<MapPlace | null>(null);
+  const [mapDestination, setMapDestination] = useState<MapPlace | null>(null);
+  const [homeQuery, setHomeQuery] = useState("");
+  const [destQuery, setDestQuery] = useState("");
+  const [mapSaving, setMapSaving] = useState<"home" | "destination" | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [countdowns, setCountdowns] = useState<Countdown[] | null>(null);
   const [newCountdownLabel, setNewCountdownLabel] = useState("");
   const [newCountdownDate, setNewCountdownDate] = useState("");
@@ -221,9 +195,31 @@ export default function ControlPage() {
     refreshGoogleStatus();
   }
 
+  const refreshSpotifyStatus = useCallback(async () => {
+    const res = await fetch("/api/auth/spotify/status", { cache: "no-store" });
+    if (res.ok) setSpotifyStatus(await res.json());
+  }, []);
+
+  useEffect(() => {
+    refreshSpotifyStatus();
+  }, [refreshSpotifyStatus]);
+
+  async function disconnectSpotify() {
+    await fetch("/api/auth/spotify/status", { method: "DELETE" });
+    refreshSpotifyStatus();
+  }
+
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [draftWidgets, setDraftWidgets] = useState<PresetWidget[]>([]);
+  const [draftBackground, setDraftBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [draftSelected, setDraftSelected] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [deviceDraftWidgets, setDeviceDraftWidgets] = useState<PresetWidget[]>([]);
+  const [deviceDraftBackground, setDeviceDraftBackground] = useState<BackgroundConfig>(DEFAULT_BACKGROUND);
+  const [deviceDraftSelected, setDeviceDraftSelected] = useState<string | null>(null);
+  const [deviceSaving, setDeviceSaving] = useState(false);
 
   const refreshDevices = useCallback(async () => {
     const res = await fetch("/api/devices", { cache: "no-store" });
@@ -253,16 +249,21 @@ export default function ControlPage() {
     fetch("/api/settings", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        setFavoriteTeam(data.settings.favoriteTeam ?? "");
+        setFavoriteTeams(data.settings.favoriteTeams ?? []);
+        setMapHome(data.settings.mapHome ?? null);
+        setMapDestination(data.settings.mapDestination ?? null);
         setDisplayMode(data.settings.displayMode ?? "color");
-        if (data.settings.commuteOriginLabel && data.settings.commuteDestLabel) {
-          setCommuteResolved({
-            originLabel: data.settings.commuteOriginLabel,
-            destLabel: data.settings.commuteDestLabel,
-          });
-        }
       });
   }, []);
+
+  async function saveFavoriteTeams(teams: FavoriteTeam[]) {
+    setFavoriteTeams(teams);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favoriteTeams: teams }),
+    });
+  }
 
   async function saveDisplayMode(mode: "color" | "image") {
     setDisplayMode(mode);
@@ -273,37 +274,42 @@ export default function ControlPage() {
     });
   }
 
-  async function saveCommute() {
-    if (!commuteOrigin.trim() || !commuteDest.trim()) return;
-    setCommuteSaving(true);
-    setCommuteError(null);
-    const res = await fetch("/api/commute/resolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ originAddress: commuteOrigin.trim(), destAddress: commuteDest.trim() }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setCommuteError(data.error ?? "Could not save commute route");
-    } else {
-      setCommuteResolved({
-        originLabel: data.settings.commuteOriginLabel,
-        destLabel: data.settings.commuteDestLabel,
-      });
-      setCommuteOrigin("");
-      setCommuteDest("");
+  async function saveMapPlace(kind: "home" | "destination") {
+    const query = (kind === "home" ? homeQuery : destQuery).trim();
+    if (!query) return;
+    setMapSaving(kind);
+    setMapError(null);
+    const geo = await fetch(`/api/traffic/geocode?q=${encodeURIComponent(query)}`);
+    if (!geo.ok) {
+      const body = await geo.json().catch(() => ({}));
+      setMapError(body.error ?? "Lookup failed");
+      setMapSaving(null);
+      return;
     }
-    setCommuteSaving(false);
-  }
-
-  async function saveFavoriteTeam() {
+    const place: MapPlace = await geo.json();
     await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ favoriteTeam: favoriteTeam.trim() || null }),
+      body: JSON.stringify({ [kind === "home" ? "mapHome" : "mapDestination"]: place }),
     });
-    setTeamSaved(true);
-    setTimeout(() => setTeamSaved(false), 1500);
+    if (kind === "home") {
+      setMapHome(place);
+      setHomeQuery("");
+    } else {
+      setMapDestination(place);
+      setDestQuery("");
+    }
+    setMapSaving(null);
+  }
+
+  async function clearMapPlace(kind: "home" | "destination") {
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [kind === "home" ? "mapHome" : "mapDestination"]: null }),
+    });
+    if (kind === "home") setMapHome(null);
+    else setMapDestination(null);
   }
 
   async function patchDevice(id: string, body: Record<string, unknown>) {
@@ -315,18 +321,31 @@ export default function ControlPage() {
     refreshDevices();
   }
 
+  async function saveAsNewPreset(widgets: PresetWidget[], background: BackgroundConfig) {
+    const name = window.prompt("Name this preset:")?.trim();
+    if (!name) return;
+    await fetch("/api/presets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, widgets, background }),
+    });
+    await refreshPresets();
+  }
+
   async function createPreset() {
     if (!newPresetName.trim()) return;
     await fetch("/api/presets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newPresetName.trim(), widgets: newPresetWidgets }),
+      body: JSON.stringify({ name: newPresetName.trim(), widgets: newPresetWidgets, background: newPresetBackground }),
     });
     setNewPresetName("");
     setNewPresetWidgets([
-      { type: "clock", size: "lg" },
-      { type: "weather", size: "md" },
+      { id: "clock-new", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+      { id: "weather-new", type: "weather", x: 6, y: 0, w: 4, h: 3 },
     ]);
+    setNewPresetBackground(DEFAULT_BACKGROUND);
+    setCreatingPreset(false);
     refreshPresets();
   }
 
@@ -348,6 +367,8 @@ export default function ControlPage() {
   function startEditing(preset: Preset) {
     setEditingPresetId(preset.id);
     setDraftWidgets(preset.widgets);
+    setDraftBackground(preset.background);
+    setDraftSelected(null);
   }
 
   async function publishDraft() {
@@ -356,10 +377,57 @@ export default function ControlPage() {
     await fetch(`/api/presets/${editingPresetId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ widgets: draftWidgets }),
+      body: JSON.stringify({ widgets: draftWidgets, background: draftBackground }),
     });
     await refreshPresets();
     setPublishing(false);
+  }
+
+  function loadDeviceDraftFromPreset(presetId: string) {
+    const preset = presets?.find((p) => p.id === presetId);
+    if (!preset) return;
+    setDeviceDraftWidgets(preset.widgets);
+    setDeviceDraftBackground(preset.background);
+    setDeviceDraftSelected(null);
+  }
+
+  function startEditingDevice(d: Device) {
+    setEditingDeviceId((current) => (current === d.id ? null : d.id));
+    if (editingDeviceId === d.id) return;
+    if (d.layout) {
+      setDeviceDraftWidgets(d.layout.widgets);
+      setDeviceDraftBackground(d.layout.background);
+    } else {
+      const preset = presets?.find((p) => p.id === d.presetId);
+      setDeviceDraftWidgets(preset?.widgets ?? DEFAULT_DEVICE_WIDGETS);
+      setDeviceDraftBackground(preset?.background ?? DEFAULT_BACKGROUND);
+    }
+    setDeviceDraftSelected(null);
+  }
+
+  async function saveDeviceLayout(id: string) {
+    setDeviceSaving(true);
+    await fetch(`/api/devices/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout: { widgets: deviceDraftWidgets, background: deviceDraftBackground } }),
+    });
+    await refreshDevices();
+    setDeviceSaving(false);
+  }
+
+  async function revertDeviceToPreset(d: Device) {
+    setDeviceSaving(true);
+    await fetch(`/api/devices/${d.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layout: null }),
+    });
+    await refreshDevices();
+    const preset = presets?.find((p) => p.id === d.presetId);
+    setDeviceDraftWidgets(preset?.widgets ?? DEFAULT_DEVICE_WIDGETS);
+    setDeviceDraftBackground(preset?.background ?? DEFAULT_BACKGROUND);
+    setDeviceSaving(false);
   }
 
   const refreshCountdowns = useCallback(async () => {
@@ -413,16 +481,126 @@ export default function ControlPage() {
             No approved devices yet — approved screens will mirror live here.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-4">
-            {approvedDevices.map((d) => (
-              <div key={d.id} className="flex flex-col gap-1">
-                <ScreenPreview src={`/screen?preview=${d.id}`} width={260} />
-                <span className="text-xs text-[var(--muted)] text-center">{d.name ?? d.id.slice(0, 8)}</span>
-              </div>
-            ))}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-4">
+              {approvedDevices.map((d) => (
+                <div key={d.id} className="flex flex-col gap-1">
+                  <button
+                    onClick={() => startEditingDevice(d)}
+                    className={`block rounded-xl overflow-hidden ${
+                      editingDeviceId === d.id ? "ring-2 ring-[var(--accent)]" : "hover:ring-2 hover:ring-white/20"
+                    }`}
+                    title="Click to edit this screen"
+                  >
+                    <ScreenPreview src={`/screen?preview=${d.id}`} width={260} />
+                  </button>
+                  <span className="text-xs text-[var(--muted)] text-center">
+                    {d.name ?? d.id.slice(0, 8)}
+                    {d.layout && " · custom"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
           </div>
         )}
       </section>
+
+      {(() => {
+        const d = approvedDevices.find((dv) => dv.id === editingDeviceId);
+        return (
+          <Modal
+            open={!!d}
+            onClose={() => setEditingDeviceId(null)}
+            title={d ? `Editing ${d.name ?? d.id.slice(0, 8)}` : undefined}
+            footer={
+              d && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => saveDeviceLayout(d.id)}
+                    disabled={deviceSaving}
+                    className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                  >
+                    {deviceSaving ? "Saving…" : "Save to this screen"}
+                  </button>
+                  <button
+                    onClick={() => saveAsNewPreset(deviceDraftWidgets, deviceDraftBackground)}
+                    className="self-start text-xs px-4 py-2 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+                  >
+                    Save as new preset
+                  </button>
+                </div>
+              )
+            }
+          >
+            {d && (
+              <div className="flex flex-col gap-4 h-full">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs text-[var(--muted)] max-w-md">
+                    Editing this screen directly — this only affects this screen. Its assigned preset stays
+                    untouched, and other screens using that preset are unaffected.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) loadDeviceDraftFromPreset(e.target.value);
+                        e.target.value = "";
+                      }}
+                      className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
+                    >
+                      <option value="" disabled>
+                        Start from preset…
+                      </option>
+                      {presets?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    {d.layout && (
+                      <button
+                        onClick={() => revertDeviceToPreset(d)}
+                        disabled={deviceSaving}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40 disabled:opacity-50"
+                      >
+                        Revert to preset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+                  <div className="w-full lg:flex-1 lg:h-full">
+                    <GridEditor
+                      widgets={deviceDraftWidgets}
+                      onChange={setDeviceDraftWidgets}
+                      selectedId={deviceDraftSelected}
+                      onSelect={setDeviceDraftSelected}
+                      background={deviceDraftBackground}
+                    />
+                  </div>
+                  <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
+                    <AddWidgetPalette
+                      widgets={deviceDraftWidgets}
+                      onAdd={(w) => setDeviceDraftWidgets([...deviceDraftWidgets, w])}
+                    />
+                    <div className="border-t border-[var(--surface-border)] pt-3">
+                      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                      <BackgroundPicker value={deviceDraftBackground} onChange={setDeviceDraftBackground} />
+                    </div>
+                    <SelectedWidgetRules
+                      widgets={deviceDraftWidgets}
+                      selectedId={deviceDraftSelected}
+                      onChange={setDeviceDraftWidgets}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
@@ -552,6 +730,35 @@ export default function ControlPage() {
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
+          Spotify
+        </h2>
+        {spotifyStatus?.connected ? (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-[var(--muted)]">Connected</span>
+            <button
+              onClick={disconnectSpotify}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30"
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <a
+            href="/api/auth/spotify/start"
+            className="inline-block text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            Sign in with Spotify
+          </a>
+        )}
+        <p className="text-xs text-[var(--muted)] mt-2">
+          Powers the always-on now-playing overlay on every screen, plus the optional Lyrics widget. Needs whatever
+          account is actively playing to have playback visible to the Spotify app (not in a private/incognito
+          session).
+        </p>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Settings
         </h2>
         <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
@@ -578,58 +785,58 @@ export default function ControlPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            value={favoriteTeam}
-            onChange={(e) => setFavoriteTeam(e.target.value)}
-            placeholder="Favorite team (e.g. Lakers)"
-            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
-          />
-          <button
-            onClick={saveFavoriteTeam}
-            className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
-          >
-            {teamSaved ? "Saved" : "Save"}
-          </button>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-[var(--muted)]">
+            Favorite teams — the Sports widget shows up to 4 upcoming games across all of these. This free sports
+            API only does single best-guess matching, so type the team&apos;s full name for reliable results.
+          </span>
+          <TeamSearchSelect value={favoriteTeams} onChange={saveFavoriteTeams} />
         </div>
-      </section>
 
-      <section className="glass-panel p-6">
-        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
-          Commute (TomTom)
-        </h2>
-        {commuteResolved && (
-          <p className="text-sm text-[var(--muted)] mb-3">
-            Current route: {commuteResolved.originLabel} → {commuteResolved.destLabel}
-          </p>
-        )}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <input
-              value={commuteOrigin}
-              onChange={(e) => setCommuteOrigin(e.target.value)}
-              placeholder="From address (e.g. home)"
-              className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
-            />
-            <input
-              value={commuteDest}
-              onChange={(e) => setCommuteDest(e.target.value)}
-              placeholder="To address (e.g. work)"
-              className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
-            />
-            <button
-              onClick={saveCommute}
-              disabled={commuteSaving}
-              className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-50"
-            >
-              {commuteSaving ? "Saving…" : "Save"}
-            </button>
+        <div className="mt-5 pt-5 border-t border-[var(--surface-border)] flex flex-col gap-3">
+          <div className="text-xs text-[var(--muted)]">
+            Traffic widget — home and destination, used for the live drive-time estimate. Requires{" "}
+            <code className="text-[10px]">TOMTOM_API_KEY</code> to be set in the environment.
           </div>
-          {commuteError && <p className="text-xs text-red-400">{commuteError}</p>}
-          <p className="text-xs text-[var(--muted)]">
-            Needs TOMTOM_API_KEY set — addresses are geocoded once and stored, the widget itself only queries live
-            traffic time.
-          </p>
+
+          {(["home", "destination"] as const).map((kind) => {
+            const place = kind === "home" ? mapHome : mapDestination;
+            const query = kind === "home" ? homeQuery : destQuery;
+            const setQuery = kind === "home" ? setHomeQuery : setDestQuery;
+            return (
+              <div key={kind} className="flex items-center gap-2">
+                <span className="text-xs text-[var(--muted)] w-20 capitalize shrink-0">{kind}</span>
+                {place ? (
+                  <>
+                    <span className="text-sm flex-1 truncate">{place.label}</span>
+                    <button
+                      onClick={() => clearMapPlace(kind)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-red-300 hover:border-red-400/40"
+                    >
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder={kind === "home" ? "e.g. 123 Main St, Springfield" : "e.g. Work address"}
+                      className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)] flex-1"
+                    />
+                    <button
+                      onClick={() => saveMapPlace(kind)}
+                      disabled={mapSaving === kind}
+                      className="text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-50"
+                    >
+                      {mapSaving === kind ? "Looking up…" : "Set"}
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {mapError && <p className="text-xs text-red-300">{mapError}</p>}
         </div>
       </section>
 
@@ -730,45 +937,117 @@ export default function ControlPage() {
                 </div>
               </div>
 
-              {editingPresetId === p.id && (
-                <div className="mt-4 flex flex-col md:flex-row gap-4 items-start bg-black/20 rounded-xl p-4">
-                  <ScreenPreview src={`/screen?draft=${widgetsToDraftParam(draftWidgets)}`} width={320} />
-                  <div className="flex-1 flex flex-col gap-3">
-                    <p className="text-xs text-[var(--muted)]">
-                      This preview is a live render — the exact same code the screens run, just not published
-                      yet. Toggle widgets and sizes, watch it update, then publish when it looks right.
-                    </p>
-                    <WidgetPicker widgets={draftWidgets} onChange={setDraftWidgets} />
-                    <button
-                      onClick={publishDraft}
-                      disabled={publishing}
-                      className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                    >
-                      {publishing ? "Publishing…" : "Publish to live devices"}
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-[var(--surface-border)] pt-4">
-          <input
-            value={newPresetName}
-            onChange={(e) => setNewPresetName(e.target.value)}
-            placeholder="Preset name (e.g. Kitchen)"
-            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-          <WidgetPicker widgets={newPresetWidgets} onChange={setNewPresetWidgets} />
+        <div className="flex flex-col gap-4 border-t border-[var(--surface-border)] pt-4">
+          <button
+            onClick={() => setCreatingPreset(true)}
+            className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
+          >
+            + New preset
+          </button>
+        </div>
+      </section>
+
+      {presets?.map((p) => (
+        <Modal
+          key={p.id}
+          open={editingPresetId === p.id}
+          onClose={() => setEditingPresetId(null)}
+          title={`Editing ${p.name}`}
+          footer={
+            <div className="flex items-center gap-3">
+              <button
+                onClick={publishDraft}
+                disabled={publishing}
+                className="self-start text-xs px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+              >
+                {publishing ? "Publishing…" : "Publish to live devices"}
+              </button>
+              <button
+                onClick={() => saveAsNewPreset(draftWidgets, draftBackground)}
+                className="self-start text-xs px-4 py-2 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+              >
+                Save as new preset
+              </button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-4 h-full">
+            <p className="text-xs text-[var(--muted)]">
+              Drag widgets to move them, drag the bottom-right corner to resize, click an icon below to add one.
+              Everything here is live — real data, real background — nothing is published until you hit publish.
+            </p>
+            <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+              <div className="w-full lg:flex-1 lg:h-full">
+                <GridEditor
+                  widgets={draftWidgets}
+                  onChange={setDraftWidgets}
+                  selectedId={draftSelected}
+                  onSelect={setDraftSelected}
+                  background={draftBackground}
+                />
+              </div>
+              <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
+                <AddWidgetPalette widgets={draftWidgets} onAdd={(w) => setDraftWidgets([...draftWidgets, w])} />
+                <div className="border-t border-[var(--surface-border)] pt-3">
+                  <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                  <BackgroundPicker value={draftBackground} onChange={setDraftBackground} />
+                </div>
+                <SelectedWidgetRules widgets={draftWidgets} selectedId={draftSelected} onChange={setDraftWidgets} />
+              </div>
+            </div>
+          </div>
+        </Modal>
+      ))}
+
+      <Modal
+        open={creatingPreset}
+        onClose={() => setCreatingPreset(false)}
+        title="New preset"
+        footer={
           <button
             onClick={createPreset}
             className="self-start text-xs px-4 py-2 rounded-lg bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30"
           >
             Create preset
           </button>
+        }
+      >
+        <div className="flex flex-col gap-4 h-full">
+          <input
+            value={newPresetName}
+            onChange={(e) => setNewPresetName(e.target.value)}
+            placeholder="Preset name (e.g. Kitchen)"
+            className="bg-transparent border border-[var(--surface-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+          />
+          <div className="flex-1 flex flex-col lg:flex-row gap-6 items-start min-h-0">
+            <div className="w-full lg:flex-1 lg:h-full">
+              <GridEditor
+                widgets={newPresetWidgets}
+                onChange={setNewPresetWidgets}
+                selectedId={newPresetSelected}
+                onSelect={setNewPresetSelected}
+                background={newPresetBackground}
+              />
+            </div>
+            <div className="w-full lg:w-80 shrink-0 flex flex-col gap-4">
+              <AddWidgetPalette widgets={newPresetWidgets} onAdd={(w) => setNewPresetWidgets([...newPresetWidgets, w])} />
+              <div className="border-t border-[var(--surface-border)] pt-3">
+                <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-2">Background</div>
+                <BackgroundPicker value={newPresetBackground} onChange={setNewPresetBackground} />
+              </div>
+              <SelectedWidgetRules
+                widgets={newPresetWidgets}
+                selectedId={newPresetSelected}
+                onChange={setNewPresetWidgets}
+              />
+            </div>
+          </div>
         </div>
-      </section>
+      </Modal>
     </main>
   );
 }

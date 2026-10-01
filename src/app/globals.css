@@ -144,3 +144,42 @@ body {
 .tile-locations {
   padding: 0;
 }
+
+.bg-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(6vmax);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  animation-name: bg-blob-float;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@keyframes bg-blob-float {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(6vmax, -4vmax) scale(1.08);
+  }
+  50% {
+    transform: translate(-3vmax, 5vmax) scale(0.96);
+  }
+  75% {
+    transform: translate(-6vmax, -3vmax) scale(1.05);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes bg-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

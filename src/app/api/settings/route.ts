@@ -1,5 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings, updateSettings, type DisplayMode } from "@/lib/settings";
+import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode } from "@/lib/settings";
+
+function parseTeamsPatch(raw: unknown): FavoriteTeam[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const teams = raw.filter(
+    (t): t is FavoriteTeam =>
+      t && typeof t === "object" && typeof t.id === "string" && typeof t.name === "string"
+  );
+  return teams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    badge: typeof t.badge === "string" ? t.badge : null,
+    sport: typeof t.sport === "string" ? t.sport : null,
+    league: typeof t.league === "string" ? t.league : null,
+  }));
+}
+
+function parsePlacePatch(raw: unknown): MapPlace | null | undefined {
+  if (raw === null) return null;
+  if (raw && typeof raw === "object") {
+    const label = (raw as { label?: unknown }).label;
+    const lat = (raw as { lat?: unknown }).lat;
+    const lon = (raw as { lon?: unknown }).lon;
+    if (typeof label === "string" && typeof lat === "number" && typeof lon === "number") {
+      return { label, lat, lon };
+    }
+  }
+  return undefined;
+}
 
 export async function GET() {
   const settings = await getSettings();
@@ -8,37 +36,28 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const patch: Partial<{
-    favoriteTeam: string | null;
-    commuteOriginLabel: string | null;
-    commuteOriginLat: number | null;
-    commuteOriginLon: number | null;
-    commuteDestLabel: string | null;
-    commuteDestLat: number | null;
-    commuteDestLon: number | null;
-    displayMode: DisplayMode;
-  }> = {};
+  const patch: {
+    favoriteTeam?: string | null;
+    favoriteTeams?: FavoriteTeam[];
+    mapHome?: MapPlace | null;
+    mapDestination?: MapPlace | null;
+    displayMode?: DisplayMode;
+  } = {};
 
   if (body.favoriteTeam === null || typeof body.favoriteTeam === "string") {
     patch.favoriteTeam = body.favoriteTeam;
   }
-  if (body.commuteOriginLabel === null || typeof body.commuteOriginLabel === "string") {
-    patch.commuteOriginLabel = body.commuteOriginLabel;
+  if ("favoriteTeams" in body) {
+    const teams = parseTeamsPatch(body.favoriteTeams);
+    if (teams !== undefined) patch.favoriteTeams = teams;
   }
-  if (body.commuteOriginLat === null || typeof body.commuteOriginLat === "number") {
-    patch.commuteOriginLat = body.commuteOriginLat;
+  if ("mapHome" in body) {
+    const place = parsePlacePatch(body.mapHome);
+    if (place !== undefined) patch.mapHome = place;
   }
-  if (body.commuteOriginLon === null || typeof body.commuteOriginLon === "number") {
-    patch.commuteOriginLon = body.commuteOriginLon;
-  }
-  if (body.commuteDestLabel === null || typeof body.commuteDestLabel === "string") {
-    patch.commuteDestLabel = body.commuteDestLabel;
-  }
-  if (body.commuteDestLat === null || typeof body.commuteDestLat === "number") {
-    patch.commuteDestLat = body.commuteDestLat;
-  }
-  if (body.commuteDestLon === null || typeof body.commuteDestLon === "number") {
-    patch.commuteDestLon = body.commuteDestLon;
+  if ("mapDestination" in body) {
+    const place = parsePlacePatch(body.mapDestination);
+    if (place !== undefined) patch.mapDestination = place;
   }
   if (body.displayMode === "color" || body.displayMode === "image") {
     patch.displayMode = body.displayMode;

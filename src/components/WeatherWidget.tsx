@@ -5,6 +5,7 @@ import { weatherLabel } from "@/lib/weatherCodes";
 import { weatherGradient, WeatherIcon, WeatherEffect } from "@/lib/weatherVisuals";
 import { useDisplayMode } from "@/lib/useDisplayMode";
 import type { WidgetSize } from "@/lib/presets";
+import { useFadeSignal } from "@/lib/useFadeSignal";
 
 interface HourForecast {
   time: string;
@@ -74,9 +75,17 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
     };
   }, []);
 
+  const visible = useFadeSignal(weather ? `${weather.tempF}-${weather.weatherCode}-${weather.hourly[0]?.time}` : null);
+
   if (!weather) {
     return <div className="text-sm text-[var(--muted)]">Loading weather…</div>;
   }
+
+  const wrap = (node: React.ReactNode) => (
+    <div className={`w-full h-full transition-opacity duration-700 ease-out ${visible ? "opacity-100" : "opacity-0"}`}>
+      {node}
+    </div>
+  );
 
   const [from, to] = weatherGradient(weather.weatherCode, weather.isDay);
   const cardStyle = { background: `linear-gradient(155deg, ${from}, ${to})` };
@@ -84,7 +93,7 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
 
   // sm: gradient tile, just the number + tiny icon. Nothing else fits.
   if (size === "sm") {
-    return (
+    return wrap(
       <div
         className={`relative flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] overflow-hidden ${textOnGradient}`}
         style={cardStyle}
@@ -98,7 +107,7 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
 
   // md: temp + condition + hi/lo, the default dense reading.
   if (size === "md") {
-    return (
+    return wrap(
       <div
         className={`relative flex flex-col items-center justify-center gap-1 w-full h-full rounded-[inherit] px-3 overflow-hidden ${textOnGradient}`}
         style={cardStyle}
@@ -116,7 +125,7 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
 
   // lg / xl: full Apple-Weather-style card — big glyph, feels-like, a
   // horizontally scrolling hourly strip, and (xl only) wind/UV/humidity detail tiles.
-  return (
+  return wrap(
     <div
       className={`relative flex flex-col w-full h-full rounded-[inherit] p-4 gap-3 overflow-hidden ${textOnGradient}`}
       style={cardStyle}

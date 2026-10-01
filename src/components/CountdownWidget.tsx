@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
+import { useReportContent } from "@/lib/temporaryContent";
 
 interface Countdown {
   id: string;
@@ -40,12 +41,13 @@ export function CountdownWidget({ size = "md" }: { size?: WidgetSize }) {
     };
   }, []);
 
+  const upcoming = countdowns?.filter((c) => daysLeft(c.targetDate) >= 0) ?? [];
+  useReportContent(upcoming.length > 0);
+
   if (!countdowns) return <div className="text-sm text-[var(--muted)]">Loading countdowns…</div>;
   if (countdowns.length === 0) {
     return <div className="text-sm text-[var(--muted)]">No countdowns set — add one in Control</div>;
   }
-
-  const upcoming = countdowns.filter((c) => daysLeft(c.targetDate) >= 0);
   const shown = size === "sm" ? upcoming.slice(0, 1) : size === "md" ? upcoming.slice(0, 2) : upcoming.slice(0, 4);
 
   return (

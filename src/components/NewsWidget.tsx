@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useDisplayMode } from "@/lib/useDisplayMode";
+import { useFadeSignal } from "@/lib/useFadeSignal";
 
 interface NewsItem {
   title: string;
@@ -40,16 +41,19 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     return () => clearInterval(id);
   }, [items]);
 
+  const visible = useFadeSignal(items?.[index]?.title);
+
   if (!items?.length) {
     return <div className="text-sm text-[var(--muted)]">Loading news…</div>;
   }
 
   const current = items[index];
   const showImages = displayMode === "image";
+  const fade = `transition-opacity duration-500 ease-out ${visible ? "opacity-100" : "opacity-0"}`;
 
   // sm: a single rotating headline, no label — too tight for anything else.
   if (size === "sm") {
-    return <div className="text-xs text-center line-clamp-3">{current.title}</div>;
+    return <div className={`text-xs text-center line-clamp-3 ${fade}`}>{current.title}</div>;
   }
 
   // md: image-mode gets a compact photo card; color mode keeps the plain
@@ -57,7 +61,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
   if (size === "md") {
     if (showImages && current.imageUrl) {
       return (
-        <div className="relative w-full h-full rounded-[inherit] overflow-hidden">
+        <div className={`relative w-full h-full rounded-[inherit] overflow-hidden ${fade}`}>
           {/* eslint-disable-next-line @next/next/no-img-element -- external, frequently-rotating news photo, not worth Next/Image's pipeline */}
           <img src={current.imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
@@ -71,7 +75,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     return (
       <div className="max-w-xs text-center">
         <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-1">News</div>
-        <div className="text-sm">{current.title}</div>
+        <div className={`text-sm ${fade}`}>{current.title}</div>
       </div>
     );
   }

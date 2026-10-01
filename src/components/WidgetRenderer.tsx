@@ -5,6 +5,7 @@ import { NewsWidget } from "@/components/NewsWidget";
 import { SportsWidget } from "@/components/SportsWidget";
 import { ClockWidget } from "@/components/ClockWidget";
 import { CalendarWidget } from "@/components/CalendarWidget";
+import { TrafficWidget } from "@/components/TrafficWidget";
 import { LocationsWidget } from "@/components/LocationsWidget";
 import { GmailWidget } from "@/components/GmailWidget";
 import { DriveWidget } from "@/components/DriveWidget";
@@ -15,7 +16,8 @@ import { AirQualityWidget } from "@/components/AirQualityWidget";
 import { HistoryWidget } from "@/components/HistoryWidget";
 import { StocksWidget } from "@/components/StocksWidget";
 import { RadarWidget } from "@/components/RadarWidget";
-import { CommuteWidget } from "@/components/CommuteWidget";
+import { NotificationsWidget } from "@/components/NotificationsWidget";
+import { LyricsWidget } from "@/components/LyricsWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
   switch (type) {
@@ -31,6 +33,8 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <SportsWidget size={size} />;
     case "calendar":
       return <CalendarWidget size={size} />;
+    case "traffic":
+      return <TrafficWidget size={size} />;
     case "locations":
       return <LocationsWidget size={size} />;
     case "gmail":
@@ -39,7 +43,7 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <DriveWidget size={size} />;
     case "photos":
       return <PhotosWidget size={size} />;
-    case "traffic":
+    case "trafficcamera":
       return <TrafficCameraWidget size={size} />;
     case "countdown":
       return <CountdownWidget size={size} />;
@@ -51,8 +55,10 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <StocksWidget size={size} />;
     case "radar":
       return <RadarWidget size={size} />;
-    case "commute":
-      return <CommuteWidget size={size} />;
+    case "notifications":
+      return <NotificationsWidget size={size} />;
+    case "lyrics":
+      return <LyricsWidget size={size} />;
     default:
       return null;
   }

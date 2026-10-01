@@ -5,33 +5,40 @@ import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
 import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
+import { ScreenBackground } from "@/components/ScreenBackground";
 import { LiveGameBanner } from "@/components/LiveGameBanner";
-import type { Preset, PresetWidget, WidgetSize, WidgetType } from "@/lib/presets";
-import { WIDGET_TYPES, WIDGET_SIZES, WIDGET_LABELS, SIZE_SPANS } from "@/lib/presets";
+import { SpotifyIsland } from "@/components/SpotifyIsland";
+import type { Preset, PresetWidget } from "@/lib/presets";
+import type { DeviceLayout } from "@/lib/registry";
+import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
+import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
+import { TemporaryContentProvider } from "@/lib/temporaryContent";
 import { isWidgetVisible, visibilityNeedsWeather, visibilityNeedsCalendar, type VisibilityContext } from "@/lib/visibility";
 
 const DEFAULT_WIDGETS: PresetWidget[] = [
-  { type: "clock", size: "lg" },
-  { type: "weather", size: "md" },
+  { id: "clock-default", type: "clock", x: 0, y: 0, w: 6, h: 4 },
+  { id: "weather-default", type: "weather", x: 6, y: 0, w: 4, h: 3 },
 ];
 
-function parseDraft(raw: string): PresetWidget[] {
-  return raw
-    .split(",")
-    .map((entry) => {
-      const [type, size] = entry.split(":");
-      if (!(WIDGET_TYPES as readonly string[]).includes(type)) return null;
-      const validSize = (WIDGET_SIZES as readonly string[]).includes(size) ? (size as WidgetSize) : "md";
-      return { type, size: validSize } as PresetWidget;
-    })
-    .filter((w): w is PresetWidget => w !== null);
+/** The control page's live draft editor sends its in-progress layout as base64 JSON. */
+function parseDraft(raw: string): { widgets: PresetWidget[]; background: BackgroundConfig } | null {
+  try {
+    const json = JSON.parse(decodeURIComponent(escape(atob(raw))));
+    if (!Array.isArray(json.widgets)) return null;
+    return { widgets: json.widgets, background: json.background ?? DEFAULT_BACKGROUND };
+  } catch {
+    return null;
+  }
 }
 
 /** Polls a device's own record by id — used for the controller's live mirror. */
 function usePreviewDevice(deviceId: string | null) {
-  const [device, setDevice] = useState<{ status: string; name: string | null; presetId: string | null } | null>(
-    null
-  );
+  const [device, setDevice] = useState<{
+    status: string;
+    name: string | null;
+    presetId: string | null;
+    layout: DeviceLayout | null;
+  } | null>(null);
   useEffect(() => {
     if (!deviceId) return;
     let cancelled = false;
@@ -88,15 +95,10 @@ function usePreset(presetId: string | null | undefined) {
   return preset;
 }
 
-/** Every tile gets the same small orb + name badge in its corner — this
- * used to be a single "device name" badge fixed to the whole screen, but a
- * per-widget label is more useful (kiosk viewers care what each tile is,
- * not which physical screen they're looking at). */
-function WidgetBadge({ type }: { type: WidgetType }) {
+function StatusBadge({ orbState }: { orbState: "idle" | "active" | "alert" }) {
   return (
-    <div className="absolute bottom-3 right-3 flex items-center gap-1.5 pointer-events-none">
-      <LivingOrb state="idle" size={10} />
-      <span className="text-[9px] text-[var(--muted)] uppercase tracking-widest">{WIDGET_LABELS[type]}</span>
+    <div className="fixed top-4 left-4 z-10 pointer-events-none">
+      <LivingOrb state={orbState} size={16} />
     </div>
   );
 }
@@ -163,31 +165,56 @@ function useVisibilityContext(widgets: PresetWidget[]): VisibilityContext {
   return { now, weatherCode, todaysEventTitles };
 }
 
-function ScreenGrid({ widgets }: { widgets: PresetWidget[] }) {
+/** A temporary widget stays mounted (so it keeps polling) but its tile chrome
+ *  only renders once the widget reports it actually has something to show. */
+function TemporaryTile({ children }: { children: React.ReactNode }) {
+  const [hasContent, setHasContent] = useState(true);
+  return (
+    <div style={{ display: hasContent ? "block" : "none", width: "100%", height: "100%" }}>
+      <TemporaryContentProvider onContentChange={setHasContent}>{children}</TemporaryContentProvider>
+    </div>
+  );
+}
+
+function ScreenGrid({
+  widgets,
+  background,
+  name,
+  orbState,
+}: {
+  widgets: PresetWidget[];
+  background: BackgroundConfig;
+  name: string;
+  orbState: "idle" | "active" | "alert";
+}) {
   const visibilityCtx = useVisibilityContext(widgets);
   const visibleWidgets = widgets.filter((w) => isWidgetVisible(w.visibility, visibilityCtx));
 
   return (
     <div className="h-screen w-screen relative">
+      <ScreenBackground config={background} />
+      <StatusBadge orbState={orbState} />
       <LiveGameBanner />
-      <div
-        className="h-full w-full p-3 grid gap-3"
-        style={{
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gridTemplateRows: "repeat(3, 1fr)",
-          gridAutoFlow: "row dense",
-        }}
-      >
-        {visibleWidgets.map((w, i) => {
-          const span = SIZE_SPANS[w.size];
+      <SpotifyIsland />
+      <div className="h-full w-full p-[0.9375rem] relative">
+        {visibleWidgets.map((w) => {
+          const content = (
+            <div className={`tile tile-${w.type} w-full h-full`}>
+              <WidgetRenderer type={w.type} size={sizeForFootprint(w.w, w.h)} />
+            </div>
+          );
           return (
             <div
-              key={`${w.type}-${i}`}
-              className={`tile tile-${w.type} relative`}
-              style={{ gridColumn: `span ${span.col}`, gridRow: `span ${span.row}` }}
+              key={w.id}
+              className="absolute"
+              style={{
+                left: `calc(${(w.x / GRID_COLS) * 100}% + 0.1875rem)`,
+                top: `calc(${(w.y / GRID_ROWS) * 100}% + 0.1875rem)`,
+                width: `calc(${(w.w / GRID_COLS) * 100}% - 0.375rem)`,
+                height: `calc(${(w.h / GRID_ROWS) * 100}% - 0.375rem)`,
+              }}
             >
-              <WidgetRenderer type={w.type} size={w.size} />
-              <WidgetBadge type={w.type} />
+              {w.temporary ? <TemporaryTile>{content}</TemporaryTile> : content}
             </div>
           );
         })}
@@ -219,25 +246,29 @@ function ScreenPageInner() {
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");
 
-  const draftWidgets = draftParam !== null ? parseDraft(draftParam) : null;
+  const draft = draftParam !== null ? parseDraft(draftParam) : null;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
 
-  const isDraft = draftWidgets !== null;
+  const isDraft = draft !== null;
   const isPreview = !isDraft && previewId !== null;
 
   const device = isPreview ? previewDevice : ownDevice.device;
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
   const approved = isDraft || device?.status === "approved";
-  const preset = usePreset(isDraft ? null : device?.presetId ?? null);
-  const widgets = isDraft ? draftWidgets! : (preset?.widgets ?? DEFAULT_WIDGETS);
+  const usesPreset = !isDraft && !device?.layout;
+  const preset = usePreset(usesPreset ? device?.presetId ?? null : null);
+  const widgets = isDraft ? draft!.widgets : (device?.layout?.widgets ?? preset?.widgets ?? DEFAULT_WIDGETS);
+  const background = isDraft
+    ? draft!.background
+    : (device?.layout?.background ?? preset?.background ?? DEFAULT_BACKGROUND);
 
   if (!approved) {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  return <ScreenGrid widgets={widgets} />;
+  return <ScreenGrid widgets={widgets} background={background} name={device?.name ?? "Home Base"} orbState="idle" />;
 }
 
 export default function ScreenPage() {
