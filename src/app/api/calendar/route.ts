@@ -10,8 +10,17 @@ interface CalendarEvent {
   colorId: string | null;
 }
 
+async function safeGoogleToken(): Promise<string | null> {
+  try {
+    return await getValidAccessToken();
+  } catch {
+    // Refresh token expired/revoked — treat as disconnected instead of 500ing the whole calendar.
+    return null;
+  }
+}
+
 async function fetchGoogleEvents(): Promise<CalendarEvent[]> {
-  const token = await getValidAccessToken();
+  const token = await safeGoogleToken();
   if (!token) return [];
 
   const now = new Date();
@@ -57,7 +66,7 @@ export async function GET() {
   const [google, icloud] = await Promise.all([fetchGoogleEvents(), fetchICloudEvents()]);
   const events = [...google, ...icloud].sort((a, b) => a.start.localeCompare(b.start));
 
-  const googleConnected = (await getValidAccessToken()) !== null;
+  const googleConnected = (await safeGoogleToken()) !== null;
   const icloudConnected = Boolean(process.env.ICLOUD_EMAIL && process.env.ICLOUD_APP_PASSWORD);
 
   return NextResponse.json({
