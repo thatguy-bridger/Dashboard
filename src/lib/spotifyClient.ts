@@ -24,26 +24,41 @@ export interface LyricLine {
   text: string;
 }
 
+// One shared poller per page — the island and the lyrics widget both read
+// from it instead of each hitting the API (Spotify rate-limits hard).
+const POLL_MS = 10_000;
+let latest: NowPlaying | null = null;
+const listeners = new Set<(d: NowPlaying) => void>();
+let timer: ReturnType<typeof setInterval> | null = null;
+
+async function pollOnce() {
+  if (typeof document !== "undefined" && document.hidden) return;
+  try {
+    const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
+    if (!res.ok) return;
+    latest = await res.json();
+    listeners.forEach((fn) => fn(latest!));
+  } catch {
+    // keep last known value on a transient failure
+  }
+}
+
 export function useNowPlaying() {
-  const [data, setData] = useState<NowPlaying | null>(null);
+  const [data, setData] = useState<NowPlaying | null>(latest);
 
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (!cancelled) setData(json);
-      } catch {
-        // keep last known value on a transient failure
-      }
+    listeners.add(setData);
+    if (latest) setData(latest);
+    if (!timer) {
+      pollOnce();
+      timer = setInterval(pollOnce, POLL_MS);
     }
-    load();
-    const id = setInterval(load, 5000);
     return () => {
-      cancelled = true;
-      clearInterval(id);
+      listeners.delete(setData);
+      if (listeners.size === 0 && timer) {
+        clearInterval(timer);
+        timer = null;
+      }
     };
   }, []);
 

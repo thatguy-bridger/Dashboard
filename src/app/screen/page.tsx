@@ -51,7 +51,7 @@ function usePreviewDevice(deviceId: string | null) {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 3 * 1000);
+    const id = setInterval(load, 15 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -85,7 +85,7 @@ function usePreset(presetId: string | null | undefined) {
     }
 
     load();
-    const id = setInterval(load, 5 * 1000);
+    const id = setInterval(load, 20 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

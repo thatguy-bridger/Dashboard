@@ -21,7 +21,7 @@ export function useDisplayMode(): DisplayMode {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 30 * 1000);
+    const id = setInterval(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

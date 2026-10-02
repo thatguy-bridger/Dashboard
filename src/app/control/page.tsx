@@ -241,7 +241,7 @@ export default function ControlPage() {
     const id = setInterval(() => {
       refreshDevices();
       refreshPresets();
-    }, 5 * 1000);
+    }, 15 * 1000);
     return () => clearInterval(id);
   }, [refreshDevices, refreshPresets]);
 
