@@ -278,7 +278,7 @@ function ScreenPageInner() {
   }
 
   if (!isDraft && !isPreview && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
-  if (!isDraft && !isPreview && layoutMode === "standby") return <StandBy />;
+  if (!isDraft && !isPreview && layoutMode === "standby") return <StandBy draft={searchParams.get("sbdraft")} />;
 
   return <ScreenGrid widgets={widgets} background={background} />;
 }

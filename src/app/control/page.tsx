@@ -18,6 +18,8 @@ import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { StandByEditor } from "@/components/StandByEditor";
+import { defaultStandByLayout, type StandByItem } from "@/lib/standby";
 import { Modal } from "@/components/Modal";
 import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { findFreeSpot } from "@/lib/grid";
@@ -170,6 +172,8 @@ export default function ControlPage() {
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
   const [layoutMode, setLayoutMode] = useState<"standby" | "grid">("standby");
+  const [standbyLayout, setStandbyLayout] = useState<StandByItem[]>(defaultStandByLayout());
+  const [standbyEditorOpen, setStandbyEditorOpen] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
   const [mapHome, setMapHome] = useState<MapPlace | null>(null);
@@ -255,6 +259,7 @@ export default function ControlPage() {
         setMapDestination(data.settings.mapDestination ?? null);
         setDisplayMode(data.settings.displayMode ?? "color");
         setLayoutMode(data.settings.layoutMode ?? "standby");
+        if (data.settings.standbyLayout) setStandbyLayout(data.settings.standbyLayout);
       });
   }, []);
 
@@ -282,6 +287,15 @@ export default function ControlPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ layoutMode: mode }),
+    });
+  }
+
+  async function saveStandbyLayout(items: StandByItem[]) {
+    setStandbyLayout(items);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ standbyLayout: items }),
     });
   }
 
@@ -794,7 +808,21 @@ export default function ControlPage() {
                 {mode === "standby" ? "StandBy" : "Tiles"}
               </button>
             ))}
+            <button
+              onClick={() => setStandbyEditorOpen(true)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Edit StandBy…
+            </button>
           </div>
+          {standbyEditorOpen && (
+            <StandByEditor
+              open
+              onClose={() => setStandbyEditorOpen(false)}
+              initial={standbyLayout}
+              onSave={saveStandbyLayout}
+            />
+          )}
         </div>
         <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
           <div>

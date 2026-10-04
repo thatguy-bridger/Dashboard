@@ -7,6 +7,7 @@ import { useNowPlaying, useEstimatedProgress, useLyrics, type LyricLine } from "
 
 function LyricsPanel({ lines, progressMs }: { lines: LyricLine[]; progressMs: number }) {
   const activeRef = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
 
   let activeIndex = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -15,12 +16,16 @@ function LyricsPanel({ lines, progressMs }: { lines: LyricLine[]; progressMs: nu
   }
 
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    // Scroll only our own container: scrollIntoView also scrolls every ancestor,
+    // including the parent page when this runs inside a Control preview iframe.
+    const sc = scroller.current, el = activeRef.current;
+    if (!sc || !el) return;
+    sc.scrollTo({ top: el.offsetTop - sc.clientHeight / 2 + el.clientHeight / 2, behavior: "smooth" });
   }, [activeIndex]);
 
   return (
     <div className="w-full flex-1 min-h-0 overflow-hidden relative">
-      <div className="absolute inset-0 overflow-y-auto scrollbar-none flex flex-col items-center gap-4 px-4 py-[45%] [mask-image:linear-gradient(to_bottom,transparent,black_20%,black_80%,transparent)]">
+      <div ref={scroller} className="absolute inset-0 overflow-y-auto scrollbar-none flex flex-col items-center gap-4 px-4 py-[45%] [mask-image:linear-gradient(to_bottom,transparent,black_20%,black_80%,transparent)]">
         {lines.map((line, i) => {
           const active = i === activeIndex;
           return (

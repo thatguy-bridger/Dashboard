@@ -10,6 +10,11 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { RippleReveal } from "@/components/RippleReveal";
+import { WidgetRenderer } from "@/components/WidgetRenderer";
+import { sizeForFootprint } from "@/lib/grid";
+import { SpotifyIsland } from "@/components/SpotifyIsland";
+import { mergeStandByLayout, type StandByItem } from "@/lib/standby";
+import type { WidgetType } from "@/lib/presets";
 
 const W = 1440;
 const H = 900;
@@ -60,21 +65,6 @@ function useScale() {
     return () => window.removeEventListener("resize", f);
   }, []);
   return s;
-}
-
-function useBattery() {
-  const [pct, setPct] = useState<{ level: number; charging: boolean } | null>(null);
-  useEffect(() => {
-    type Bat = { level: number; charging: boolean; addEventListener: (e: string, f: () => void) => void };
-    const nav = navigator as Navigator & { getBattery?: () => Promise<Bat> };
-    nav.getBattery?.().then((b) => {
-      const up = () => setPct({ level: Math.round(b.level * 100), charging: b.charging });
-      up();
-      b.addEventListener("levelchange", up);
-      b.addEventListener("chargingchange", up);
-    }).catch(() => {});
-  }, []);
-  return pct;
 }
 
 // ---------- backdrop ----------
@@ -221,11 +211,11 @@ function Drifting({ children, width, deps }: { children: React.ReactNode; width:
   );
 }
 
-function Forecast({ hours, isDay }: { hours: Hour[] }  & { isDay?: boolean }) {
+function Forecast({ hours, isDay, width }: { hours: Hour[]; isDay?: boolean; width: number }) {
   const now = new Date();
   const list = hours.filter((h) => new Date(h.time).getTime() > now.getTime() - 3600_000).slice(0, 24);
   return (
-    <Drifting width={600} deps={[list.length]}>
+    <Drifting width={width} deps={[list.length]}>
       {list.map((h, i) => (
         <div key={h.time} className="glass-card flex flex-col items-center justify-center shrink-0" style={{ width: 86, height: 118, borderRadius: 30 }}>
           <div className="font-semibold text-white/60" style={{ fontSize: 14 }}>
@@ -239,18 +229,40 @@ function Forecast({ hours, isDay }: { hours: Hour[] }  & { isDay?: boolean }) {
   );
 }
 
-function BatteryChip() {
-  const b = useBattery();
-  if (!b) return null;
-  const color = b.charging ? "#34d399" : b.level <= 20 ? "#ff6b6b" : "#fff";
+interface FmDevice { id: string; name: string; deviceClass: string; batteryLevel: number | null; isPerson: boolean }
+
+const CLASS_ORDER = ["iPhone", "iPad", "Watch", "Mac", "AirPods"];
+function classRank(c: string) {
+  const i = CLASS_ORDER.findIndex((k) => c.toLowerCase().includes(k.toLowerCase()));
+  return i === -1 ? 99 : i;
+}
+
+/** Your own iCloud devices' batteries (via Find My), not whatever device is
+ *  rendering the screen. Hidden when Find My isn't connected. */
+function BatteryChips({ width }: { width: number }) {
+  const devices = usePolled<FmDevice[]>("/api/icloud/findmy", 5 * 60_000, (j: { devices?: FmDevice[] }) => j.devices ?? []);
+  const list = (devices ?? [])
+    .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && d.batteryLevel >= 0)
+    .sort((a, b) => classRank(a.deviceClass) - classRank(b.deviceClass))
+    .slice(0, 5);
+  if (list.length === 0) return null;
   return (
-    <div className="glass-card inline-flex items-center gap-3 px-6" style={{ height: 52, borderRadius: 26 }}>
-      <svg width="34" height="18" viewBox="0 0 34 18" fill="none">
-        <rect x="1" y="1" width="28" height="16" rx="5" stroke={color} strokeOpacity="0.5" strokeWidth="1.6" />
-        <rect x="3.5" y="3.5" width={Math.max(2, 23 * (b.level / 100))} height="11" rx="3" fill={color} />
-        <rect x="31" y="6" width="2" height="6" rx="1" fill={color} fillOpacity="0.5" />
-      </svg>
-      <span className="num-rounded font-semibold" style={{ fontSize: 22, color }}>{b.level}%</span>
+    <div className="flex flex-wrap gap-3" style={{ width }}>
+      {list.map((d) => {
+        const pct = Math.round((d.batteryLevel as number) * 100);
+        const color = pct <= 20 ? "#ff6b6b" : "#fff";
+        return (
+          <div key={d.id} className="glass-card inline-flex items-center gap-3 px-5" style={{ height: 52, borderRadius: 26 }}>
+            <svg width="30" height="16" viewBox="0 0 34 18" fill="none">
+              <rect x="1" y="1" width="28" height="16" rx="5" stroke={color} strokeOpacity="0.5" strokeWidth="1.6" />
+              <rect x="3.5" y="3.5" width={Math.max(2, 23 * (pct / 100))} height="11" rx="3" fill={color} />
+              <rect x="31" y="6" width="2" height="6" rx="1" fill={color} fillOpacity="0.5" />
+            </svg>
+            <span className="text-white/60 font-semibold truncate" style={{ fontSize: 15, maxWidth: 120 }}>{d.name.replace(/’s .*|'s .*/, "")}</span>
+            <span className="num-rounded font-semibold" style={{ fontSize: 20, color }}>{pct}%</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -380,12 +392,12 @@ function eventWhen(e: CalEvent) {
   return `${dayLabel(s)} ${t(s)}${e.end ? ` – ${t(new Date(e.end))}` : ""}`;
 }
 
-function Agenda({ events }: { events: CalEvent[] }) {
+function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
   if (events.length === 0) return null;
   return (
     <div style={reveal(1.0)}>
       <div className="caps-label mb-3" style={{ fontSize: 15, paddingLeft: 24 }}>Next up</div>
-      <Drifting width={W - 120} deps={[events.length]}>
+      <Drifting width={width} deps={[events.length]}>
         {events.map((e, i) => {
           const c = eventColor(e.colorId, e.source);
           return (
@@ -408,7 +420,7 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
   return (
     <div
       className="glass-card flex flex-col justify-center"
-      style={{ width: 640, height: 200, borderRadius: 48, padding: 40, background: `radial-gradient(ellipse at 50% 0%, ${c}30, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))` }}
+      style={{ width: "100%", height: 200, borderRadius: 48, padding: 40, background: `radial-gradient(ellipse at 50% 0%, ${c}30, transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))` }}
     >
       <div className="caps-label mb-3" style={{ fontSize: 15 }}>Up next</div>
       {e ? (
@@ -425,7 +437,7 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
 
 function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string) => void }) {
   return (
-    <div className="absolute flex flex-col gap-3 items-end" style={{ top: 22, right: 40, ...reveal(0.5) }}>
+    <div className="flex flex-col gap-3 items-end w-full">
       {notes.slice(0, 2).map((n) => (
         <button
           key={n.id}
@@ -443,12 +455,48 @@ function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string
 
 // ---------- screen ----------
 
-export function StandBy() {
+/** Saved layout from settings, or a ?sbdraft=<base64 JSON> override used by the editor's live preview. */
+function useStandByLayout(draft: string | null): StandByItem[] {
+  const [items, setItems] = useState<StandByItem[]>(() => mergeStandByLayout(null));
+  useEffect(() => {
+    if (draft) {
+      try {
+        setItems(mergeStandByLayout(JSON.parse(decodeURIComponent(escape(atob(draft))))));
+        return;
+      } catch {
+        // fall through to saved layout
+      }
+    }
+    let off = false;
+    function load() {
+      fetch("/api/settings", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!off && d?.settings?.standbyLayout) setItems(mergeStandByLayout(d.settings.standbyLayout));
+        })
+        .catch(() => {});
+    }
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      off = true;
+      clearInterval(id);
+    };
+  }, [draft]);
+  return items;
+}
+
+const REVEAL_DELAY: Record<string, number> = {
+  notifications: 0.5, clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
+};
+
+export function StandBy({ draft = null }: { draft?: string | null }) {
   const scale = useScale();
   const np = useNowPlaying();
   const playing = Boolean(np?.connected && np.isPlaying && np.track);
   const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
   const color = playing ? accent : NEUTRAL_ACCENT;
+  const layout = useStandByLayout(draft);
 
   const weather = usePolled<Weather>("/api/weather", 10 * 60_000, (j: Weather) => j);
   const events = usePolled<CalEvent[]>("/api/calendar", 5 * 60_000, (j: { events?: CalEvent[] }) => j.events ?? []);
@@ -463,53 +511,52 @@ export function StandBy() {
     fetch(`/api/notifications/${id}`, { method: "PATCH" }).catch(() => {});
   }
 
+  function body(it: StandByItem): React.ReactNode {
+    switch (it.id) {
+      case "clock": return <Clock />;
+      case "weather": return weather && <WeatherTile w={weather} />;
+      case "forecast": return weather && <Forecast hours={weather.hourly} isDay={weather.isDay} width={it.w} />;
+      case "battery": return <BatteryChips width={it.w} />;
+      case "nowplaying":
+        return playing ? (
+          <div className="flex gap-4"><NowPlayingCard accent={color} /><VolumePill accent={color} /></div>
+        ) : (
+          <UpNext e={upcoming[0]} />
+        );
+      case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
+      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
+      default: {
+        const type = it.id as WidgetType;
+        return (
+          <div className={`tile tile-${type}`} style={{ width: it.w, height: it.h }}>
+            <WidgetRenderer type={type} size={sizeForFootprint((it.w / W) * 12, (it.h / H) * 7)} />
+          </div>
+        );
+      }
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
-      <RippleReveal accent={color}>
+      <RippleReveal accent={color} duration={draft ? 1 : 1600}>
         <Backdrop art={backdrop} playing={playing} accent={color} />
         <div
           className="absolute"
           style={{ left: "50%", top: "50%", width: W, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}
         >
-          <NotePills notes={unread} onDismiss={dismiss} />
-
-          {/* left column */}
-          <div className="absolute flex flex-col" style={{ left: 60, top: 70, width: 620 }}>
-            <Clock />
-            {weather && (
-              <div className="mt-8 flex flex-col gap-5" style={reveal(0.8)}>
-                <WeatherTile w={weather} />
-                <Forecast hours={weather.hourly} isDay={weather.isDay} />
-              </div>
-            )}
-            <div className="mt-5" style={reveal(0.9)}><BatteryChip /></div>
-          </div>
-
-          {/* right column */}
-          <div className="absolute flex gap-4" style={{ left: 740, top: 96, ...reveal(0.85) }}>
-            {playing ? (
-              <>
-                <NowPlayingCard accent={color} />
-                <VolumePill accent={color} />
-              </>
-            ) : (
-              <UpNext e={upcoming[0]} />
-            )}
-          </div>
-
-          {/* bottom agenda */}
-          <div className="absolute" style={{ left: 60, top: 700 }}>
-            <Agenda events={playing ? upcoming : upcoming.slice(1)} />
-          </div>
+          {layout.filter((it) => it.enabled).map((it) => (
+            <div
+              key={it.id}
+              className="absolute"
+              style={{ left: it.x, top: it.y, width: it.w, ...reveal(REVEAL_DELAY[it.id] ?? 0.9) }}
+            >
+              {body(it)}
+            </div>
+          ))}
         </div>
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
-      <IslandSlot />
+      <SpotifyIsland includeMusic={false} />
     </div>
   );
-}
-
-import { SpotifyIsland } from "@/components/SpotifyIsland";
-function IslandSlot() {
-  return <SpotifyIsland includeMusic={false} />;
 }

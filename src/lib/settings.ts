@@ -1,4 +1,5 @@
 import { d1Query } from "@/lib/d1";
+import { mergeStandByLayout, type StandByItem } from "@/lib/standby";
 
 export type DisplayMode = "color" | "image";
 /** "standby" is the prebuilt full-screen view; "grid" is the customisable tile layout. */
@@ -26,9 +27,10 @@ export interface Settings {
   mapDestination: MapPlace | null;
   displayMode: DisplayMode;
   layoutMode: LayoutMode;
+  standbyLayout: StandByItem[];
 }
 
-const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode", "layoutMode"] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode", "layoutMode", "standbyLayout"] as const;
 type Key = (typeof KEYS)[number];
 
 function parsePlace(raw: string | null): MapPlace | null {
@@ -42,6 +44,14 @@ function parsePlace(raw: string | null): MapPlace | null {
     // fall through
   }
   return null;
+}
+
+function parseJson(raw: string | null): unknown {
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseTeams(raw: string | null): FavoriteTeam[] {
@@ -71,6 +81,7 @@ export async function getSettings(): Promise<Settings> {
     mapDestination: parsePlace(byKey.get("mapDestination") ?? null),
     displayMode: displayMode === "image" ? "image" : "color",
     layoutMode: byKey.get("layoutMode") === "grid" ? "grid" : "standby",
+    standbyLayout: mergeStandByLayout(parseJson(byKey.get("standbyLayout") ?? null)),
   };
 }
 
@@ -88,6 +99,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   if ("mapHome" in patch) await set("mapHome", patch.mapHome ? JSON.stringify(patch.mapHome) : null);
   if ("mapDestination" in patch) await set("mapDestination", patch.mapDestination ? JSON.stringify(patch.mapDestination) : null);
   if ("displayMode" in patch) await set("displayMode", patch.displayMode ?? null);
+  if ("standbyLayout" in patch) await set("standbyLayout", patch.standbyLayout ? JSON.stringify(patch.standbyLayout) : null);
   if ("layoutMode" in patch) await set("layoutMode", patch.layoutMode ?? null);
 
   return getSettings();
