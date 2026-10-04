@@ -127,8 +127,8 @@ function useLandscape() {
           c.width = 960;
           c.height = Math.round((960 * img.height) / img.width);
           const ctx = c.getContext("2d")!;
-          ctx.filter = "blur(22px) saturate(1.25)";
-          ctx.drawImage(img, -40, -40, c.width + 80, c.height + 80);
+          ctx.filter = "blur(5px) saturate(1.25)"; // light blur: the photo should stay recognisable
+          ctx.drawImage(img, -12, -12, c.width + 24, c.height + 24);
           out = c.toDataURL("image/jpeg", 0.8);
         } catch {
           out = img.src;

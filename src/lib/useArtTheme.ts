@@ -49,11 +49,12 @@ function analyse(img: HTMLImageElement): ArtTheme {
     accent = `rgb(${r}, ${g}, ${b})`;
   }
 
+  // 240px with a ~6% blur (was 160px at ~9%): the artwork stays a little more legible.
   const blur = document.createElement("canvas");
-  blur.width = blur.height = 160;
+  blur.width = blur.height = 240;
   const bctx = blur.getContext("2d")!;
-  bctx.filter = "blur(14px) saturate(1.5)";
-  bctx.drawImage(small, -20, -20, 200, 200);
+  bctx.filter = "blur(13px) saturate(1.5)";
+  bctx.drawImage(img, -16, -16, 272, 272);
   return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent };
 }
 
