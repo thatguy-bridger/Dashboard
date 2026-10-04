@@ -74,7 +74,7 @@ export function NotificationsWidget({ size = "md" }: { size?: WidgetSize }) {
 
   return (
     <div className="w-full h-full flex flex-col gap-2">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] text-center">
+      <div className="caps-label text-center">
         {unread.length} from Claude
       </div>
       <ul className="flex flex-col gap-2 overflow-hidden">
@@ -82,7 +82,7 @@ export function NotificationsWidget({ size = "md" }: { size?: WidgetSize }) {
           <li
             key={n.id}
             onClick={() => dismiss(n.id)}
-            className="flex items-start gap-2 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0 cursor-pointer"
+            className="flex items-start gap-2 text-sm glass-card !rounded-2xl px-3 py-2 w-full cursor-pointer"
           >
             <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${LEVEL_COLOR[n.level]}`} />
             <span className="flex-1 min-w-0">

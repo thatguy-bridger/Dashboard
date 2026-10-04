@@ -56,11 +56,11 @@ export function CountdownWidget({ size = "md" }: { size?: WidgetSize }) {
         const days = daysLeft(c.targetDate);
         return (
           <div key={c.id} className="flex flex-col items-center gap-0.5">
-            <div className="text-4xl font-semibold tabular-nums">
+            <div className="text-5xl font-semibold num-rounded text-gradient-white">
               {days === 0 ? "Today" : days}
               {days > 0 && <span className="text-lg text-[var(--muted)] ml-1">days</span>}
             </div>
-            <div className="text-sm text-[var(--muted)]">{c.label}</div>
+            <div className="caps-label">{c.label}</div>
           </div>
         );
       })}

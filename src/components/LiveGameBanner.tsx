@@ -40,8 +40,8 @@ export function LiveGameBanner() {
   if (!game) return null;
 
   return (
-    <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center gap-3 py-1.5 bg-black/60 backdrop-blur-sm text-sm">
-      <span className="text-[var(--muted)] text-xs uppercase tracking-widest">{game.league}</span>
+    <div className="absolute top-[4.25rem] left-1/2 -translate-x-1/2 z-10 flex items-center justify-center gap-3 px-5 py-2 rounded-full bg-black border border-white/10 text-sm">
+      <span className="caps-label">{game.league}</span>
       <span className="font-medium">
         {game.away} {game.awayScore} — {game.homeScore} {game.home}
       </span>

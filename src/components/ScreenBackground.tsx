@@ -70,7 +70,7 @@ function BlobLayer({ palette, count, speed, dim }: { palette: string[]; count: n
             left: b.left,
             width: `${b.size}vmax`,
             height: `${b.size}vmax`,
-            background: palette[i % palette.length],
+            background: `radial-gradient(circle at 50% 50%, ${palette[i % palette.length]} 0%, transparent 68%)`,
             animationDuration: speed > 0 ? `${speed}s` : undefined,
             animationDelay: `${b.delay}s`,
             animationPlayState: speed > 0 ? "running" : "paused",
@@ -186,7 +186,23 @@ export function ScreenBackground({
 }) {
   return (
     <div className={`${fixed ? "fixed" : "absolute"} inset-0 -z-10 overflow-hidden`}>
-      <BackgroundLayer config={config} />
+      {/* black is the canvas; colour is added on top */}
+      <div className="absolute inset-0 bg-black" />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 80% at 85% 0%, rgba(255,160,80,0.34), transparent 60%), radial-gradient(90% 70% at 0% 100%, rgba(110,80,255,0.28), transparent 65%), radial-gradient(70% 60% at 50% 55%, rgba(255,90,140,0.10), transparent 70%)",
+        }}
+      />
+      <div className="absolute inset-0" style={{ opacity: 0.95 }}>
+        <BackgroundLayer config={config} />
+      </div>
+      {/* wash keeps text readable over any backdrop */}
+      <div
+        className="absolute inset-0"
+        style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.4))" }}
+      />
     </div>
   );
 }

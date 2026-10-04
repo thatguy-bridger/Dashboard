@@ -48,7 +48,7 @@ export function GmailWidget({ size = "md" }: { size?: WidgetSize }) {
     return (
       <div className="flex flex-col items-center">
         <div className="text-2xl font-medium">{data.unreadCount}</div>
-        <div className="text-xs uppercase tracking-widest text-[var(--muted)]">unread</div>
+        <div className="caps-label">unread</div>
       </div>
     );
   }
@@ -61,14 +61,14 @@ export function GmailWidget({ size = "md" }: { size?: WidgetSize }) {
 
   return (
     <div className="w-full max-w-lg">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-3 text-center">
+      <div className="caps-label mb-3 text-center">
         Gmail · {data.unreadCount} unread
       </div>
       <ul className="flex flex-col gap-2">
         {data.messages.slice(0, count).map((m, i) => (
           <li
             key={i}
-            className="flex items-start gap-2 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            className="flex items-start gap-2 text-sm glass-card !rounded-2xl px-3 py-2 w-full"
           >
             {displayMode === "image" && (
               <span

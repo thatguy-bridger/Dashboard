@@ -88,7 +88,7 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
   );
 
   const [from, to] = weatherGradient(weather.weatherCode, weather.isDay);
-  const cardStyle = { background: `linear-gradient(155deg, ${from}, ${to})` };
+  const cardStyle = { background: `radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, ${from} 75%, transparent), transparent 70%), linear-gradient(155deg, color-mix(in srgb, ${from} 45%, transparent), color-mix(in srgb, ${to} 8%, transparent))` };
   const textOnGradient = "text-white";
 
   // sm: gradient tile, just the number + tiny icon. Nothing else fits.
@@ -161,16 +161,16 @@ export function WeatherWidget({ size = "md" }: { size?: WidgetSize }) {
       {size === "xl" && (
         <div className="relative grid grid-cols-3 gap-2 mt-auto pt-2 border-t border-white/15">
           <div className="flex flex-col gap-0.5">
-            <div className="text-[9px] uppercase tracking-widest opacity-60">UV Index</div>
+            <div className="caps-label !text-[0.5625rem] opacity-80">UV Index</div>
             <div className="text-sm font-medium tabular-nums">{weather.uvIndex}</div>
             <div className="text-[10px] opacity-70">{uvLabel(weather.uvIndex)}</div>
           </div>
           <div className="flex flex-col gap-0.5">
-            <div className="text-[9px] uppercase tracking-widest opacity-60">Wind</div>
+            <div className="caps-label !text-[0.5625rem] opacity-80">Wind</div>
             <div className="text-sm font-medium tabular-nums">{weather.windMph} mph</div>
           </div>
           <div className="flex flex-col gap-0.5">
-            <div className="text-[9px] uppercase tracking-widest opacity-60">Humidity</div>
+            <div className="caps-label !text-[0.5625rem] opacity-80">Humidity</div>
             <div className="text-sm font-medium tabular-nums">{weather.humidity}%</div>
           </div>
         </div>

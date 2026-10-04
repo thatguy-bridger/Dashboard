@@ -29,8 +29,8 @@ function LyricsPanel({ lines, progressMs }: { lines: LyricLine[]; progressMs: nu
               ref={active ? activeRef : undefined}
               className={`text-center will-change-transform ${
                 active
-                  ? "text-xl font-semibold text-[var(--foreground)] opacity-100 scale-100 translate-y-0 transition-all duration-500 ease-out"
-                  : "text-lg text-[var(--muted)] opacity-30 scale-95 transition-all duration-200 ease-in"
+                  ? "text-2xl font-bold text-white opacity-100 scale-100 translate-y-0 transition-all duration-500 ease-out"
+                  : "text-lg font-semibold text-white opacity-35 scale-95 transition-all duration-200 ease-in"
               }`}
             >
               {line.text}
@@ -71,7 +71,7 @@ export function LyricsWidget({ size = "lg" }: { size?: WidgetSize }) {
           />
         )}
         <div className="min-w-0">
-          <div className={`${big ? "text-base" : "text-sm"} font-medium truncate`}>{track.name}</div>
+          <div className={`${big ? "text-lg" : "text-sm"} font-bold truncate`}>{track.name}</div>
           <div className="text-xs text-[var(--muted)] truncate">{track.artists}</div>
         </div>
       </div>

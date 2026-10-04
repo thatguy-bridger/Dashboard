@@ -8,6 +8,8 @@ import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { LiveGameBanner } from "@/components/LiveGameBanner";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
+import { useNowPlaying } from "@/lib/spotifyClient";
+import { useArtTheme } from "@/lib/useArtTheme";
 import type { Preset, PresetWidget } from "@/lib/presets";
 import type { DeviceLayout } from "@/lib/registry";
 import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
@@ -188,11 +190,29 @@ function ScreenGrid({
   orbState: "idle" | "active" | "alert";
 }) {
   const visibilityCtx = useVisibilityContext(widgets);
+  const now = useNowPlaying();
+  const playing = Boolean(now?.connected && now.isPlaying && now.track);
+  const { backdrop, accent } = useArtTheme(playing ? now?.track?.albumArtUrl : null);
   const visibleWidgets = widgets.filter((w) => isWidgetVisible(w.visibility, visibilityCtx));
 
   return (
-    <div className="h-screen w-screen relative">
+    <div
+      className="h-screen w-screen relative"
+      style={{ ["--accent" as string]: playing ? accent : "#f0b38a" }}
+    >
       <ScreenBackground config={background} />
+      {/* album-art backdrop: pre-blurred once per song, cross-fades in */}
+      <div
+        className="fixed inset-0 -z-10 bg-cover bg-center transition-opacity duration-[2500ms]"
+        style={{
+          backgroundImage: backdrop ? `url(${backdrop})` : undefined,
+          opacity: playing && backdrop ? 0.6 : 0,
+        }}
+      />
+      <div
+        className="fixed inset-0 -z-10 pointer-events-none"
+        style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.6))" }}
+      />
       <StatusBadge orbState={orbState} />
       <LiveGameBanner />
       <SpotifyIsland />

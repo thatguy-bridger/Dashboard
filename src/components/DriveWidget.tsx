@@ -56,14 +56,14 @@ export function DriveWidget({ size = "md" }: { size?: WidgetSize }) {
 
   return (
     <div className="w-full max-w-lg">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-3 text-center">
+      <div className="caps-label mb-3 text-center">
         Recent Drive files
       </div>
       <ul className="flex flex-col gap-2">
         {data.files.slice(0, count).map((f) => (
           <li
             key={f.id}
-            className="flex items-center justify-between gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            className="flex items-center justify-between gap-3 text-sm glass-card !rounded-2xl px-3 py-2 w-full"
           >
             <span className="flex items-center gap-2 min-w-0">
               {displayMode === "image" && (

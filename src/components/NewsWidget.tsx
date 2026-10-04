@@ -74,7 +74,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     }
     return (
       <div className="max-w-xs text-center">
-        <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-1">News</div>
+        <div className="caps-label mb-1">News</div>
         <div className={`text-sm ${fade}`}>{current.title}</div>
       </div>
     );
@@ -84,12 +84,12 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
   const count = size === "xl" ? 6 : 4;
   return (
     <div className="w-full max-w-lg">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-3 text-center">News</div>
+      <div className="caps-label mb-3 text-center">News</div>
       <ul className="flex flex-col gap-2">
         {items.slice(0, count).map((item) => (
           <li
             key={item.title}
-            className="flex items-center gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            className="flex items-center gap-3 text-sm glass-card !rounded-2xl px-3 py-2 w-full"
           >
             {showImages && item.imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- external, frequently-rotating news photo, not worth Next/Image's pipeline

@@ -52,19 +52,19 @@ export function CalendarWidget({ size = "md" }: { size?: WidgetSize }) {
   const count = size === "sm" ? 1 : size === "md" ? 3 : size === "lg" ? 6 : 10;
 
   return (
-    <div className="w-full max-w-lg">
-      <div className="text-xs uppercase tracking-widest text-[var(--muted)] mb-3 text-center">Calendar</div>
+    <div className="w-full">
+      <div className="caps-label mb-3">Next up</div>
       <ul className="flex flex-col gap-2">
         {data.events.slice(0, count).map((e, i) => (
           <li
             key={i}
-            className="flex items-center justify-between gap-3 text-sm border-t border-[var(--surface-border)] pt-2 first:border-t-0 first:pt-0"
+            className="flex items-center justify-between gap-3 text-sm glass-card !rounded-2xl px-3 py-2 w-full"
           >
             <span className="flex items-center gap-2 min-w-0">
               {displayMode === "image" && (
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: eventColor(e.colorId, e.source) }}
+                  style={{ background: eventColor(e.colorId, e.source), boxShadow: `0 0 8px ${eventColor(e.colorId, e.source)}` }}
                 />
               )}
               <span className="truncate">{e.summary}</span>

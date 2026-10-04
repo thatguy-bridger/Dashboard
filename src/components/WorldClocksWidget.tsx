@@ -31,10 +31,10 @@ export function WorldClocksWidget({ size = "md" }: { size?: WidgetSize }) {
     <div className={`flex gap-6 flex-wrap justify-center ${size === "xl" ? "gap-10" : ""}`}>
       {zones.map((z) => (
         <div key={z.tz} className="flex flex-col items-center">
-          <div className={`${big ? "text-3xl" : "text-lg"} font-medium tabular-nums`}>
+          <div className={`${big ? "text-3xl" : "text-lg"} font-semibold num-rounded text-gradient-white`}>
             {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: z.tz })}
           </div>
-          <div className="text-xs text-[var(--muted)]">{z.label}</div>
+          <div className="caps-label !text-[0.5625rem]">{z.label}</div>
         </div>
       ))}
     </div>
