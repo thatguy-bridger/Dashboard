@@ -6,6 +6,7 @@ interface CalendarEvent {
   summary: string;
   start: string;
   allDay: boolean;
+  end?: string;
   source: string;
   colorId: string | null;
 }
@@ -48,10 +49,11 @@ async function fetchGoogleEvents(): Promise<CalendarEvent[]> {
         const res = await fetch(url, { headers, cache: "no-store" });
         if (!res.ok) return [];
         const data = await res.json();
-        return (data.items ?? []).map((e: { summary?: string; start: { dateTime?: string; date?: string } }) => ({
+        return (data.items ?? []).map((e: { summary?: string; start: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }) => ({
           summary: e.summary ?? "(no title)",
           start: e.start.dateTime ?? e.start.date,
           allDay: !e.start.dateTime,
+          end: e.end?.dateTime ?? e.end?.date,
           source: cal.summary ?? "Google",
         }));
       })

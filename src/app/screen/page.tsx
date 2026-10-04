@@ -3,10 +3,10 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useDevice } from "@/lib/useDevice";
-import { LivingOrb } from "@/components/LivingOrb";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
-import { LiveGameBanner } from "@/components/LiveGameBanner";
+import { StandBy } from "@/components/StandBy";
+import { useLayoutMode } from "@/lib/useLayoutMode";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
 import { useNowPlaying } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
@@ -97,14 +97,6 @@ function usePreset(presetId: string | null | undefined) {
   return preset;
 }
 
-function StatusBadge({ orbState }: { orbState: "idle" | "active" | "alert" }) {
-  return (
-    <div className="fixed top-4 left-4 z-10 pointer-events-none">
-      <LivingOrb state={orbState} size={16} />
-    </div>
-  );
-}
-
 /** Re-evaluates every 30s (enough to catch a time-range boundary without
  * being wasteful) and only fetches weather/calendar at all when some widget
  * in the current layout actually has a rule that needs them. */
@@ -181,13 +173,9 @@ function TemporaryTile({ children }: { children: React.ReactNode }) {
 function ScreenGrid({
   widgets,
   background,
-  name,
-  orbState,
 }: {
   widgets: PresetWidget[];
   background: BackgroundConfig;
-  name: string;
-  orbState: "idle" | "active" | "alert";
 }) {
   const visibilityCtx = useVisibilityContext(widgets);
   const now = useNowPlaying();
@@ -213,8 +201,6 @@ function ScreenGrid({
         className="fixed inset-0 -z-10 pointer-events-none"
         style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.6))" }}
       />
-      <StatusBadge orbState={orbState} />
-      <LiveGameBanner />
       <SpotifyIsland />
       <div className="h-full w-full p-[0.9375rem] relative">
         {visibleWidgets.map((w) => {
@@ -247,7 +233,6 @@ function UnapprovedNotice({ deviceId, status }: { deviceId: string | null; statu
   return (
     <main className="h-screen w-screen flex items-center justify-center">
       <div className="glass-panel px-12 py-10 flex flex-col items-center gap-3">
-        <LivingOrb state="alert" />
         <div className="text-xs text-[var(--muted)] font-mono">
           {deviceId ? `device: ${deviceId.slice(0, 8)}` : "pairing…"}
         </div>
@@ -267,6 +252,10 @@ function ScreenPageInner() {
   const previewId = searchParams.get("preview");
 
   const draft = draftParam !== null ? parseDraft(draftParam) : null;
+  const storedLayout = useLayoutMode();
+  // ?layout=standby|grid forces a view (handy for previewing without approving a device).
+  const forced = searchParams.get("layout");
+  const layoutMode = forced === "standby" || forced === "grid" ? forced : storedLayout;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
@@ -276,7 +265,7 @@ function ScreenPageInner() {
 
   const device = isPreview ? previewDevice : ownDevice.device;
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
-  const approved = isDraft || device?.status === "approved";
+  const approved = isDraft || device?.status === "approved" || forced === "standby";
   const usesPreset = !isDraft && !device?.layout;
   const preset = usePreset(usesPreset ? device?.presetId ?? null : null);
   const widgets = isDraft ? draft!.widgets : (device?.layout?.widgets ?? preset?.widgets ?? DEFAULT_WIDGETS);
@@ -288,7 +277,10 @@ function ScreenPageInner() {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  return <ScreenGrid widgets={widgets} background={background} name={device?.name ?? "Home Base"} orbState="idle" />;
+  if (!isDraft && !isPreview && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
+  if (!isDraft && !isPreview && layoutMode === "standby") return <StandBy />;
+
+  return <ScreenGrid widgets={widgets} background={background} />;
 }
 
 export default function ScreenPage() {

@@ -169,6 +169,7 @@ export default function ControlPage() {
   const [creatingPreset, setCreatingPreset] = useState(false);
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
+  const [layoutMode, setLayoutMode] = useState<"standby" | "grid">("standby");
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
   const [mapHome, setMapHome] = useState<MapPlace | null>(null);
@@ -253,6 +254,7 @@ export default function ControlPage() {
         setMapHome(data.settings.mapHome ?? null);
         setMapDestination(data.settings.mapDestination ?? null);
         setDisplayMode(data.settings.displayMode ?? "color");
+        setLayoutMode(data.settings.layoutMode ?? "standby");
       });
   }, []);
 
@@ -271,6 +273,15 @@ export default function ControlPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ displayMode: mode }),
+    });
+  }
+
+  async function saveLayoutMode(mode: "standby" | "grid") {
+    setLayoutMode(mode);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ layoutMode: mode }),
     });
   }
 
@@ -761,6 +772,30 @@ export default function ControlPage() {
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Settings
         </h2>
+        <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
+          <div>
+            <div className="text-sm font-medium">Screen layout</div>
+            <p className="text-xs text-[var(--muted)]">
+              StandBy is the prebuilt full-screen view (clock, weather, now playing with lyrics, agenda).
+              Tiles switches every screen back to the customizable widget grid and presets.
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            {(["standby", "grid"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => saveLayoutMode(mode)}
+                className={`text-xs px-3 py-1.5 rounded-lg border ${
+                  layoutMode === mode
+                    ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
+                    : "border-[var(--surface-border)] text-[var(--muted)]"
+                }`}
+              >
+                {mode === "standby" ? "StandBy" : "Tiles"}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
           <div>
             <div className="text-sm font-medium">Display mode</div>

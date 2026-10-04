@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   // Spotify OAuth's redirect URI must be 127.0.0.1 (not localhost) in dev,
   // so local testing needs that origin allowed for HMR/dev-resource requests.
   allowedDevOrigins: ["127.0.0.1"],
+  // No floating Next.js logo badge over the wall display.
+  devIndicators: false,
 };
 
 export default nextConfig;

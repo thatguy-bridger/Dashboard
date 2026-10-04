@@ -1,6 +1,6 @@
 import { d1Query } from "@/lib/d1";
 
-const SCOPES = ["user-read-currently-playing", "user-read-playback-state"].join(" ");
+const SCOPES = ["user-read-currently-playing", "user-read-playback-state", "user-modify-playback-state"].join(" ");
 
 export function getSpotifyAuthUrl(): string {
   const url = new URL("https://accounts.spotify.com/authorize");

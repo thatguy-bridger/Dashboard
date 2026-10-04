@@ -16,6 +16,7 @@ export interface NowPlaying {
   connected: boolean;
   isPlaying: boolean;
   fetchedAt?: number;
+  volumePercent?: number | null;
   track: SpotifyTrack | null;
 }
 
@@ -31,7 +32,7 @@ let latest: NowPlaying | null = null;
 const listeners = new Set<(d: NowPlaying) => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
 
-async function pollOnce() {
+export async function pollOnce() {
   if (typeof document !== "undefined" && document.hidden) return;
   try {
     const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
@@ -110,4 +111,18 @@ export function useLyrics(track: SpotifyTrack | null) {
   }, [track]);
 
   return lines;
+}
+
+/** Fire-and-forget playback command, then re-poll so the UI catches up. */
+export async function controlSpotify(action: "play" | "pause" | "next" | "previous" | "volume", value?: number) {
+  try {
+    await fetch("/api/spotify/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, value }),
+    });
+  } catch {
+    // ignore: controls are best-effort
+  }
+  setTimeout(pollOnce, 600);
 }

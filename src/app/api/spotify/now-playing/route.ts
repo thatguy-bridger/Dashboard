@@ -26,7 +26,7 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
     return ({ connected: false, isPlaying: false, track: null });
   }
 
-  const res = await fetch("https://api.spotify.com/v1/me/player/currently-playing?additional_types=track", {
+  const res = await fetch("https://api.spotify.com/v1/me/player?additional_types=track", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
@@ -53,6 +53,7 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
     connected: true,
     isPlaying: Boolean(data.is_playing),
     fetchedAt: Date.now(),
+    volumePercent: data.device?.volume_percent ?? null,
     track: {
       id: item.id,
       name: item.name,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode } from "@/lib/settings";
+import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode, type LayoutMode } from "@/lib/settings";
 
 function parseTeamsPatch(raw: unknown): FavoriteTeam[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -42,6 +42,7 @@ export async function PATCH(req: NextRequest) {
     mapHome?: MapPlace | null;
     mapDestination?: MapPlace | null;
     displayMode?: DisplayMode;
+    layoutMode?: LayoutMode;
   } = {};
 
   if (body.favoriteTeam === null || typeof body.favoriteTeam === "string") {
@@ -61,6 +62,10 @@ export async function PATCH(req: NextRequest) {
   }
   if (body.displayMode === "color" || body.displayMode === "image") {
     patch.displayMode = body.displayMode;
+  }
+
+  if (body.layoutMode === "standby" || body.layoutMode === "grid") {
+    patch.layoutMode = body.layoutMode;
   }
 
   const settings = await updateSettings(patch);

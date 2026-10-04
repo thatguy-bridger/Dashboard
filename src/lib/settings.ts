@@ -1,6 +1,8 @@
 import { d1Query } from "@/lib/d1";
 
 export type DisplayMode = "color" | "image";
+/** "standby" is the prebuilt full-screen view; "grid" is the customisable tile layout. */
+export type LayoutMode = "standby" | "grid";
 
 export interface MapPlace {
   label: string;
@@ -23,9 +25,10 @@ export interface Settings {
   mapHome: MapPlace | null;
   mapDestination: MapPlace | null;
   displayMode: DisplayMode;
+  layoutMode: LayoutMode;
 }
 
-const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode"] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode", "layoutMode"] as const;
 type Key = (typeof KEYS)[number];
 
 function parsePlace(raw: string | null): MapPlace | null {
@@ -67,6 +70,7 @@ export async function getSettings(): Promise<Settings> {
     mapHome: parsePlace(byKey.get("mapHome") ?? null),
     mapDestination: parsePlace(byKey.get("mapDestination") ?? null),
     displayMode: displayMode === "image" ? "image" : "color",
+    layoutMode: byKey.get("layoutMode") === "grid" ? "grid" : "standby",
   };
 }
 
@@ -84,6 +88,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   if ("mapHome" in patch) await set("mapHome", patch.mapHome ? JSON.stringify(patch.mapHome) : null);
   if ("mapDestination" in patch) await set("mapDestination", patch.mapDestination ? JSON.stringify(patch.mapDestination) : null);
   if ("displayMode" in patch) await set("displayMode", patch.displayMode ?? null);
+  if ("layoutMode" in patch) await set("layoutMode", patch.layoutMode ?? null);
 
   return getSettings();
 }
