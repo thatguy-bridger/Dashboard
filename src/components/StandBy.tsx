@@ -13,7 +13,7 @@ import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
-import { mergeStandByLayout, type StandByItem } from "@/lib/standby";
+import { mergeStandByLayout, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem } from "@/lib/standby";
 import type { WidgetType } from "@/lib/presets";
 
 const W = 1440;
@@ -536,6 +536,22 @@ export function StandBy({ draft = null }: { draft?: string | null }) {
     }
   }
 
+  /** Hand-built pieces are designed at their default size and scale uniformly with the box
+   *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
+  function scaled(it: StandByItem): React.ReactNode {
+    const def = STANDBY_DEFAULT_SIZE[it.id];
+    const custom = ["clock", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications"].includes(it.id);
+    if (!custom) return body(it);
+    const row = ROW_ITEMS.includes(it.id);
+    const k = row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h);
+    const innerW = row ? it.w / k : def.w;
+    return (
+      <div style={{ width: innerW, height: it.h / k, transform: `scale(${k})`, transformOrigin: "0 0" }}>
+        {body({ ...it, w: innerW, h: it.h / k })}
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
       <RippleReveal accent={color} duration={draft ? 1 : 1600}>
@@ -548,9 +564,9 @@ export function StandBy({ draft = null }: { draft?: string | null }) {
             <div
               key={it.id}
               className="absolute"
-              style={{ left: it.x, top: it.y, width: it.w, ...reveal(REVEAL_DELAY[it.id] ?? 0.9) }}
+              style={{ left: it.x, top: it.y, width: it.w, height: it.h, ...reveal(REVEAL_DELAY[it.id] ?? 0.9) }}
             >
-              {body(it)}
+              {scaled(it)}
             </div>
           ))}
         </div>

@@ -18,7 +18,7 @@ export interface StandByItem {
 
 interface Def extends StandByItem {
   label: string;
-  /** Hand-built StandBy pieces have a fixed design; only widget-backed items resize. */
+  /** Every item resizes: hand-built pieces scale with their box, widget-backed ones reflow. */
   resizable: boolean;
 }
 
@@ -28,13 +28,13 @@ const D = (id: StandByItemId, label: string, enabled: boolean, x: number, y: num
 const widgetLabel = (t: WidgetType) => WIDGET_LABELS[t];
 
 export const STANDBY_DEFS: Def[] = [
-  D("clock", "Clock & date", true, 60, 70, 620, 300, false),
-  D("weather", "Weather", true, 60, 382, 380, 112, false),
-  D("forecast", "Hourly forecast", true, 60, 510, 600, 118, false),
-  D("battery", "Device batteries (iCloud)", true, 60, 640, 600, 52, false),
-  D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, false),
-  D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, false),
-  D("notifications", "Notification pills", true, 900, 14, 480, 116, false),
+  D("clock", "Clock & date", true, 60, 70, 620, 300, true),
+  D("weather", "Weather", true, 60, 382, 380, 112, true),
+  D("forecast", "Hourly forecast", true, 60, 510, 600, 118, true),
+  D("battery", "Device batteries (iCloud)", true, 60, 640, 600, 52, true),
+  D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
+  D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
+  D("notifications", "Notification pills", true, 900, 14, 480, 116, true),
   D("news", widgetLabel("news"), true, 740, 624, 420, 66, true),
   D("stocks", widgetLabel("stocks"), true, 1170, 624, 210, 66, true),
   D("sports", widgetLabel("sports"), false, 740, 300, 400, 220, true),
@@ -52,6 +52,11 @@ export const STANDBY_DEFS: Def[] = [
   D("lyrics", widgetLabel("lyrics"), false, 1100, 134, 280, 480, true),
   D("calendar", widgetLabel("calendar"), false, 480, 400, 400, 260, true),
 ];
+
+/** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
+ *  instead of stretching it. */
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications"];
+export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 export const STANDBY_LABELS = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, d.label])) as Record<StandByItemId, string>;
 export const STANDBY_RESIZABLE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, d.resizable])) as Record<StandByItemId, boolean>;
@@ -74,8 +79,8 @@ export function mergeStandByLayout(raw: unknown): StandByItem[] {
       enabled: typeof s.enabled === "boolean" ? s.enabled : d.enabled,
       x: num(s.x, d.x),
       y: num(s.y, d.y),
-      w: STANDBY_RESIZABLE[d.id] ? Math.max(120, num(s.w, d.w)) : d.w,
-      h: STANDBY_RESIZABLE[d.id] ? Math.max(48, num(s.h, d.h)) : d.h,
+      w: Math.max(120, num(s.w, d.w)),
+      h: Math.max(40, num(s.h, d.h)),
     };
   });
 }
