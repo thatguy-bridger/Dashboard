@@ -17,7 +17,7 @@ import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
 import { useFeeds, useRoutine } from "@/lib/liveActivities";
-import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem, type StandByScene } from "@/lib/standby";
+import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, STRETCH_ITEMS, WIDTH_FIT_ITEMS, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
 
@@ -88,7 +88,13 @@ function adapt(it: StandByItem, extraW: number, extraH: number): StandByItem {
   const cx = x + w / 2, cy = y + h / 2;
   if (extraW > 0) {
     if (w >= W * 0.85) w += extraW;
-    else if (cx > W * 0.6) x += extraW;
+    else if (cx > W * 0.6) {
+      // right column: stretchable items widen into the extra room, fixed-design ones hug the right edge
+      if (STRETCH_ITEMS.includes(it.id)) {
+        x += extraW * 0.15;
+        w += extraW * 0.85;
+      } else x += extraW;
+    }
     else if (cx > W * 0.4) x += extraW / 2;
   }
   if (extraH > 0) {
@@ -859,6 +865,14 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
     const k0 = it.id === "clock" ? Math.min(it.w / 600, it.h / def.h) : null;
     const k = k0 ?? (row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h));
     const innerW = row ? it.w / k : def.w;
+    if (WIDTH_FIT_ITEMS.includes(it.id)) {
+      const kw = it.w / def.w;
+      return (
+        <div style={{ width: def.w, height: it.h / kw, transform: `scale(${kw})`, transformOrigin: "0 0" }}>
+          {body({ ...it, w: def.w, h: it.h / kw })}
+        </div>
+      );
+    }
     return (
       <div style={{ width: innerW, height: it.h / k, transform: `scale(${k})`, transformOrigin: "0 0" }}>
         {body({ ...it, w: innerW, h: it.h / k })}

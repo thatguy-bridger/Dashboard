@@ -71,6 +71,11 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications", "daysummary"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
+/** Lists that reflow: scale by width and use however much height the box has. */
+export const WIDTH_FIT_ITEMS: StandByItemId[] = ["calendar", "tomorrow"];
+/** Items that can soak up extra screen width (rows, lists, the clock) instead of just moving. */
+export const STRETCH_ITEMS: StandByItemId[] = [...ROW_ITEMS, ...WIDTH_FIT_ITEMS, "clock"];
+
 export const STANDBY_LABELS = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, d.label])) as Record<StandByItemId, string>;
 export const STANDBY_RESIZABLE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, d.resizable])) as Record<StandByItemId, boolean>;
 
@@ -144,8 +149,8 @@ export function defaultScenes(): StandByScene[] {
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
-        clock: { x: 930, y: 60, w: 450, h: 230 },
-        calendar: { x: 930, y: 310, w: 450, h: 570 },
+        clock: { x: 930, y: 60, w: 450, h: 290 },
+        calendar: { x: 930, y: 370, w: 450, h: 510 },
       }),
     },
     {
@@ -218,9 +223,9 @@ export function personalScenes(): StandByScene[] {
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
-        clock: { x: 930, y: 60, w: 450, h: 220 },
-        upnext: { x: 930, y: 295, w: 450, h: 150 },
-        calendar: { x: 930, y: 460, w: 450, h: 420 },
+        clock: { x: 930, y: 60, w: 450, h: 280 },
+        upnext: { x: 930, y: 355, w: 450, h: 150 },
+        calendar: { x: 930, y: 520, w: 450, h: 360 },
       }),
     },
     {
