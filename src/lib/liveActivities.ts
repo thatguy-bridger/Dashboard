@@ -151,8 +151,8 @@ export function useRoutine(key: string, everyMs = 8 * 60_000, holdMs = 20_000): 
   return open;
 }
 
-/** Priority-ordered live activities: important alerts > events starting soon >
- *  live games > music. `includeMusic` is false where the music card is already
+/** Priority-ordered live activities: music (when it needs the pill) > important alerts >
+ *  events starting soon > live games. `includeMusic` is false where the music card is already
  *  on screen (StandBy). */
 export function useLiveActivities(includeMusic = true): LiveActivity[] {
   const [s, setS] = useState(snap);

@@ -240,18 +240,18 @@ function WeatherHero({ w }: { w: Weather }) {
   return (
     <div className="flex flex-col gap-4" style={{ width: 820, height: 640 }}>
       <div
-        className="glass-card flex items-center gap-8 px-10"
+        className="glass-card flex items-center gap-7 px-9"
         style={{
           height: 250, borderRadius: 56,
           background: `radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, ${from} 80%, transparent), transparent 70%), radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, ${to} 40%, transparent), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))`,
         }}
       >
-        <WeatherIcon code={w.weatherCode} isDay={w.isDay} className="w-36 h-36 shrink-0" />
-        <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 200, lineHeight: 0.9, letterSpacing: "-0.04em" }}>{Math.round(w.tempF)}°</div>
+        <WeatherIcon code={w.weatherCode} isDay={w.isDay} className="w-28 h-28 shrink-0" />
+        <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 184, lineHeight: 0.9, letterSpacing: "-0.04em" }}>{Math.round(w.tempF)}°</div>
         <div className="min-w-0">
-          <div className="text-white font-bold leading-tight" style={{ fontSize: 44 }}>{weatherLabel(w.weatherCode)}</div>
+          <div className="text-white font-bold leading-tight" style={{ fontSize: 40 }}>{weatherLabel(w.weatherCode)}</div>
           {w.feelsLikeF != null && <div className="text-white/70 font-semibold" style={{ fontSize: 24 }}>Feels like {Math.round(w.feelsLikeF)}°</div>}
-          <div className="num-rounded text-white/60 font-semibold mt-1" style={{ fontSize: 24 }}>H {Math.round(w.highF)}° · L {Math.round(w.lowF)}°</div>
+          <div className="num-rounded text-white font-bold mt-2 whitespace-nowrap" style={{ fontSize: 40, lineHeight: 1.05 }}>H {Math.round(w.highF)}° <span className="mx-1 text-white/40">·</span> L {Math.round(w.lowF)}°</div>
         </div>
       </div>
 
@@ -580,6 +580,51 @@ function AgendaList({ events, connected }: { events: CalEvent[]; connected: bool
   );
 }
 
+/** Plain-language read on the day: sky, temperatures, rain, what to wear, and the schedule. */
+function buildSummary(w: Weather, events: CalEvent[], now: Date): { head: string; body: string } {
+  const sky = weatherLabel(w.weatherCode).toLowerCase();
+  const hi = Math.round(w.highF), lo = Math.round(w.lowF);
+  const head = `${sky.charAt(0).toUpperCase()}${sky.slice(1)}, high of ${hi}°, low of ${lo}°.`;
+  const bits: string[] = [];
+
+  const ahead = w.hourly.filter((h) => new Date(h.time).getTime() > now.getTime() - 3600_000).slice(0, 14);
+  const wet = ahead.reduce<Hour | null>((m, h) => ((h.precipProbability ?? 0) > (m?.precipProbability ?? 0) ? h : m), null);
+  if (wet && (wet.precipProbability ?? 0) >= 30) {
+    bits.push(`${wet.precipProbability}% chance of rain around ${new Date(wet.time).toLocaleTimeString([], { hour: "numeric" })}`);
+  }
+  if (hi <= 40) bits.push("bundle up");
+  else if (hi <= 60) bits.push("bring a jacket");
+  else if (hi >= 90) bits.push("it will be hot, stay hydrated");
+  if ((w.uvIndex ?? 0) >= 6) bits.push("high UV, wear sunscreen");
+  if ((w.windMph ?? 0) >= 18) bits.push("windy");
+
+  const today = events.filter((e) => new Date(e.start).toDateString() === now.toDateString() && new Date(e.end ?? e.start).getTime() > now.getTime());
+  const timed = today.filter((e) => !e.allDay);
+  const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  let sched = "";
+  if (timed.length > 0) sched = `${timed.length} event${timed.length > 1 ? "s" : ""} today — first up, ${timed[0].summary} at ${t(new Date(timed[0].start))}.`;
+  else if (today.length > 0) sched = `${today.length} all-day item${today.length > 1 ? "s" : ""} today.`;
+
+  const advice = bits.length ? `${bits.join("; ").replace(/^./, (c) => c.toUpperCase())}. ` : "";
+  return { head, body: `${advice}${sched}`.trim() };
+}
+
+function DaySummary({ w, events }: { w: Weather; events: CalEvent[] }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const s = buildSummary(w, events, now);
+  return (
+    <div className="glass-card flex flex-col justify-center w-full h-full" style={{ borderRadius: 36, padding: "18px 32px" }}>
+      <div className="caps-label" style={{ fontSize: 12, marginBottom: 6 }}>Today</div>
+      <FitText lines={1} className="text-white font-bold" style={{ fontSize: 32, lineHeight: 1.15 }}>{s.head}</FitText>
+      {s.body && <FitText lines={2} className="text-white/75 font-semibold mt-1" style={{ fontSize: 22, lineHeight: 1.25 }}>{s.body}</FitText>}
+    </div>
+  );
+}
+
 /** The next timed event with a live countdown — what you need to know "right now". */
 function UpNextLive({ events }: { events: CalEvent[] }) {
   const [now, setNow] = useState(() => Date.now());
@@ -788,6 +833,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
+      case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
       case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.[1]} />;
       case "calendar": return <AgendaList events={upcoming} connected={calConnected} />;
@@ -806,10 +852,12 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow", "daysummary"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
-    const k = row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h);
+    // The clock fills the width it is given (the right-column morning clock spans the whole column).
+    const k0 = it.id === "clock" ? Math.min(it.w / 600, it.h / def.h) : null;
+    const k = k0 ?? (row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h));
     const innerW = row ? it.w / k : def.w;
     return (
       <div style={{ width: innerW, height: it.h / k, transform: `scale(${k})`, transformOrigin: "0 0" }}>

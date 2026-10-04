@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "clock" | "weatherhero" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
+export type CustomItemId = "clock" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather" | "notifications">;
 
 export interface StandByItem {
@@ -34,6 +34,7 @@ const RAW_DEFS: Def[] = [
   D("clock", "Clock & date", true, 60, 70, 620, 300, true),
   D("weather", "Weather", true, 60, 382, 380, 112, true),
   D("weatherhero", "Weather (detailed, large)", false, 60, 100, 820, 640, true),
+  D("daysummary", "Day summary (what to expect)", false, 60, 760, 830, 130, true),
   D("upnext", "Up next (live countdown)", false, 60, 400, 640, 200, true),
   D("tomorrow", "Tomorrow preview", false, 60, 400, 560, 300, true),
   D("forecast", "Hourly forecast", true, 60, 510, 600, 118, true),
@@ -67,7 +68,7 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 
 /** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
  *  instead of stretching it. */
-export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications"];
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications", "daysummary"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 export const STANDBY_LABELS = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, d.label])) as Record<StandByItemId, string>;
@@ -142,9 +143,9 @@ export function defaultScenes(): StandByScene[] {
       schedule: { timeStart: "05:30", timeEnd: "10:00" },
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
-        clock: { x: 60, y: 770, w: 330, h: 130 },
-        calendar: { x: 930, y: 100, w: 450, h: 760 },
-        notifications: { x: 440, y: 790, w: 440, h: 70 },
+        daysummary: { x: 50, y: 764, w: 840, h: 120 },
+        clock: { x: 930, y: 60, w: 450, h: 230 },
+        calendar: { x: 930, y: 310, w: 450, h: 570 },
       }),
     },
     {
@@ -216,10 +217,10 @@ export function personalScenes(): StandByScene[] {
       schedule: { timeStart: "05:30", timeEnd: "09:30" },
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
-        upnext: { x: 930, y: 100, w: 450, h: 200 },
-        calendar: { x: 930, y: 320, w: 450, h: 540 },
-        clock: { x: 60, y: 770, w: 330, h: 130 },
-        notifications: { x: 440, y: 790, w: 440, h: 70 },
+        daysummary: { x: 50, y: 764, w: 840, h: 120 },
+        clock: { x: 930, y: 60, w: 450, h: 220 },
+        upnext: { x: 930, y: 295, w: 450, h: 150 },
+        calendar: { x: 930, y: 460, w: 450, h: 420 },
       }),
     },
     {

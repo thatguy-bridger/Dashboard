@@ -73,11 +73,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   if ("standbyLayout" in body) {
-    patch.standbyLayout = body.standbyLayout === null ? mergeStandByLayout(null) : mergeStandByLayout(body.standbyLayout);
+    // null clears the stored value so the built-in defaults apply (and keep improving with new releases)
+    patch.standbyLayout = (body.standbyLayout === null ? null : mergeStandByLayout(body.standbyLayout)) as never;
   }
 
   if ("standbyScenes" in body) {
-    patch.standbyScenes = mergeScenes(body.standbyScenes);
+    patch.standbyScenes = (body.standbyScenes === null ? null : mergeScenes(body.standbyScenes)) as never;
   }
 
   const settings = await updateSettings(patch);
