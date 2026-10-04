@@ -23,8 +23,10 @@ export function RippleReveal({ children, accent = "#f0b38a", duration = 1600 }: 
   const ref = useRef<HTMLDivElement>(null);
   const [done, setDone] = useState(false);
   const [p, setP] = useState(0);
+  const [rMax, setRMax] = useState(0);
 
   useEffect(() => {
+    setRMax(Math.hypot(window.innerWidth / 2, window.innerHeight) * 1.08);
     const t0 = performance.now();
     let raf = 0;
     function frame(now: number) {
@@ -69,7 +71,7 @@ export function RippleReveal({ children, accent = "#f0b38a", duration = 1600 }: 
               key={i}
               cx="50%"
               cy="0"
-              r={Math.hypot(window.innerWidth / 2, window.innerHeight) * 1.08 * Math.min(1, p * k)}
+              r={rMax * Math.min(1, p * k)}
               fill="none"
               stroke={accent}
               strokeOpacity={i === 0 ? 0.6 : 0.3}

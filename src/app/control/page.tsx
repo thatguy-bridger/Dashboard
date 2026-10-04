@@ -18,8 +18,10 @@ import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { RulesEditor } from "@/components/RulesEditor";
+import { hasAnyRule } from "@/lib/visibility";
 import { StandByEditor } from "@/components/StandByEditor";
-import { defaultStandByLayout, type StandByItem } from "@/lib/standby";
+import { defaultScenes, defaultStandByLayout, mergeScenes, type StandByItem, type StandByScene } from "@/lib/standby";
 import { Modal } from "@/components/Modal";
 import { WidgetIcon } from "@/components/icons/WidgetIcons";
 import { findFreeSpot } from "@/lib/grid";
@@ -34,76 +36,6 @@ const DEFAULT_DEVICE_WIDGETS: PresetWidget[] = [
 
 function summarize(widgets: PresetWidget[]) {
   return widgets.map((w) => WIDGET_LABELS[w.type]).join(", ") || "no widgets";
-}
-
-function hasAnyRule(v: WidgetVisibility | undefined): boolean {
-  return Boolean(v && (v.timeStart || v.timeEnd || v.weather || v.calendarKeyword));
-}
-
-/** Inline editor for one widget's visibility rules — all three are
- * optional and AND together (see WidgetVisibility). Clearing every field
- * removes the rule entirely rather than leaving an empty-but-present object. */
-function RulesEditor({
-  visibility,
-  onChange,
-}: {
-  visibility: WidgetVisibility | undefined;
-  onChange: (visibility: WidgetVisibility | undefined) => void;
-}) {
-  function patch(partial: Partial<WidgetVisibility>) {
-    const next: WidgetVisibility = { ...visibility, ...partial };
-    if (!next.timeStart) delete next.timeStart;
-    if (!next.timeEnd) delete next.timeEnd;
-    if (!next.weather) delete next.weather;
-    if (!next.calendarKeyword) delete next.calendarKeyword;
-    onChange(Object.keys(next).length > 0 ? next : undefined);
-  }
-
-  return (
-    <div className="flex flex-col gap-2 bg-black/20 rounded-lg p-3 mt-1 text-xs">
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--muted)] w-20 shrink-0">Time window</span>
-        <input
-          type="time"
-          value={visibility?.timeStart ?? ""}
-          onChange={(e) => patch({ timeStart: e.target.value || undefined })}
-          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1"
-        />
-        <span className="text-[var(--muted)]">to</span>
-        <input
-          type="time"
-          value={visibility?.timeEnd ?? ""}
-          onChange={(e) => patch({ timeEnd: e.target.value || undefined })}
-          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--muted)] w-20 shrink-0">Weather</span>
-        <select
-          value={visibility?.weather ?? ""}
-          onChange={(e) => patch({ weather: (e.target.value || undefined) as VisibilityWeatherCondition | undefined })}
-          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1 capitalize"
-        >
-          <option value="">Any</option>
-          {VISIBILITY_WEATHER_CONDITIONS.map((c) => (
-            <option key={c} value={c} className="bg-[var(--bg)] capitalize">
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--muted)] w-20 shrink-0">Calendar has</span>
-        <input
-          value={visibility?.calendarKeyword ?? ""}
-          onChange={(e) => patch({ calendarKeyword: e.target.value || undefined })}
-          placeholder="keyword, e.g. ski"
-          className="bg-transparent border border-[var(--surface-border)] rounded px-2 py-1 flex-1"
-        />
-      </div>
-      <p className="text-[var(--muted)]">All set rules must match — leave any blank to not constrain on it.</p>
-    </div>
-  );
 }
 
 /** Rules editor for whichever widget is currently selected in the GridEditor
@@ -173,6 +105,7 @@ export default function ControlPage() {
   const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
   const [layoutMode, setLayoutMode] = useState<"standby" | "grid">("standby");
   const [standbyLayout, setStandbyLayout] = useState<StandByItem[]>(defaultStandByLayout());
+  const [standbyScenes, setStandbyScenes] = useState<StandByScene[]>(defaultScenes());
   const [standbyEditorOpen, setStandbyEditorOpen] = useState(false);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
@@ -260,6 +193,7 @@ export default function ControlPage() {
         setDisplayMode(data.settings.displayMode ?? "color");
         setLayoutMode(data.settings.layoutMode ?? "standby");
         if (data.settings.standbyLayout) setStandbyLayout(data.settings.standbyLayout);
+        if (data.settings.standbyScenes) setStandbyScenes(mergeScenes(data.settings.standbyScenes));
       });
   }, []);
 
@@ -290,12 +224,13 @@ export default function ControlPage() {
     });
   }
 
-  async function saveStandbyLayout(items: StandByItem[]) {
+  async function saveStandbyLayout(items: StandByItem[], scenes: StandByScene[]) {
     setStandbyLayout(items);
+    setStandbyScenes(scenes);
     await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ standbyLayout: items }),
+      body: JSON.stringify({ standbyLayout: items, standbyScenes: scenes }),
     });
   }
 
@@ -819,7 +754,8 @@ export default function ControlPage() {
             <StandByEditor
               open
               onClose={() => setStandbyEditorOpen(false)}
-              initial={standbyLayout}
+              initialLayout={standbyLayout}
+              initialScenes={standbyScenes}
               onSave={saveStandbyLayout}
             />
           )}

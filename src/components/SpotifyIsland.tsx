@@ -75,7 +75,11 @@ function ActivityPill({ a, expanded }: { a: LiveActivity; expanded: boolean }) {
         style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }}
       />
       <div className="min-w-0 flex-1">
-        <Marquee className={`text-white ${expanded ? "text-base font-bold" : "text-[0.8125rem] font-semibold"}`}>{a.title}</Marquee>
+        {expanded ? (
+          <div className="text-white text-base font-bold leading-tight line-clamp-2">{a.title}</div>
+        ) : (
+          <Marquee className="text-white text-[0.8125rem] font-semibold">{a.title}</Marquee>
+        )}
         {a.subtitle && (
           <div
             className="text-xs font-semibold text-white/55 truncate overflow-hidden transition-all duration-500"
@@ -126,7 +130,7 @@ export function SpotifyIsland({ includeMusic = true }: { includeMusic?: boolean 
   const dims = useMemo(() => {
     const music = top?.kind === "music";
     return expanded
-      ? { w: music ? 400 : 360, h: music ? 128 : 76, r: music ? 34 : 38, art: 84 }
+      ? { w: music ? 400 : 420, h: music ? 128 : 84, r: music ? 34 : 38, art: 84 }
       : { w: music ? 220 : 260, h: 46, r: 23, art: 30 };
   }, [expanded, top?.kind]);
 

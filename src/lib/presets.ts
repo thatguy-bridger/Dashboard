@@ -79,6 +79,8 @@ export interface WidgetVisibility {
    * supported by treating end < start as wrapping past midnight. */
   timeStart?: string;
   timeEnd?: string;
+  /** Days of week the rule applies on (0 = Sunday ... 6 = Saturday). Omitted = every day. */
+  days?: number[];
   weather?: VisibilityWeatherCondition;
   /** Case-insensitive substring match against today's calendar event titles
    * (from /api/calendar) — e.g. "ski" only shows the widget on days with a
@@ -115,12 +117,16 @@ function isWidgetSize(v: unknown): v is WidgetSize {
   return typeof v === "string" && (WIDGET_SIZES as readonly string[]).includes(v);
 }
 
-function parseVisibility(raw: unknown): WidgetVisibility | undefined {
+export function parseVisibility(raw: unknown): WidgetVisibility | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const v = raw as Record<string, unknown>;
   const result: WidgetVisibility = {};
   if (typeof v.timeStart === "string") result.timeStart = v.timeStart;
   if (typeof v.timeEnd === "string") result.timeEnd = v.timeEnd;
+  if (Array.isArray(v.days)) {
+    const days = v.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (days.length > 0 && days.length < 7) result.days = days;
+  }
   if (typeof v.weather === "string" && (VISIBILITY_WEATHER_CONDITIONS as readonly string[]).includes(v.weather)) {
     result.weather = v.weather as VisibilityWeatherCondition;
   }

@@ -53,7 +53,12 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
 
   // sm: a single rotating headline, no label — too tight for anything else.
   if (size === "sm") {
-    return <div className={`text-xs text-center line-clamp-3 ${fade}`}>{current.title}</div>;
+    return (
+      <div className={`w-full text-left ${fade}`}>
+        <div className="caps-label !text-[0.5625rem] mb-0.5">News</div>
+        <div className="text-base font-semibold leading-snug line-clamp-2">{current.title}</div>
+      </div>
+    );
   }
 
   // md: image-mode gets a compact photo card; color mode keeps the plain

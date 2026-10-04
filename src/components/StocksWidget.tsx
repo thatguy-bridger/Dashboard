@@ -13,10 +13,10 @@ interface Quote {
 function QuoteRow({ q }: { q: Quote }) {
   return (
     <div className="flex items-center justify-between gap-3 w-full">
-      <span className="text-sm font-medium">{q.symbol}</span>
+      <span className="text-base font-bold">{q.symbol}</span>
       <div className="flex items-baseline gap-2">
-        <span className="text-sm tabular-nums">{q.price}</span>
-        <span className={`text-xs tabular-nums ${q.changePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+        <span className="num-rounded text-base font-semibold">{q.price}</span>
+        <span className={`num-rounded text-sm font-semibold ${q.changePercent >= 0 ? "text-emerald-400" : "text-red-400"}`}>
           {q.changePercent >= 0 ? "+" : ""}
           {q.changePercent}%
         </span>

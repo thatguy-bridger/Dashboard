@@ -44,6 +44,8 @@ function withinTimeRange(now: Date, start?: string, end?: string): boolean {
 export function isWidgetVisible(visibility: WidgetVisibility | undefined, ctx: VisibilityContext): boolean {
   if (!visibility) return true;
 
+  if (visibility.days && !visibility.days.includes(ctx.now.getDay())) return false;
+
   if (!withinTimeRange(ctx.now, visibility.timeStart, visibility.timeEnd)) return false;
 
   if (visibility.weather) {
@@ -66,4 +68,9 @@ export function visibilityNeedsWeather(widgets: { visibility?: WidgetVisibility 
 
 export function visibilityNeedsCalendar(widgets: { visibility?: WidgetVisibility }[]): boolean {
   return widgets.some((w) => w.visibility?.calendarKeyword);
+}
+
+/** True when a rule set actually constrains something. */
+export function hasAnyRule(v: WidgetVisibility | undefined): boolean {
+  return Boolean(v && (v.timeStart || v.timeEnd || v.days?.length || v.weather || v.calendarKeyword));
 }

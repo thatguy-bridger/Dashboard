@@ -13,7 +13,8 @@ import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
-import { mergeStandByLayout, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem } from "@/lib/standby";
+import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem, type StandByScene } from "@/lib/standby";
+import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
 
 const W = 1440;
@@ -415,6 +416,52 @@ function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
   );
 }
 
+/** Full vertical agenda: day headings, glass event cards, fading out at the bottom. */
+function AgendaList({ events, connected }: { events: CalEvent[]; connected: boolean }) {
+  const groups: { label: string; items: CalEvent[] }[] = [];
+  for (const e of events) {
+    const label = dayLabel(new Date(e.start));
+    const g = groups[groups.length - 1];
+    if (g && g.label === label) g.items.push(e);
+    else groups.push({ label, items: [e] });
+  }
+  return (
+    <div
+      className="w-full h-full overflow-hidden"
+      style={{ maskImage: "linear-gradient(180deg, #000 88%, transparent)" }}
+    >
+      {events.length === 0 ? (
+        <div className="glass-card flex items-center justify-center text-center px-8 h-40 text-white/45 font-semibold" style={{ fontSize: 22, borderRadius: 36 }}>
+          {connected ? "Nothing on the calendar" : "Calendar not connected — sign in from Control"}
+        </div>
+      ) : (
+        groups.map((g) => (
+          <div key={g.label} className="mb-6">
+            <div className="caps-label mb-3" style={{ fontSize: 15, paddingLeft: 8 }}>{g.label}</div>
+            <div className="flex flex-col gap-3">
+              {g.items.map((e, i) => {
+                const col = eventColor(e.colorId, e.source);
+                const s = new Date(e.start);
+                return (
+                  <div key={i} className="glass-card flex items-center gap-4 px-6" style={{ minHeight: 84, borderRadius: 28 }}>
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 8px ${col}cc` }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-white font-semibold leading-tight line-clamp-2" style={{ fontSize: 22 }}>{e.summary}</div>
+                      <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 17 }}>
+                        {e.allDay ? "All day" : `${s.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.end ? ` – ${new Date(e.end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 function UpNext({ e }: { e: CalEvent | undefined }) {
   const c = e ? eventColor(e.colorId, e.source) : NEUTRAL_ACCENT;
   return (
@@ -455,13 +502,17 @@ function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string
 
 // ---------- screen ----------
 
-/** Saved layout from settings, or a ?sbdraft=<base64 JSON> override used by the editor's live preview. */
-function useStandByLayout(draft: string | null): StandByItem[] {
-  const [items, setItems] = useState<StandByItem[]>(() => mergeStandByLayout(null));
+/** Saved base layout + scenes from settings, or a ?sbdraft=<base64 JSON> override
+ *  used by the editor's live preview (which bypasses scenes and rules). */
+function useStandByConfig(draft: string | null) {
+  const [cfg, setCfg] = useState<{ layout: StandByItem[]; scenes: StandByScene[] }>(() => ({
+    layout: mergeStandByLayout(null),
+    scenes: defaultScenes(),
+  }));
   useEffect(() => {
     if (draft) {
       try {
-        setItems(mergeStandByLayout(JSON.parse(decodeURIComponent(escape(atob(draft))))));
+        setCfg({ layout: mergeStandByLayout(JSON.parse(decodeURIComponent(escape(atob(draft))))), scenes: [] });
         return;
       } catch {
         // fall through to saved layout
@@ -472,7 +523,11 @@ function useStandByLayout(draft: string | null): StandByItem[] {
       fetch("/api/settings", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (!off && d?.settings?.standbyLayout) setItems(mergeStandByLayout(d.settings.standbyLayout));
+          if (off || !d?.settings) return;
+          setCfg({
+            layout: mergeStandByLayout(d.settings.standbyLayout),
+            scenes: mergeScenes(d.settings.standbyScenes),
+          });
         })
         .catch(() => {});
     }
@@ -483,28 +538,44 @@ function useStandByLayout(draft: string | null): StandByItem[] {
       clearInterval(id);
     };
   }, [draft]);
-  return items;
+  return { ...cfg, isDraft: Boolean(draft) };
 }
 
 const REVEAL_DELAY: Record<string, number> = {
   notifications: 0.5, clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
 };
 
-export function StandBy({ draft = null }: { draft?: string | null }) {
+export function StandBy({ draft = null, sceneId = null }: { draft?: string | null; sceneId?: string | null }) {
   const scale = useScale();
   const np = useNowPlaying();
   const playing = Boolean(np?.connected && np.isPlaying && np.track);
   const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
   const color = playing ? accent : NEUTRAL_ACCENT;
-  const layout = useStandByLayout(draft);
+  const cfg = useStandByConfig(draft);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const weather = usePolled<Weather>("/api/weather", 10 * 60_000, (j: Weather) => j);
-  const events = usePolled<CalEvent[]>("/api/calendar", 5 * 60_000, (j: { events?: CalEvent[] }) => j.events ?? []);
+  const calData = usePolled<{ events: CalEvent[]; connected: boolean }>("/api/calendar", 5 * 60_000, (j: { events?: CalEvent[]; connected?: boolean }) => ({ events: j.events ?? [], connected: Boolean(j.connected) }));
+  const events = calData?.events ?? null;
+  const calConnected = calData?.connected ?? false;
   const notes = usePolled<Note[]>("/api/notifications", 30_000, (j: { notifications: Note[] }) => j.notifications);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const upcoming = (events ?? []).filter((e) => new Date(e.end ?? e.start).getTime() > Date.now()).slice(0, 12);
   const unread = (notes ?? []).filter((n) => !n.read && n.level === "info" && !dismissed.has(n.id));
+
+  // Scenes switch on their own schedule; per-item rules then hide individual pieces.
+  const ctx: VisibilityContext = {
+    now,
+    weatherCode: weather?.weatherCode ?? null,
+    todaysEventTitles: (events ?? []).filter((e) => new Date(e.start).toDateString() === now.toDateString()).map((e) => e.summary),
+  };
+  const active = cfg.isDraft ? null : (sceneId ? cfg.scenes.find((s) => s.id === sceneId) ?? null : pickScene(cfg.scenes, ctx));
+  const layout = (active?.items ?? cfg.layout).filter((it) => cfg.isDraft || isWidgetVisible(it.visibility, ctx));
 
   function dismiss(id: string) {
     setDismissed((s) => new Set(s).add(id));
@@ -525,6 +596,7 @@ export function StandBy({ draft = null }: { draft?: string | null }) {
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
+      case "calendar": return <AgendaList events={upcoming} connected={calConnected} />;
       default: {
         const type = it.id as WidgetType;
         return (
@@ -540,7 +612,7 @@ export function StandBy({ draft = null }: { draft?: string | null }) {
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications"].includes(it.id);
+    const custom = ["clock", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     const k = row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h);
