@@ -2,6 +2,7 @@ import { d1Query } from "@/lib/d1";
 import type { PresetWidget } from "@/lib/presets";
 import { parseWidgets } from "@/lib/presets";
 import { parseBackground, type BackgroundConfig } from "@/lib/background";
+import { mergeScenes, mergeStandByLayout, type StandByItem, type StandByScene } from "@/lib/standby";
 
 export type DeviceStatus = "pending" | "approved" | "rejected";
 
@@ -10,6 +11,12 @@ export type DeviceStatus = "pending" | "approved" | "rejected";
 export interface DeviceLayout {
   widgets: PresetWidget[];
   background: BackgroundConfig;
+}
+
+/** A screen's own StandBy (layout + scenes), used instead of the global one. */
+export interface DeviceStandBy {
+  layout: StandByItem[];
+  scenes: StandByScene[];
 }
 
 export interface Device {
@@ -26,6 +33,8 @@ export interface Device {
   viewMode: "standby" | "grid" | null;
   /** StandBy scene pinned to this screen ("base" = Default layout), or null = automatic by schedule. */
   sceneId: string | null;
+  /** Per-screen StandBy profile; null = use the global one. */
+  standby: DeviceStandBy | null;
   firstSeen: number;
   lastSeen: number;
 }
@@ -42,6 +51,7 @@ interface DeviceRow {
   layout: string | null;
   view_mode: string | null;
   scene_id: string | null;
+  standby: string | null;
   first_seen: number;
   last_seen: number;
 }
@@ -52,6 +62,17 @@ function parseLayout(raw: string | null): DeviceLayout | null {
     const obj = JSON.parse(raw);
     if (!obj || typeof obj !== "object") return null;
     return { widgets: parseWidgets(obj.widgets), background: parseBackground(obj.background) };
+  } catch {
+    return null;
+  }
+}
+
+function parseStandBy(raw: string | null): DeviceStandBy | null {
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object") return null;
+    return { layout: mergeStandByLayout(obj.layout), scenes: mergeScenes(obj.scenes) };
   } catch {
     return null;
   }
@@ -70,6 +91,7 @@ function fromRow(row: DeviceRow): Device {
     layout: parseLayout(row.layout),
     viewMode: row.view_mode === "standby" || row.view_mode === "grid" ? row.view_mode : null,
     sceneId: row.scene_id ?? null,
+    standby: parseStandBy(row.standby),
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
   };
@@ -81,7 +103,7 @@ let layoutColumnReady: Promise<void> | null = null;
 function ensureLayoutColumn(): Promise<void> {
   if (!layoutColumnReady) {
     const add = (col: string) => d1Query(`ALTER TABLE devices ADD COLUMN ${col} TEXT`).then(() => undefined, () => undefined); // already exists
-    layoutColumnReady = add("layout").then(() => add("view_mode")).then(() => add("scene_id"));
+    layoutColumnReady = add("layout").then(() => add("view_mode")).then(() => add("scene_id")).then(() => add("standby"));
   }
   return layoutColumnReady;
 }
@@ -121,7 +143,7 @@ export async function touchDevice(params: {
 
 export async function updateDevice(
   id: string,
-  patch: Partial<Pick<Device, "name" | "status" | "touchOverride" | "presetId" | "layout" | "viewMode" | "sceneId">>
+  patch: Partial<Pick<Device, "name" | "status" | "touchOverride" | "presetId" | "layout" | "viewMode" | "sceneId" | "standby">>
 ): Promise<Device | null> {
   await ensureLayoutColumn();
   const sets: string[] = [];
@@ -151,6 +173,10 @@ export async function updateDevice(
   if ("viewMode" in patch) {
     sets.push("view_mode = ?");
     values.push(patch.viewMode);
+  }
+  if ("standby" in patch) {
+    sets.push("standby = ?");
+    values.push(patch.standby ? JSON.stringify(patch.standby) : null);
   }
   if ("sceneId" in patch) {
     sets.push("scene_id = ?");

@@ -14,6 +14,7 @@ import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
+import { useRoutine } from "@/lib/liveActivities";
 import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
@@ -577,6 +578,79 @@ function AgendaList({ events, connected }: { events: CalEvent[]; connected: bool
   );
 }
 
+/** The next timed event with a live countdown — what you need to know "right now". */
+function UpNextLive({ events }: { events: CalEvent[] }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const e = events.find((x) => !x.allDay && new Date(x.end ?? x.start).getTime() > now);
+  const c = e ? eventColor(e.colorId, e.source) : NEUTRAL_ACCENT;
+  const start = e ? new Date(e.start).getTime() : 0;
+  const mins = Math.round((start - now) / 60_000);
+  const nowOn = Boolean(e) && start <= now;
+  const big = !e ? "" : nowOn ? "Now" : mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${Math.max(mins, 1)}m`;
+  const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return (
+    <div
+      className="glass-card flex items-center gap-8 px-9 w-full h-full"
+      style={{ borderRadius: 48, background: `radial-gradient(120% 140% at 0% 0%, ${c}40, transparent 65%), linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))` }}
+    >
+      {e ? (
+        <>
+          <div className="shrink-0 text-center">
+            <div className="caps-label" style={{ fontSize: 13 }}>{nowOn ? "Happening" : "Starts in"}</div>
+            <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 88, lineHeight: 1 }}>{big}</div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 34 }}>{e.summary}</FitText>
+            <div className="num-rounded font-semibold text-white/60 mt-1" style={{ fontSize: 20 }}>
+              {t(new Date(e.start))}{e.end ? ` – ${t(new Date(e.end))}` : ""}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="text-white/45 font-semibold" style={{ fontSize: 28 }}>Nothing else scheduled today</div>
+      )}
+    </div>
+  );
+}
+
+/** Evening look-ahead: first thing tomorrow, then the rest, plus tomorrow's weather. */
+function TomorrowPreview({ events, day }: { events: CalEvent[]; day?: Day }) {
+  const tm = new Date(Date.now() + 86_400_000).toDateString();
+  const list = events.filter((e) => new Date(e.start).toDateString() === tm).slice(0, 4);
+  const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const first = list.find((e) => !e.allDay);
+  return (
+    <div className="glass-card flex flex-col gap-3 w-full h-full" style={{ borderRadius: 44, padding: 32 }}>
+      <div className="flex items-baseline justify-between">
+        <div className="caps-label" style={{ fontSize: 14 }}>Tomorrow</div>
+        {day && <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 20 }}>{Math.round(day.highF)}° / {Math.round(day.lowF)}°</div>}
+      </div>
+      {first && (
+        <div className="text-white font-bold leading-tight" style={{ fontSize: 30 }}>
+          First up {t(new Date(first.start))}
+        </div>
+      )}
+      <div className="flex flex-col gap-2 min-h-0">
+        {list.length === 0 ? (
+          <div className="text-white/45 font-semibold" style={{ fontSize: 24 }}>Nothing scheduled</div>
+        ) : (
+          list.map((e, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: eventColor(e.colorId, e.source) }} />
+              <FitText className="text-white/90 font-semibold flex-1 min-w-0" style={{ fontSize: 20 }}>{e.summary}</FitText>
+              <span className="num-rounded font-semibold text-white/50" style={{ fontSize: 16 }}>{e.allDay ? "all day" : t(new Date(e.start))}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UpNext({ e }: { e: CalEvent | undefined }) {
   const c = e ? eventColor(e.colorId, e.source) : NEUTRAL_ACCENT;
   return (
@@ -619,7 +693,10 @@ function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string
 
 /** Saved base layout + scenes from settings, or a ?sbdraft=<base64 JSON> override
  *  used by the editor's live preview (which bypasses scenes and rules). */
-function useStandByConfig(draft: string | null) {
+function useStandByConfig(draft: string | null, profile: { layout: StandByItem[]; scenes: StandByScene[] } | null) {
+  // Device polls hand us a fresh object every few seconds; key on content so we only re-apply real changes.
+  const profileKey = profile ? JSON.stringify(profile) : "";
+  const [loaded, setLoaded] = useState(false);
   const [cfg, setCfg] = useState<{ layout: StandByItem[]; scenes: StandByScene[] }>(() => ({
     layout: mergeStandByLayout(null),
     scenes: defaultScenes(),
@@ -628,10 +705,16 @@ function useStandByConfig(draft: string | null) {
     if (draft) {
       try {
         setCfg({ layout: mergeStandByLayout(JSON.parse(decodeURIComponent(escape(atob(draft))))), scenes: [] });
+        setLoaded(true);
         return;
       } catch {
         // fall through to saved layout
       }
+    }
+    if (profile) {
+      setCfg({ layout: mergeStandByLayout(profile.layout), scenes: mergeScenes(profile.scenes) });
+      setLoaded(true);
+      return;
     }
     let off = false;
     function load() {
@@ -643,6 +726,7 @@ function useStandByConfig(draft: string | null) {
             layout: mergeStandByLayout(d.settings.standbyLayout),
             scenes: mergeScenes(d.settings.standbyScenes),
           });
+          setLoaded(true);
         })
         .catch(() => {});
     }
@@ -652,21 +736,21 @@ function useStandByConfig(draft: string | null) {
       off = true;
       clearInterval(id);
     };
-  }, [draft]);
-  return { ...cfg, isDraft: Boolean(draft) };
+  }, [draft, profileKey]);
+  return { ...cfg, isDraft: Boolean(draft), loaded };
 }
 
 const REVEAL_DELAY: Record<string, number> = {
   notifications: 0.5, clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
 };
 
-export function StandBy({ draft = null, sceneId = null }: { draft?: string | null; sceneId?: string | null }) {
+export function StandBy({ draft = null, sceneId = null, profile = null }: { draft?: string | null; sceneId?: string | null; profile?: { layout: StandByItem[]; scenes: StandByScene[] } | null }) {
   const { s: scale, extraW, extraH } = useViewport();
   const np = useNowPlaying();
   const playing = Boolean(np?.connected && np.isPlaying && np.track);
   const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
   const color = playing ? accent : NEUTRAL_ACCENT;
-  const cfg = useStandByConfig(draft);
+  const cfg = useStandByConfig(draft, profile);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -681,7 +765,10 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const upcoming = (events ?? []).filter((e) => new Date(e.end ?? e.start).getTime() > Date.now()).slice(0, 12);
-  const unread = (notes ?? []).filter((n) => !n.read && n.level === "info" && !dismissed.has(n.id));
+  const unreadAll = (notes ?? []).filter((n) => !n.read && n.level === "info" && !dismissed.has(n.id));
+  // Pills appear routinely (on arrival, then every few minutes), not permanently.
+  const pillsOpen = useRoutine(unreadAll.map((n) => n.id).join(","));
+  const unread = pillsOpen ? unreadAll : [];
 
   // Scenes switch on their own schedule; per-item rules then hide individual pieces.
   const ctx: VisibilityContext = {
@@ -691,6 +778,10 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
   };
   const active = cfg.isDraft ? null : (sceneId ? (sceneId === "base" ? null : cfg.scenes.find((s) => s.id === sceneId) ?? null) : pickScene(cfg.scenes, ctx));
   const layout = (active?.items ?? cfg.layout).filter((it) => cfg.isDraft || isWidgetVisible(it.visibility, ctx));
+  // When the backdrop is music-driven, the music must still be visible: if this layout has no
+  // now-playing card, the top pill carries it.
+  const musicCardShown = layout.some((it) => it.id === "nowplaying" && it.enabled);
+  const dim = active?.dim ?? 0;
 
   function dismiss(id: string) {
     setDismissed((s) => new Set(s).add(id));
@@ -712,6 +803,8 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
+      case "upnext": return <UpNextLive events={upcoming} />;
+      case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.[1]} />;
       case "calendar": return <AgendaList events={upcoming} connected={calConnected} />;
       default: {
         const type = it.id as WidgetType;
@@ -728,7 +821,7 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     const k = row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h);
@@ -748,7 +841,7 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
           className="absolute"
           style={{ left: "50%", top: "50%", width: W + extraW, height: H + extraH, transform: `translate(-50%, -50%) scale(${scale})` }}
         >
-          {layout.filter((it) => it.enabled).map((raw) => adapt(raw, extraW, extraH)).map((it) => (
+          {(cfg.loaded ? layout : []).filter((it) => it.enabled).map((raw) => adapt(raw, extraW, extraH)).map((it) => (
             <div
               key={it.id}
               className="absolute"
@@ -760,7 +853,8 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
         </div>
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
-      <SpotifyIsland includeMusic={false} />
+      {dim > 0 && <div className="absolute inset-0 pointer-events-none bg-black transition-opacity duration-[2000ms]" style={{ opacity: dim }} />}
+      <SpotifyIsland includeMusic={!musicCardShown} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { RulesEditor } from "@/components/RulesEditor";
 import { hasAnyRule } from "@/lib/visibility";
 import type { WidgetVisibility } from "@/lib/presets";
 import {
-  SB_W, SB_H, STANDBY_LABELS, STANDBY_RESIZABLE, defaultScenes, defaultStandByLayout,
+  SB_W, SB_H, STANDBY_LABELS, STANDBY_RESIZABLE, defaultScenes, defaultStandByLayout, personalScenes,
   type StandByItem, type StandByItemId, type StandByScene,
 } from "@/lib/standby";
 
@@ -27,8 +27,9 @@ function describe(v: WidgetVisibility | undefined) {
 /** Edit the base StandBy layout and any number of scenes (each switches itself on by
  *  schedule). Toggle items, set per-item rules, and drag/resize over a live preview. */
 export function StandByEditor({
-  open, onClose, initialLayout, initialScenes, onSave,
+  open, onClose, initialLayout, initialScenes, onSave, title = "StandBy layout",
 }: {
+  title?: string;
   open: boolean;
   onClose: () => void;
   initialLayout: StandByItem[];
@@ -125,9 +126,21 @@ export function StandByEditor({
     <Modal
       open={open}
       onClose={onClose}
-      title="StandBy layout"
+      title={title}
       footer={
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <button
+            onClick={() => {
+              if (!window.confirm("Replace this screen's scenes with the personal-screen template (wake up, workday, evening, wind down, full content)?")) return;
+              const ps = personalScenes();
+              setScenes(ps);
+              setEditing(ps[0].id);
+              setCommitted(ps[0].items);
+            }}
+            className="text-xs px-3 py-2 rounded-lg border border-[var(--accent)]/40 text-[var(--accent)]"
+          >
+            Load personal template
+          </button>
           <button
             onClick={() => {
               if (!window.confirm("Reset the base layout and all scenes to the built-in defaults?")) return;
@@ -185,6 +198,15 @@ export function StandByEditor({
             in the list wins; otherwise the Default layout shows.
           </p>
           <RulesEditor visibility={scene.schedule} onChange={(v) => patchScene({ schedule: v })} />
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)] mt-2">
+            Dim screen
+            <input
+              type="range" min={0} max={0.85} step={0.05}
+              value={scene.dim ?? 0}
+              onChange={(ev) => patchScene({ dim: Number(ev.target.value) || undefined })}
+            />
+            <span>{Math.round((scene.dim ?? 0) * 100)}%</span>
+          </label>
         </div>
       ) : (
         <p className="text-xs text-[var(--muted)] mb-4">The Default layout shows whenever no scene&apos;s schedule matches.</p>

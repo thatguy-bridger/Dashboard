@@ -107,6 +107,7 @@ export default function ControlPage() {
   const [standbyLayout, setStandbyLayout] = useState<StandByItem[]>(defaultStandByLayout());
   const [standbyScenes, setStandbyScenes] = useState<StandByScene[]>(defaultScenes());
   const [standbyEditorOpen, setStandbyEditorOpen] = useState(false);
+  const [deviceStandByEditing, setDeviceStandByEditing] = useState<string | null>(null);
   const [googleStatus, setGoogleStatus] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [spotifyStatus, setSpotifyStatus] = useState<{ connected: boolean } | null>(null);
   const [mapHome, setMapHome] = useState<MapPlace | null>(null);
@@ -633,6 +634,24 @@ export default function ControlPage() {
                   <option value="grid">View: Tiles</option>
                 </select>
                 {(d.viewMode ?? layoutMode) === "standby" && (
+                  <button
+                    onClick={() => setDeviceStandByEditing(d.id)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border ${d.standby ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--surface-border)] text-[var(--muted)]"}`}
+                    title="Give this screen its own StandBy layout and scenes"
+                  >
+                    {d.standby ? "Own StandBy ✓" : "Own StandBy…"}
+                  </button>
+                )}
+                {d.standby && (
+                  <button
+                    onClick={() => patchDevice(d.id, { standby: null })}
+                    className="text-xs px-2 py-1.5 rounded-lg border border-[var(--surface-border)] text-[var(--muted)]"
+                    title="Drop this screen's own StandBy and follow the global one"
+                  >
+                    Use global
+                  </button>
+                )}
+                {(d.viewMode ?? layoutMode) === "standby" && (
                   <select
                     title="Which StandBy scene this screen shows"
                     value={d.sceneId ?? ""}
@@ -778,6 +797,23 @@ export default function ControlPage() {
               Edit StandBy…
             </button>
           </div>
+          {deviceStandByEditing && (() => {
+            const dev = devices?.find((x) => x.id === deviceStandByEditing);
+            if (!dev) return null;
+            return (
+              <StandByEditor
+                key={dev.id}
+                open
+                title={`StandBy — ${dev.name ?? dev.id.slice(0, 8)}`}
+                onClose={() => setDeviceStandByEditing(null)}
+                initialLayout={dev.standby?.layout ?? standbyLayout}
+                initialScenes={dev.standby?.scenes ?? standbyScenes}
+                onSave={async (layout, scenes) => {
+                  await patchDevice(dev.id, { standby: { layout, scenes } });
+                }}
+              />
+            );
+          })()}
           {standbyEditorOpen && (
             <StandByEditor
               open

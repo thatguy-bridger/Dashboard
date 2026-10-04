@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "clock" | "weatherhero" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
+export type CustomItemId = "clock" | "weatherhero" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather" | "notifications">;
 
 export interface StandByItem {
@@ -34,6 +34,8 @@ const RAW_DEFS: Def[] = [
   D("clock", "Clock & date", true, 60, 70, 620, 300, true),
   D("weather", "Weather", true, 60, 382, 380, 112, true),
   D("weatherhero", "Weather (detailed, large)", false, 60, 100, 820, 640, true),
+  D("upnext", "Up next (live countdown)", false, 60, 400, 640, 200, true),
+  D("tomorrow", "Tomorrow preview", false, 60, 400, 560, 300, true),
   D("forecast", "Hourly forecast", true, 60, 510, 600, 118, true),
   D("battery", "Device batteries (iCloud)", true, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
@@ -107,6 +109,8 @@ export interface StandByScene {
   name: string;
   items: StandByItem[];
   schedule?: WidgetVisibility;
+  /** 0-1 black overlay (night-time dimming). */
+  dim?: number;
 }
 
 /** Everything off, then the listed items on at the given boxes. */
@@ -175,7 +179,14 @@ export function mergeScenes(raw: unknown): StandByScene[] {
   for (const r of raw) {
     if (!r || typeof r.id !== "string" || typeof r.name !== "string") continue;
     const schedule = parseVisibility(r.schedule);
-    out.push({ id: r.id, name: r.name.slice(0, 40), items: mergeStandByLayout(r.items), ...(schedule ? { schedule } : {}) });
+    const dim = typeof r.dim === "number" && r.dim > 0 ? Math.min(0.9, r.dim) : undefined;
+    out.push({
+      id: r.id,
+      name: r.name.slice(0, 40),
+      items: mergeStandByLayout(r.items),
+      ...(schedule ? { schedule } : {}),
+      ...(dim ? { dim } : {}),
+    });
   }
   return out;
 }
@@ -191,4 +202,70 @@ export function pickScene(scenes: StandByScene[], ctx: VisibilityContext): Stand
         isWidgetVisible(s.schedule, ctx)
     ) ?? null
   );
+}
+
+// ---------- personal-screen template ----------
+
+/** A StandBy that follows the day: what you need at each point, not just content.
+ *  Intended for a bedroom/desk screen. Apply from the editor ("Load personal template"). */
+export function personalScenes(): StandByScene[] {
+  return [
+    {
+      id: "p-wake",
+      name: "Wake up",
+      schedule: { timeStart: "05:30", timeEnd: "09:30" },
+      items: scene({
+        weatherhero: { x: 50, y: 96, w: 840, h: 650 },
+        upnext: { x: 930, y: 100, w: 450, h: 200 },
+        calendar: { x: 930, y: 320, w: 450, h: 540 },
+        clock: { x: 60, y: 770, w: 330, h: 130 },
+        notifications: { x: 440, y: 790, w: 440, h: 70 },
+      }),
+    },
+    {
+      id: "p-work",
+      name: "Workday",
+      schedule: { timeStart: "09:30", timeEnd: "17:00", days: [1, 2, 3, 4, 5] },
+      items: scene({
+        clock: { x: 60, y: 70, w: 520, h: 250 },
+        weather: { x: 60, y: 340, w: 380, h: 112 },
+        upnext: { x: 700, y: 110, w: 680, h: 230 },
+        calendar: { x: 700, y: 360, w: 680, h: 500 },
+        battery: { x: 60, y: 480, w: 560, h: 84 },
+        notifications: { x: 60, y: 600, w: 560, h: 116 },
+      }),
+    },
+    {
+      id: "p-evening",
+      name: "Evening",
+      schedule: { timeStart: "17:00", timeEnd: "22:00" },
+      items: scene({
+        clock: { x: 60, y: 70 },
+        weather: { x: 60, y: 382 },
+        forecast: { x: 60, y: 510 },
+        battery: { x: 60, y: 640, w: 620, h: 84 },
+        nowplaying: { x: 740, y: 134 },
+        upnext: { x: 740, y: 640, w: 640, h: 130 },
+        notifications: { x: 900, y: 14 },
+      }),
+    },
+    {
+      id: "p-wind-down",
+      name: "Wind down",
+      schedule: { timeStart: "22:00", timeEnd: "05:30" },
+      dim: 0.55,
+      items: scene({
+        clock: { x: 300, y: 120, w: 840, h: 380 },
+        tomorrow: { x: 450, y: 540, w: 540, h: 300 },
+      }),
+    },
+    {
+      id: "p-full",
+      name: "Full content (manual)",
+      items: defaultStandByLayout().map((i) => ({
+        ...i,
+        enabled: ["clock", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "news", "stocks"].includes(i.id),
+      })),
+    },
+  ];
 }

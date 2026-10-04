@@ -140,6 +140,18 @@ export function SpotifyIsland({ includeMusic = true }: { includeMusic?: boolean 
 
   return (
     <div className="fixed top-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-start gap-2">
+      <div className="relative">
+      {/* Glow is its own unclipped layer: a radial gradient that fades fully to transparent,
+          so there is no edge where it gets cut off. */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          inset: "-90px -140px -130px -140px",
+          background: `radial-gradient(ellipse 50% 50% at 50% 38%, ${color}66 0%, ${color}30 38%, ${color}12 62%, transparent 100%)`,
+          opacity: expanded ? 1 : 0.7,
+          transition: "opacity 0.5s ease",
+        }}
+      />
       <div
         className="relative bg-black overflow-hidden"
         style={{
@@ -148,8 +160,8 @@ export function SpotifyIsland({ includeMusic = true }: { includeMusic?: boolean 
           borderRadius: `0 0 ${dims.r}px ${dims.r}px`,
           transition: `width 0.4s ${EASE}, height 0.4s ${EASE}, border-radius 0.4s ${EASE}`,
           // black rim on left, bottom and right — never the top
-          boxShadow: `0 0 0 2.5px #000, 0 12px 40px -10px ${color}66`,
-          clipPath: "inset(0 -20px -20px -20px)",
+          // black rim on left, bottom and right; the top sits on the screen edge
+          boxShadow: "0 0 0 2.5px #000",
         }}
       >
         <div
@@ -190,6 +202,7 @@ export function SpotifyIsland({ includeMusic = true }: { includeMusic?: boolean 
         ) : (
           <ActivityPill a={top} expanded={expanded} />
         )}
+      </div>
       </div>
 
       {next && (

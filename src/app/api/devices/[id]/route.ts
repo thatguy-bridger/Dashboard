@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateDevice, getDevice, type DeviceLayout } from "@/lib/registry";
+import { updateDevice, getDevice, type DeviceLayout, type DeviceStandBy } from "@/lib/registry";
+import { mergeScenes, mergeStandByLayout } from "@/lib/standby";
 import { parseWidgets } from "@/lib/presets";
 import { parseBackground } from "@/lib/background";
 
@@ -30,6 +31,7 @@ export async function PATCH(
     layout?: DeviceLayout | null;
     viewMode?: "standby" | "grid" | null;
     sceneId?: string | null;
+    standby?: DeviceStandBy | null;
   } = {};
   if (typeof body.name === "string") patch.name = body.name;
   if (body.status === "pending" || body.status === "approved" || body.status === "rejected") {
@@ -46,6 +48,11 @@ export async function PATCH(
   }
   if (body.sceneId === null || typeof body.sceneId === "string") {
     patch.sceneId = body.sceneId;
+  }
+  if (body.standby === null) {
+    patch.standby = null;
+  } else if (body.standby && typeof body.standby === "object") {
+    patch.standby = { layout: mergeStandByLayout(body.standby.layout), scenes: mergeScenes(body.standby.scenes) };
   }
   if (body.layout === null) {
     patch.layout = null;

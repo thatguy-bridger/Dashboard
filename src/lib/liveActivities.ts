@@ -120,6 +120,29 @@ function stop() {
   timers.splice(0).forEach(clearInterval);
 }
 
+/** Notifications surface routinely instead of all the time: open for `holdMs` whenever the set
+ *  of notifications changes (something new), then again every `everyMs`. */
+export function useRoutine(key: string, everyMs = 8 * 60_000, holdMs = 20_000): boolean {
+  const [open, setOpen] = useState(Boolean(key));
+  useEffect(() => {
+    if (!key) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    let hide = setTimeout(() => setOpen(false), holdMs);
+    const iv = setInterval(() => {
+      setOpen(true);
+      hide = setTimeout(() => setOpen(false), holdMs);
+    }, everyMs);
+    return () => {
+      clearTimeout(hide);
+      clearInterval(iv);
+    };
+  }, [key, everyMs, holdMs]);
+  return open;
+}
+
 /** Priority-ordered live activities: important alerts > events starting soon >
  *  live games > music. `includeMusic` is false where the music card is already
  *  on screen (StandBy). */
@@ -137,7 +160,8 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
     };
   }, []);
 
-  const list: LiveActivity[] = [...s.alerts];
+  const alertsOpen = useRoutine(s.alerts.map((a) => a.id).join(","));
+  const list: LiveActivity[] = alertsOpen ? [...s.alerts] : [];
   if (s.event) list.push(s.event);
   if (s.game) list.push(s.game);
   if (includeMusic && np?.connected && np.isPlaying && np.track) {

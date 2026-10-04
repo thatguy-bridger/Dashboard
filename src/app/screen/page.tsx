@@ -11,7 +11,7 @@ import { SpotifyIsland } from "@/components/SpotifyIsland";
 import { useNowPlaying } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
 import type { Preset, PresetWidget } from "@/lib/presets";
-import type { DeviceLayout } from "@/lib/registry";
+import type { DeviceLayout, DeviceStandBy } from "@/lib/registry";
 import { GRID_COLS, GRID_ROWS, sizeForFootprint } from "@/lib/grid";
 import { DEFAULT_BACKGROUND, type BackgroundConfig } from "@/lib/background";
 import { TemporaryContentProvider } from "@/lib/temporaryContent";
@@ -42,6 +42,7 @@ function usePreviewDevice(deviceId: string | null) {
     layout: DeviceLayout | null;
     viewMode: "standby" | "grid" | null;
     sceneId: string | null;
+    standby: DeviceStandBy | null;
   } | null>(null);
   useEffect(() => {
     if (!deviceId) return;
@@ -299,7 +300,7 @@ function ScreenPageInner() {
 
   if (!isDraft && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
   if (!isDraft && layoutMode === "standby") {
-    return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} />;
+    return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} profile={device?.standby ?? null} />;
   }
 
   return <ScreenGrid widgets={widgets} background={background} />;
