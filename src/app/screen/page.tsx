@@ -6,6 +6,7 @@ import { useDevice } from "@/lib/useDevice";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { StandBy } from "@/components/StandBy";
+import { TopBar } from "@/components/TopBar";
 import { useLayoutMode } from "@/lib/useLayoutMode";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
 import { useNowPlaying } from "@/lib/spotifyClient";
@@ -220,6 +221,7 @@ function ScreenGrid({
         className="fixed inset-0 -z-10 pointer-events-none"
         style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.6))" }}
       />
+      <TopBar />
       <SpotifyIsland />
       <div className="h-full w-full p-[0.9375rem] relative">
         {visibleWidgets.map((w) => {

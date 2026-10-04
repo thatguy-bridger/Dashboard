@@ -10,13 +10,15 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
+import { DeviceGlyph } from "@/components/DeviceGlyph";
+import { TopBar } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
 import { pollEvery } from "@/lib/poll";
 import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
-import { useFeeds, useRoutine } from "@/lib/liveActivities";
+import { useFeeds, useRoutine, type FeedDay, type FeedHour, type FeedWeather } from "@/lib/liveActivities";
 import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, STRETCH_ITEMS, WIDTH_FIT_ITEMS, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
@@ -31,12 +33,9 @@ const reveal = (delay: number): React.CSSProperties => ({
 
 // ---------- data ----------
 
-interface Hour { time: string; tempF: number; weatherCode: number; precipProbability?: number }
-interface Day { date: string; highF: number; lowF: number; weatherCode: number }
-interface Weather {
-  tempF: number; feelsLikeF?: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: Hour[];
-  forecast?: Day[]; humidity?: number; windMph?: number; uvIndex?: number; sunrise?: string; sunset?: string;
-}
+type Hour = FeedHour;
+type Day = FeedDay;
+type Weather = FeedWeather;
 interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
 
 // All-day events arrive as date-only strings; `new Date("2026-10-04")` parses as UTC midnight, which
@@ -392,24 +391,13 @@ function classRank(c: string) {
   return i === -1 ? 99 : i;
 }
 
-function DeviceGlyph({ cls, color }: { cls: string; color: string }) {
-  const k = cls.toLowerCase();
-  const p = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  if (k.includes("watch")) return <svg {...p}><rect x="7" y="6" width="10" height="12" rx="3" /><path d="M9 6l.7-3h4.6L15 6M9 18l.7 3h4.6l.7-3" /></svg>;
-  if (k.includes("pad") || k.includes("tablet")) return <svg {...p}><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M11 18h2" /></svg>;
-  if (k.includes("mac") || k.includes("book") || k.includes("laptop")) return <svg {...p}><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M2.5 19h19" /></svg>;
-  if (k.includes("pod") || k.includes("head") || k.includes("buds")) return <svg {...p}><path d="M8 4a3.5 3.5 0 0 0-3.5 3.5c0 2 1.5 3 3.5 3v8a1.5 1.5 0 0 0 3 0V7.5A3.5 3.5 0 0 0 8 4zM16 4a3.5 3.5 0 0 1 3.5 3.5c0 2-1.5 3-3.5 3v8a1.5 1.5 0 0 1-3 0" /></svg>;
-  if (k.includes("phone")) return <svg {...p}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></svg>;
-  return <svg {...p}><rect x="6" y="4" width="12" height="16" rx="2.5" /></svg>;
-}
-
 /** "Alex's iPhone 15 Pro" -> "iPhone 15 Pro" when the owner prefix is obvious, else the full name. */
 const shortName = (n: string) => n.replace(/^.{1,24}?[’']s\s+/, "") || n;
 
 /** Your own iCloud devices' batteries (via Find My), not whatever device is
  *  rendering the screen. Each chip: device-type icon, level, and the device's name as a subnote. */
 function BatteryChips({ width }: { width: number }) {
-  const devices = usePolled<FmDevice[]>("/api/icloud/findmy", 10 * 60_000, (j: { devices?: FmDevice[] }) => j.devices ?? []);
+  const { devices } = useFeeds();
   const list = (devices ?? [])
     .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && d.batteryLevel >= 0)
     .sort((a, b) => classRank(a.deviceClass) - classRank(b.deviceClass))
@@ -813,10 +801,10 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
   );
 }
 
-function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string) => void }) {
+function NotePills({ notes, onDismiss, max = 2 }: { notes: Note[]; onDismiss: (id: string) => void; max?: number }) {
   return (
     <div className="flex flex-col gap-3 items-end w-full">
-      {notes.slice(0, 2).map((n) => (
+      {notes.slice(0, max).map((n) => (
         <button
           key={n.id}
           onClick={() => onDismiss(n.id)}
@@ -884,9 +872,8 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
     return () => clearInterval(id);
   }, []);
 
-  const weather = usePolled<Weather>("/api/weather", 10 * 60_000, (j: Weather) => j);
   // Calendar + notifications come from the shared feed the island already polls.
-  const { notes, events, calendarConnected: calConnected } = useFeeds();
+  const { notes, events, calendarConnected: calConnected, weather } = useFeeds();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const upcoming = (events ?? []).filter((e) => evEnd(e).getTime() > Date.now()).slice(0, 12);
@@ -927,7 +914,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
           <UpNext e={upcoming[0]} />
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
-      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
+      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} max={it.h >= 100 ? 2 : 1} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
       case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.find((d) => d.date === new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA")) ?? weather?.forecast?.[0]} />;
@@ -990,6 +977,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
       {dim > 0 && <div className="absolute inset-0 pointer-events-none bg-black transition-opacity duration-[2000ms]" style={{ opacity: dim }} />}
+      <TopBar />
       <SpotifyIsland includeMusic={!musicCardShown} />
     </div>
   );

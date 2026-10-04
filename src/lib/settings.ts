@@ -25,13 +25,15 @@ export interface Settings {
   favoriteTeams: FavoriteTeam[];
   mapHome: MapPlace | null;
   mapDestination: MapPlace | null;
+  /** Where you commute to: the top bar shows live drive time from Home. */
+  commute: MapPlace | null;
   displayMode: DisplayMode;
   layoutMode: LayoutMode;
   standbyLayout: StandByItem[];
   standbyScenes: StandByScene[];
 }
 
-const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "displayMode", "layoutMode", "standbyLayout", "standbyScenes"] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "commute", "displayMode", "layoutMode", "standbyLayout", "standbyScenes"] as const;
 type Key = (typeof KEYS)[number];
 
 function parsePlace(raw: string | null): MapPlace | null {
@@ -80,6 +82,7 @@ export async function getSettings(): Promise<Settings> {
     favoriteTeams: parseTeams(byKey.get("favoriteTeams") ?? null),
     mapHome: parsePlace(byKey.get("mapHome") ?? null),
     mapDestination: parsePlace(byKey.get("mapDestination") ?? null),
+    commute: parsePlace(byKey.get("commute") ?? null),
     displayMode: displayMode === "image" ? "image" : "color",
     layoutMode: byKey.get("layoutMode") === "grid" ? "grid" : "standby",
     standbyScenes: mergeScenes(parseJson(byKey.get("standbyScenes") ?? null)),
@@ -100,6 +103,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   if ("favoriteTeams" in patch) await set("favoriteTeams", patch.favoriteTeams ? JSON.stringify(patch.favoriteTeams) : null);
   if ("mapHome" in patch) await set("mapHome", patch.mapHome ? JSON.stringify(patch.mapHome) : null);
   if ("mapDestination" in patch) await set("mapDestination", patch.mapDestination ? JSON.stringify(patch.mapDestination) : null);
+  if ("commute" in patch) await set("commute", patch.commute ? JSON.stringify(patch.commute) : null);
   if ("displayMode" in patch) await set("displayMode", patch.displayMode ?? null);
   if ("standbyScenes" in patch) await set("standbyScenes", patch.standbyScenes ? JSON.stringify(patch.standbyScenes) : null);
   if ("standbyLayout" in patch) await set("standbyLayout", patch.standbyLayout ? JSON.stringify(patch.standbyLayout) : null);

@@ -19,7 +19,17 @@ export interface LiveActivity {
 export interface FeedNote { id: string; message: string; level: string; source: string | null; read: boolean }
 export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
 
+export interface FeedHour { time: string; tempF: number; weatherCode: number; precipProbability?: number }
+export interface FeedDay { date: string; highF: number; lowF: number; weatherCode: number }
+export interface FeedWeather {
+  tempF: number; feelsLikeF?: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: FeedHour[];
+  forecast?: FeedDay[]; humidity?: number; windMph?: number; uvIndex?: number; sunrise?: string; sunset?: string;
+}
+export interface FeedDevice { id: string; name: string; deviceClass: string; batteryLevel: number | null; isPerson: boolean }
+
 interface Snapshot {
+  weather: FeedWeather | null;
+  devices: FeedDevice[] | null;
   alerts: LiveActivity[];
   event: LiveActivity | null;
   game: LiveActivity | null;
@@ -31,7 +41,7 @@ interface Snapshot {
 
 // One shared poller per page (same pattern as spotifyClient): every consumer
 // reads the same snapshot instead of each hitting the API.
-let snap: Snapshot = { alerts: [], event: null, game: null, notes: null, events: null, calendarConnected: false };
+let snap: Snapshot = { weather: null, devices: null, alerts: [], event: null, game: null, notes: null, events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
 const stops: (() => void)[] = [];
 
@@ -94,6 +104,24 @@ function pickSoonEvent(events: Ev[]): LiveActivity | null {
   return null;
 }
 
+async function pollWeather() {
+  try {
+    const res = await fetch("/api/weather");
+    if (res.ok) publish({ weather: (await res.json()) as FeedWeather });
+  } catch {
+    // keep last
+  }
+}
+
+async function pollDevices() {
+  try {
+    const res = await fetch("/api/icloud/findmy");
+    if (res.ok) publish({ devices: ((await res.json()).devices ?? []) as FeedDevice[] });
+  } catch {
+    // keep last
+  }
+}
+
 async function pollGame() {
   try {
     const res = await fetch("/api/sports?mode=live", { cache: "no-store" });
@@ -121,7 +149,9 @@ function start() {
   pollNotifications();
   pollCalendar();
   pollGame();
-  stops.push(pollEvery(pollNotifications, 2 * 60_000), pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000));
+  pollWeather();
+  pollDevices();
+  stops.push(pollEvery(pollNotifications, 2 * 60_000), pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000), pollEvery(pollWeather, 10 * 60_000), pollEvery(pollDevices, 10 * 60_000));
 }
 
 function stop() {
@@ -197,5 +227,5 @@ export function useFeeds() {
       if (listeners.size === 0) stop();
     };
   }, []);
-  return { notes: s.notes, events: s.events, calendarConnected: s.calendarConnected };
+  return { notes: s.notes, events: s.events, calendarConnected: s.calendarConnected, weather: s.weather, devices: s.devices };
 }

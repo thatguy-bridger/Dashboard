@@ -43,6 +43,7 @@ export async function PATCH(req: NextRequest) {
     favoriteTeams?: FavoriteTeam[];
     mapHome?: MapPlace | null;
     mapDestination?: MapPlace | null;
+    commute?: MapPlace | null;
     displayMode?: DisplayMode;
     layoutMode?: LayoutMode;
     standbyLayout?: StandByItem[];
@@ -63,6 +64,10 @@ export async function PATCH(req: NextRequest) {
   if ("mapDestination" in body) {
     const place = parsePlacePatch(body.mapDestination);
     if (place !== undefined) patch.mapDestination = place;
+  }
+  if ("commute" in body) {
+    const place = parsePlacePatch(body.commute);
+    if (place !== undefined) patch.commute = place;
   }
   if (body.displayMode === "color" || body.displayMode === "image") {
     patch.displayMode = body.displayMode;
