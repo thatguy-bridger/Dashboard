@@ -557,44 +557,86 @@ function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
   );
 }
 
-/** Full vertical agenda: day headings, glass event cards, fading out at the bottom. */
-function AgendaList({ events, connected }: { events: CalEvent[]; connected: boolean }) {
-  const groups: { label: string; items: CalEvent[] }[] = [];
-  for (const e of events) {
-    const label = dayLabel(evStart(e));
-    const g = groups[groups.length - 1];
-    if (g && g.label === label) g.items.push(e);
-    else groups.push({ label, items: [e] });
+/** Events that overlap in time share one slot; all-day events of a day share another. */
+function clusterEvents(events: CalEvent[]): CalEvent[][] {
+  const allDay = events.filter((e) => e.allDay);
+  const timed = events.filter((e) => !e.allDay).sort((x, y) => evStart(x).getTime() - evStart(y).getTime());
+  const out: CalEvent[][] = allDay.length ? [allDay] : [];
+  let cur: CalEvent[] = [];
+  let curEnd = 0;
+  for (const e of timed) {
+    const st = evStart(e).getTime();
+    if (cur.length && st < curEnd) {
+      cur.push(e);
+      curEnd = Math.max(curEnd, evEnd(e).getTime());
+    } else {
+      if (cur.length) out.push(cur);
+      cur = [e];
+      curEnd = evEnd(e).getTime();
+    }
   }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+function AgendaCard({ e, width }: { e: CalEvent; width?: number }) {
+  const col = evCol(e);
+  const s = evStart(e);
+  const tm = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const multiDay = e.allDay && evEnd(e).getTime() - s.getTime() > 36 * 3600_000;
   return (
-    <div
-      className="w-full h-full overflow-hidden"
-      style={{ maskImage: "linear-gradient(180deg, #000 88%, transparent)" }}
-    >
+    <div className="glass-card flex items-center gap-3 px-5 shrink-0" style={{ minHeight: 62, borderRadius: 24, width }}>
+      <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 8px ${col}cc` }} />
+      <div className="min-w-0 flex-1">
+        <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 18 }}>{e.summary}</FitText>
+        <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 14 }}>
+          {e.allDay ? (multiDay ? `All day · through ${new Date(evEnd(e).getTime() - 1).toLocaleDateString([], { weekday: "short" })}` : "All day") : `${tm(s)}${e.end ? ` – ${tm(evEnd(e))}` : ""}`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Full vertical agenda: day headings, glass event cards, fading out at the bottom. Events
+ *  that happen at the same time (and a day's all-day events) share one slot and drift
+ *  sideways past each other with the same ping-pong motion as the other rows. */
+function AgendaList({ events, connected, width }: { events: CalEvent[]; connected: boolean; width: number }) {
+  const byDay = new Map<string, { label: string; evs: CalEvent[] }>();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  for (const e of events) {
+    // Something that began on an earlier day but is still going belongs under Today, not its start day.
+    const st = evStart(e);
+    const d = st < todayStart ? todayStart : st;
+    const key = d.toDateString(); // not the label: "Monday" repeats a week later
+    const g = byDay.get(key) ?? { label: dayLabel(d), evs: [] };
+    g.evs.push(e);
+    byDay.set(key, g);
+  }
+  const days = [...byDay.entries()].map(([key, g]) => ({ key, label: g.label, slots: clusterEvents(g.evs) }));
+
+  return (
+    <div className="w-full h-full overflow-hidden" style={{ maskImage: "linear-gradient(180deg, #000 88%, transparent)" }}>
       {events.length === 0 ? (
         <div className="glass-card flex items-center justify-center text-center px-8 h-40 text-white/45 font-semibold" style={{ fontSize: 22, borderRadius: 36 }}>
           {connected ? "Nothing on the calendar" : "Calendar not connected — sign in from Control"}
         </div>
       ) : (
-        groups.map((g) => (
-          <div key={g.label} className="mb-4">
-            <div className="caps-label mb-2" style={{ fontSize: 13, paddingLeft: 8 }}>{g.label}</div>
+        days.map((d) => (
+          <div key={d.key} className="mb-4">
+            <div className="caps-label mb-2" style={{ fontSize: 13, paddingLeft: 8 }}>{d.label}</div>
             <div className="flex flex-col gap-2">
-              {g.items.map((e, i) => {
-                const col = evCol(e);
-                const s = evStart(e);
-                return (
-                  <div key={i} className="glass-card flex items-center gap-3 px-5" style={{ minHeight: 62, borderRadius: 24 }}>
-                    <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 8px ${col}cc` }} />
-                    <div className="min-w-0 flex-1">
-                      <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 18 }}>{e.summary}</FitText>
-                      <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 14 }}>
-                        {e.allDay ? "All day" : `${s.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.end ? ` – ${evEnd(e).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {d.slots.map((slot, i) =>
+                slot.length === 1 ? (
+                  <AgendaCard key={i} e={slot[0]} />
+                ) : (
+                  <Drifting key={i} width={width} deps={[slot.length]}>
+                    {slot.map((e, j) => (
+                      <AgendaCard key={j} e={e} width={Math.round(width * 0.86)} />
+                    ))}
+                  </Drifting>
+                )
+              )}
             </div>
           </div>
         ))
@@ -859,7 +901,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
       case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.find((d) => d.date === new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA")) ?? weather?.forecast?.[0]} />;
-      case "calendar": return <AgendaList events={upcoming} connected={calConnected} />;
+      case "calendar": return <AgendaList events={upcoming} connected={calConnected} width={it.w} />;
       default: {
         const type = it.id as WidgetType;
         return (

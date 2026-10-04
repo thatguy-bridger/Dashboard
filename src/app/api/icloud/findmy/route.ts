@@ -1,11 +1,17 @@
 import { cacheHeaders } from "@/lib/http";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getFindMyLocations, getFindMyStatus, NeedsLoginError } from "@/lib/icloudSession";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const email = process.env.ICLOUD_EMAIL;
   if (!email) {
     return NextResponse.json({ status: "disconnected", devices: [], noLocation: [] });
+  }
+
+  // Control's connection badge only needs the stored state. A live Find My refresh just to
+  // render a badge made every transient Apple hiccup look like a lost login.
+  if (req.nextUrl.searchParams.get("status") === "1") {
+    return NextResponse.json({ status: await getFindMyStatus(email) });
   }
 
   try {

@@ -12,6 +12,7 @@ interface CalEvent {
   allDay: boolean;
   source: string;
   colorId: string | null;
+  color?: string | null;
 }
 
 function formatEvent(e: CalEvent) {
@@ -48,7 +49,8 @@ export function CalendarWidget({ size = "md" }: { size?: WidgetSize }) {
 
   if (!data) return <div className="text-sm text-[var(--muted)]">Loading calendar…</div>;
   if (!data.connected) return <div className="text-sm text-[var(--muted)]">No calendar connected</div>;
-  if (data.events.length === 0) return <div className="text-sm text-[var(--muted)]">Nothing coming up</div>;
+  const events = data.events.filter((e) => new Date(e.allDay && /^\d{4}-\d{2}-\d{2}$/.test(e.start) ? e.start + "T23:59:59" : e.start).getTime() >= Date.now() - 60_000);
+  if (events.length === 0) return <div className="text-sm text-[var(--muted)]">Nothing coming up</div>;
 
   const count = size === "sm" ? 1 : size === "md" ? 3 : size === "lg" ? 6 : 10;
 
@@ -56,7 +58,7 @@ export function CalendarWidget({ size = "md" }: { size?: WidgetSize }) {
     <div className="w-full">
       <div className="caps-label mb-3">Next up</div>
       <ul className="flex flex-col gap-2">
-        {data.events.slice(0, count).map((e, i) => (
+        {events.slice(0, count).map((e, i) => (
           <li
             key={i}
             className="flex items-center justify-between gap-3 text-sm glass-card !rounded-2xl px-3 py-2 w-full"
@@ -65,7 +67,7 @@ export function CalendarWidget({ size = "md" }: { size?: WidgetSize }) {
               {displayMode === "image" && (
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: eventColor(e.colorId, e.source), boxShadow: `0 0 8px ${eventColor(e.colorId, e.source)}` }}
+                  style={{ background: (e.color ?? eventColor(e.colorId, e.source)), boxShadow: `0 0 8px ${(e.color ?? eventColor(e.colorId, e.source))}` }}
                 />
               )}
               <FitText className="min-w-0">{e.summary}</FitText>

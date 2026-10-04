@@ -363,7 +363,19 @@ export async function getFindMyLocations(email: string): Promise<FindMyResult> {
   }
   const data = JSON.parse(text) as RawFindMyResponse;
 
-  // Cookies can rotate on a refresh; keep the stored session current.
+  // Apple rotates its session cookies on these calls. We hit the endpoint with a raw fetch (see
+  // above), so the library never sees the new Set-Cookie headers; if we don't fold them in, the
+  // stored copy goes stale and the session dies, which looked like "iCloud disconnects every time".
+  const rotated = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
+  if (rotated.length > 0) {
+    const store = service.authStore;
+    for (const raw of rotated) {
+      const fresh = Cookie.parse(raw);
+      if (!fresh) continue;
+      store.icloudCookies = store.icloudCookies.filter((c) => !(c.key === fresh.key && c.domain === (fresh.domain ?? c.domain)));
+      if (fresh.value) store.icloudCookies.push(fresh);
+    }
+  }
   await saveSession(email, captureReadySession(service));
 
   const raw = data.content ?? [];

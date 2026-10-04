@@ -15,7 +15,7 @@ export function FindMyConnect() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/icloud/findmy", { cache: "no-store" });
+        const res = await fetch("/api/icloud/findmy?status=1", { cache: "no-store" });
         const json = await res.json();
         if (!cancelled) setStatus(json.status);
       } catch {
