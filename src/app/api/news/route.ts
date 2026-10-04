@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 // NPR's public top-stories RSS feed — no API key required.
@@ -34,5 +35,5 @@ export async function GET() {
     .filter((item): item is { title: string; imageUrl: string | null } => item !== null)
     .slice(0, 6);
 
-  return NextResponse.json({ items });
+  return NextResponse.json({ items }, cacheHeaders(600));
 }

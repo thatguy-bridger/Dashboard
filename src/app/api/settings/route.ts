@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { mergeStandByLayout, mergeScenes, type StandByItem, type StandByScene } from "@/lib/standby";
 import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode, type LayoutMode } from "@/lib/settings";
@@ -32,7 +33,7 @@ function parsePlacePatch(raw: unknown): MapPlace | null | undefined {
 
 export async function GET() {
   const settings = await getSettings();
-  return NextResponse.json({ settings });
+  return NextResponse.json({ settings }, cacheHeaders(30));
 }
 
 export async function PATCH(req: NextRequest) {

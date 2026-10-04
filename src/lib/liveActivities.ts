@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useNowPlaying } from "@/lib/spotifyClient";
+import { pollEvery } from "@/lib/poll";
 
 export type ActivityKind = "alert" | "event" | "game" | "music";
 
@@ -32,7 +33,7 @@ interface Snapshot {
 // reads the same snapshot instead of each hitting the API.
 let snap: Snapshot = { alerts: [], event: null, game: null, notes: null, events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
-const timers: ReturnType<typeof setInterval>[] = [];
+const stops: (() => void)[] = [];
 
 function publish(patch: Partial<Snapshot>) {
   snap = { ...snap, ...patch };
@@ -116,15 +117,15 @@ async function pollGame() {
 }
 
 function start() {
-  if (timers.length) return;
+  if (stops.length) return;
   pollNotifications();
   pollCalendar();
   pollGame();
-  timers.push(setInterval(pollNotifications, 30_000), setInterval(pollCalendar, 5 * 60_000), setInterval(pollGame, 60_000));
+  stops.push(pollEvery(pollNotifications, 2 * 60_000), pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000));
 }
 
 function stop() {
-  timers.splice(0).forEach(clearInterval);
+  stops.splice(0).forEach((f) => f());
 }
 
 /** Notifications surface routinely instead of all the time: open for `holdMs` whenever the set
@@ -175,7 +176,7 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
     list.push({
       id: `m-${np.track.id}`,
       kind: "music",
-      priority: 50,
+      priority: 110, // music in the pill outranks everything, alerts included
       color: "#f0b38a",
       title: np.track.name,
       subtitle: np.track.artists,

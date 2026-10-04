@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 // A short watchlist — no Control UI for this yet, just a fixed list to
@@ -34,5 +35,5 @@ async function fetchQuote(symbol: string): Promise<Quote | null> {
 export async function GET() {
   const symbols = (process.env.STOCKS?.split(",").map((s) => s.trim()) ?? DEFAULT_SYMBOLS).filter(Boolean);
   const quotes = (await Promise.all(symbols.map(fetchQuote))).filter((q): q is Quote => q !== null);
-  return NextResponse.json({ quotes });
+  return NextResponse.json({ quotes }, cacheHeaders(300));
 }

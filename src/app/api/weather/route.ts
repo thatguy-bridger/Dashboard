@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 // Placeholder default location (New York City) until per-device location is
@@ -61,5 +62,5 @@ export async function GET(req: NextRequest) {
       lowF: Math.round(data.daily.temperature_2m_min[i + 1]),
       weatherCode: data.daily.weather_code[i + 1],
     })),
-  });
+  }, cacheHeaders(600));
 }

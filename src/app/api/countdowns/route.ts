@@ -1,9 +1,10 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { listCountdowns, createCountdown } from "@/lib/countdowns";
 
 export async function GET() {
   const countdowns = await listCountdowns();
-  return NextResponse.json({ countdowns });
+  return NextResponse.json({ countdowns }, cacheHeaders(120));
 }
 
 export async function POST(req: NextRequest) {

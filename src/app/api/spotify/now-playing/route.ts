@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cacheHeaders } from "@/lib/http";
 import { getValidSpotifyToken } from "@/lib/spotify";
 
 // Per-instance cache + 429 backoff: many screens/tabs poll this, and Spotify
@@ -10,14 +11,15 @@ const CACHE_MS = 4000;
 export async function GET() {
   if (Date.now() < blockedUntil) {
     return NextResponse.json(
-      cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" }
+      cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" },
+      cacheHeaders(15)
     );
   }
-  if (cache && Date.now() - cache.at < CACHE_MS) return NextResponse.json(cache.body);
+  if (cache && Date.now() - cache.at < CACHE_MS) return NextResponse.json(cache.body, cacheHeaders(5));
 
   const body = await fetchNowPlaying();
   cache = { at: Date.now(), body };
-  return NextResponse.json(body);
+  return NextResponse.json(body, cacheHeaders(5));
 }
 
 async function fetchNowPlaying(): Promise<Record<string, unknown>> {

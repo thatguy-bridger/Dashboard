@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 // Same default placeholder location as /api/weather until per-device
@@ -38,5 +39,5 @@ export async function GET(req: NextRequest) {
     label: aqiLabel(aqi),
     pm25: Math.round(data.current.pm2_5 * 10) / 10,
     pm10: Math.round(data.current.pm10 * 10) / 10,
-  });
+  }, cacheHeaders(1800));
 }

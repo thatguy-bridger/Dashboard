@@ -18,6 +18,7 @@ import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { pollEvery } from "@/lib/poll";
 import { RulesEditor } from "@/components/RulesEditor";
 import { hasAnyRule } from "@/lib/visibility";
 import { StandByEditor } from "@/components/StandByEditor";
@@ -177,11 +178,11 @@ export default function ControlPage() {
   useEffect(() => {
     refreshDevices();
     refreshPresets();
-    const id = setInterval(() => {
+    // Control only needs to notice new/approved devices, not track them live.
+    return pollEvery(() => {
       refreshDevices();
       refreshPresets();
-    }, 15 * 1000);
-    return () => clearInterval(id);
+    }, 60 * 1000);
   }, [refreshDevices, refreshPresets]);
 
   useEffect(() => {

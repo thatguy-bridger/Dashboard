@@ -27,10 +27,14 @@ export interface LyricLine {
 
 // One shared poller per page — the island and the lyrics widget both read
 // from it instead of each hitting the API (Spotify rate-limits hard).
-const POLL_MS = 10_000;
+// Adaptive: 30s while playing (plus a poll right as the track ends), 60s when idle — the
+// progress bar is interpolated locally, so frequent polling buys nothing.
+const PLAYING_MS = 30_000;
+const IDLE_MS = 60_000;
 let latest: NowPlaying | null = null;
 const listeners = new Set<(d: NowPlaying) => void>();
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let running = false;
 
 export async function pollOnce() {
   if (typeof document !== "undefined" && document.hidden) return;
@@ -44,21 +48,47 @@ export async function pollOnce() {
   }
 }
 
+function nextDelay(): number {
+  const d = latest;
+  if (!d?.connected || !d.isPlaying || !d.track) return IDLE_MS;
+  const elapsed = Date.now() - (d.fetchedAt ?? Date.now());
+  const untilEnd = d.track.durationMs - d.track.progressMs - elapsed + 1500;
+  return Math.max(3000, Math.min(PLAYING_MS, untilEnd));
+}
+
+function loop() {
+  if (!running) return;
+  pollOnce().finally(() => {
+    if (running) timer = setTimeout(loop, nextDelay());
+  });
+}
+
+// A tab that was hidden skips polls; catch up the moment it's visible again.
+function onVisible() {
+  if (!document.hidden && running) {
+    if (timer) clearTimeout(timer);
+    loop();
+  }
+}
+
 export function useNowPlaying() {
   const [data, setData] = useState<NowPlaying | null>(latest);
 
   useEffect(() => {
     listeners.add(setData);
     if (latest) setData(latest);
-    if (!timer) {
-      pollOnce();
-      timer = setInterval(pollOnce, POLL_MS);
+    if (!running) {
+      running = true;
+      document.addEventListener("visibilitychange", onVisible);
+      loop();
     }
     return () => {
       listeners.delete(setData);
-      if (listeners.size === 0 && timer) {
-        clearInterval(timer);
+      if (listeners.size === 0 && running) {
+        running = false;
+        if (timer) clearTimeout(timer);
         timer = null;
+        document.removeEventListener("visibilitychange", onVisible);
       }
     };
   }, []);

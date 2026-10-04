@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/settings";
 import type { FavoriteTeam } from "@/lib/settings";
@@ -223,10 +224,10 @@ async function getLiveGame() {
 export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get("mode");
   if (mode === "live") {
-    return NextResponse.json(await getLiveGame());
+    return NextResponse.json(await getLiveGame(), cacheHeaders(120));
   }
   if (mode === "all") {
-    return NextResponse.json(await getAll());
+    return NextResponse.json(await getAll(), cacheHeaders(600));
   }
-  return NextResponse.json(await getFavorites());
+  return NextResponse.json(await getFavorites(), cacheHeaders(300));
 }

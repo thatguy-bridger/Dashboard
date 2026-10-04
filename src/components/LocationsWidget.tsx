@@ -44,7 +44,7 @@ export function LocationsWidget({ size = "md" }: { size?: WidgetSize }) {
       }
     }
     load();
-    const id = setInterval(load, 60 * 1000);
+    const id = setInterval(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

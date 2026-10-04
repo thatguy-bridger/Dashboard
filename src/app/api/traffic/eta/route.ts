@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -47,5 +48,5 @@ export async function GET(req: NextRequest) {
     travelTimeMin: Math.round(travelTimeSec / 60),
     delayMin: Math.round(delaySec / 60),
     distanceMiles: Math.round((summary.lengthInMeters / 1609.34) * 10) / 10,
-  });
+  }, cacheHeaders(120));
 }

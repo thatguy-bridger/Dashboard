@@ -10,6 +10,8 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
+import { useSettings } from "@/lib/useSettings";
+import { pollEvery } from "@/lib/poll";
 import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
@@ -53,10 +55,10 @@ function usePolled<T>(url: string, everyMs: number, pick: (j: never) => T): T | 
       }
     }
     load();
-    const id = setInterval(load, everyMs);
+    const stopPolling = pollEvery(load, everyMs);
     return () => {
       off = true;
-      clearInterval(id);
+      stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- url/interval are constants per call site
   }, [url, everyMs]);
@@ -354,7 +356,7 @@ const shortName = (n: string) => n.replace(/^.{1,24}?[’']s\s+/, "") || n;
 /** Your own iCloud devices' batteries (via Find My), not whatever device is
  *  rendering the screen. Each chip: device-type icon, level, and the device's name as a subnote. */
 function BatteryChips({ width }: { width: number }) {
-  const devices = usePolled<FmDevice[]>("/api/icloud/findmy", 5 * 60_000, (j: { devices?: FmDevice[] }) => j.devices ?? []);
+  const devices = usePolled<FmDevice[]>("/api/icloud/findmy", 10 * 60_000, (j: { devices?: FmDevice[] }) => j.devices ?? []);
   const list = (devices ?? [])
     .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && d.batteryLevel >= 0)
     .sort((a, b) => classRank(a.deviceClass) - classRank(b.deviceClass))
@@ -696,6 +698,7 @@ function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string
 function useStandByConfig(draft: string | null, profile: { layout: StandByItem[]; scenes: StandByScene[] } | null) {
   // Device polls hand us a fresh object every few seconds; key on content so we only re-apply real changes.
   const profileKey = profile ? JSON.stringify(profile) : "";
+  const settings = useSettings();
   const [loaded, setLoaded] = useState(false);
   const [cfg, setCfg] = useState<{ layout: StandByItem[]; scenes: StandByScene[] }>(() => ({
     layout: mergeStandByLayout(null),
@@ -716,27 +719,11 @@ function useStandByConfig(draft: string | null, profile: { layout: StandByItem[]
       setLoaded(true);
       return;
     }
-    let off = false;
-    function load() {
-      fetch("/api/settings", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          if (off || !d?.settings) return;
-          setCfg({
-            layout: mergeStandByLayout(d.settings.standbyLayout),
-            scenes: mergeScenes(d.settings.standbyScenes),
-          });
-          setLoaded(true);
-        })
-        .catch(() => {});
+    if (settings) {
+      setCfg({ layout: mergeStandByLayout(settings.standbyLayout), scenes: mergeScenes(settings.standbyScenes) });
+      setLoaded(true);
     }
-    load();
-    const id = setInterval(load, 60_000);
-    return () => {
-      off = true;
-      clearInterval(id);
-    };
-  }, [draft, profileKey]);
+  }, [draft, profileKey, settings]);
   return { ...cfg, isDraft: Boolean(draft), loaded };
 }
 

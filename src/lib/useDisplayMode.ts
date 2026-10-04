@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSettings } from "@/lib/useSettings";
 import type { DisplayMode } from "@/lib/settings";
 
 /** "Color" is the flat/minimal look every widget already had; "image" opts
@@ -8,25 +8,5 @@ import type { DisplayMode } from "@/lib/settings";
  * have something to show — set once for the whole app in Control, not
  * per-widget, since it's a visual mode rather than a per-tile setting. */
 export function useDisplayMode(): DisplayMode {
-  const [mode, setMode] = useState<DisplayMode>("color");
-
-  useEffect(() => {
-    let cancelled = false;
-    function load() {
-      fetch("/api/settings", { cache: "no-store" })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (!cancelled && data) setMode(data.settings.displayMode);
-        })
-        .catch(() => {});
-    }
-    load();
-    const id = setInterval(load, 5 * 60 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
-
-  return mode;
+  return useSettings()?.displayMode ?? "color";
 }

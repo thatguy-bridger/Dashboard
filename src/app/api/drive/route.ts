@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/google";
 
@@ -28,5 +29,5 @@ export async function GET() {
   }
   const data = await res.json();
 
-  return NextResponse.json({ connected: true, files: (data.files ?? []) as DriveFile[] });
+  return NextResponse.json({ connected: true, files: (data.files ?? []) as DriveFile[] }, cacheHeaders(120));
 }

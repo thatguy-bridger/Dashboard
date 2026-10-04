@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 
 interface WikiEvent {
@@ -24,5 +25,5 @@ export async function GET() {
     .map((e: { text: string; year: number }) => ({ text: e.text, year: e.year }))
     .slice(0, 10);
 
-  return NextResponse.json({ events });
+  return NextResponse.json({ events }, cacheHeaders(3600));
 }

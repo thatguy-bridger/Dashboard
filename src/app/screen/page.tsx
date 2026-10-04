@@ -56,7 +56,7 @@ function usePreviewDevice(deviceId: string | null) {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 15 * 1000);
+    const id = setInterval(load, 2 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -69,10 +69,11 @@ function usePreviewDevice(deviceId: string | null) {
  * whichever preset is marked as the default rather than a fixed, uneditable
  * widget set — so pointing a new screen somewhere useful is just "set a
  * default preset" instead of a manual per-device step. */
-function usePreset(presetId: string | null | undefined) {
+function usePreset(presetId: string | null | undefined, enabled: boolean) {
   const [preset, setPreset] = useState<Preset | null>(null);
 
   useEffect(() => {
+    if (!enabled) return; // StandBy screens never need presets
     let cancelled = false;
 
     function load() {
@@ -90,12 +91,12 @@ function usePreset(presetId: string | null | undefined) {
     }
 
     load();
-    const id = setInterval(load, 20 * 1000);
+    const id = setInterval(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [presetId]);
+  }, [presetId, enabled]);
 
   return preset;
 }
@@ -285,7 +286,9 @@ function ScreenPageInner() {
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
   const approved = isDraft || device?.status === "approved" || forced === "standby";
   const usesPreset = !isDraft && !device?.layout;
-  const preset = usePreset(usesPreset ? device?.presetId ?? null : null);
+  // Per-screen override wins over the global setting; ?layout= wins over both.
+  const layoutMode = forcedMode ?? device?.viewMode ?? storedLayout;
+  const preset = usePreset(usesPreset ? device?.presetId ?? null : null, layoutMode === "grid");
   const widgets = isDraft ? draft!.widgets : (device?.layout?.widgets ?? preset?.widgets ?? DEFAULT_WIDGETS);
   const background = isDraft
     ? draft!.background
@@ -294,9 +297,6 @@ function ScreenPageInner() {
   if (!approved) {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
-
-  // Per-screen override wins over the global setting; ?layout= wins over both.
-  const layoutMode = forcedMode ?? device?.viewMode ?? storedLayout;
 
   if (!isDraft && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
   if (!isDraft && layoutMode === "standby") {

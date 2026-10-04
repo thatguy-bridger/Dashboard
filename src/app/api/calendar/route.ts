@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/google";
 import { getICloudEvents } from "@/lib/icloud";
@@ -96,5 +97,5 @@ export async function GET() {
   return NextResponse.json({
     connected: googleConnected || icloudConnected,
     events: events.slice(0, 25),
-  });
+  }, cacheHeaders(120));
 }

@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/google";
 
@@ -82,5 +83,5 @@ export async function GET() {
     connected: true,
     unreadCount,
     messages: messages.filter((m): m is GmailMessage => m !== null),
-  });
+  }, cacheHeaders(120));
 }

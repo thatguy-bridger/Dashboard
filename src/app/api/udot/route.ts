@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 // UDOT's public traffic API — free key from udottraffic.utah.gov/api. No key
@@ -53,5 +54,5 @@ export async function GET(req: NextRequest) {
     direction: camera.Direction,
     location: camera.Location,
     imageUrl: view.Url,
-  });
+  }, cacheHeaders(60));
 }

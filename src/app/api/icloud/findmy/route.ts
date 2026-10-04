@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getFindMyLocations, getFindMyStatus, NeedsLoginError } from "@/lib/icloudSession";
 
@@ -9,7 +10,7 @@ export async function GET() {
 
   try {
     const { devices, noLocation } = await getFindMyLocations(email);
-    return NextResponse.json({ status: "connected", devices, noLocation });
+    return NextResponse.json({ status: "connected", devices, noLocation }, cacheHeaders(120));
   } catch (err) {
     if (err instanceof NeedsLoginError) {
       const status = await getFindMyStatus(email);

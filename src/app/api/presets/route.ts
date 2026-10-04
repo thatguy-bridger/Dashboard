@@ -1,10 +1,11 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { listPresets, createPreset, parseWidgets } from "@/lib/presets";
 import { parseBackground, DEFAULT_BACKGROUND } from "@/lib/background";
 
 export async function GET() {
   const presets = await listPresets();
-  return NextResponse.json({ presets });
+  return NextResponse.json({ presets }, cacheHeaders(60));
 }
 
 export async function POST(req: NextRequest) {

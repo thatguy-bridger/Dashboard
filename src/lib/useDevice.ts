@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { pollEvery } from "@/lib/poll";
 import { useDeviceId } from "@/lib/deviceId";
 import type { Device } from "@/lib/registry";
 
@@ -40,32 +41,10 @@ export function useDevice(): { deviceId: string | null; device: Device | null } 
     }
 
     heartbeat();
-    const id = setInterval(heartbeat, 60 * 1000);
+    const stopPolling = pollEvery(heartbeat, 2 * 60 * 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
-    };
-  }, [deviceId]);
-
-  useEffect(() => {
-    if (!deviceId) return;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch(`/api/devices/${deviceId}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled) setDevice(data.device);
-      } catch {
-        // keep last known state on a transient network failure
-      }
-    }
-
-    const id = setInterval(poll, 15 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
+      stopPolling();
     };
   }, [deviceId]);
 

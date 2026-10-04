@@ -1,3 +1,4 @@
+import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { listNotifications, createNotification, markAllRead, type NotificationLevel } from "@/lib/notifications";
 
@@ -7,7 +8,7 @@ function isLevel(v: unknown): v is NotificationLevel {
 
 export async function GET() {
   const notifications = await listNotifications();
-  return NextResponse.json({ notifications });
+  return NextResponse.json({ notifications }, cacheHeaders(20));
 }
 
 /**
