@@ -234,7 +234,12 @@ const uvWord = (uv: number) => (uv < 3 ? "Low" : uv < 6 ? "Moderate" : uv < 8 ? 
 function WeatherHero({ w }: { w: Weather }) {
   const [from, to] = weatherGradient(w.weatherCode, w.isDay);
   const hours = w.hourly.filter((h) => new Date(h.time).getTime() > Date.now() - 3600_000).slice(0, 9);
-  const days = (w.forecast ?? []).slice(0, 5);
+  // The API's `forecast` starts at tomorrow, so prepend today's own numbers and label every tile by its real date.
+  const todayIso = new Date().toLocaleDateString("en-CA");
+  const tomorrowIso = new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA");
+  const days: Day[] = [{ date: todayIso, highF: w.highF, lowF: w.lowF, weatherCode: w.weatherCode }, ...(w.forecast ?? []).filter((d) => d.date > todayIso)].slice(0, 5);
+  const dayLabelFor = (iso: string) =>
+    iso === todayIso ? "Today" : iso === tomorrowIso ? "Tomorrow" : new Date(iso + "T12:00").toLocaleDateString([], { weekday: "short" });
   const t = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—");
   const stat = (label: string, value: string, sub?: string) => (
     <div className="glass-card flex-1 flex flex-col justify-center px-5" style={{ height: 84, borderRadius: 26 }}>
@@ -279,7 +284,7 @@ function WeatherHero({ w }: { w: Weather }) {
         <div className="flex gap-3">
           {days.map((d, i) => (
             <div key={d.date} className="glass-card flex-1 flex flex-col items-center justify-center" style={{ height: 110, borderRadius: 26 }}>
-              <div className="caps-label" style={{ fontSize: 11 }}>{i === 0 ? "Today" : new Date(d.date + "T12:00").toLocaleDateString([], { weekday: "short" })}</div>
+              <div className="caps-label" style={{ fontSize: 11 }}>{dayLabelFor(d.date)}</div>
               <WeatherIcon code={d.weatherCode} isDay className="w-8 h-8 my-1" />
               <div className="num-rounded font-bold text-white" style={{ fontSize: 20 }}>{Math.round(d.highF)}° <span className="text-white/45">{Math.round(d.lowF)}°</span></div>
             </div>
@@ -841,7 +846,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
       case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
-      case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.[1]} />;
+      case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.find((d) => d.date === new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA")) ?? weather?.forecast?.[0]} />;
       case "calendar": return <AgendaList events={upcoming} connected={calConnected} />;
       default: {
         const type = it.id as WidgetType;
