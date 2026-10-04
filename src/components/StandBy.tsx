@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WeatherIcon } from "@/lib/weatherVisuals";
+import { WeatherIcon, weatherGradient } from "@/lib/weatherVisuals";
 import { weatherLabel } from "@/lib/weatherCodes";
 import { eventColor } from "@/lib/eventColors";
 import { useDrift } from "@/lib/useDrift";
@@ -9,6 +9,7 @@ import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
+import { FitText } from "@/components/FitText";
 import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
@@ -27,8 +28,12 @@ const reveal = (delay: number): React.CSSProperties => ({
 
 // ---------- data ----------
 
-interface Hour { time: string; tempF: number; weatherCode: number }
-interface Weather { tempF: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: Hour[] }
+interface Hour { time: string; tempF: number; weatherCode: number; precipProbability?: number }
+interface Day { date: string; highF: number; lowF: number; weatherCode: number }
+interface Weather {
+  tempF: number; feelsLikeF?: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: Hour[];
+  forecast?: Day[]; humidity?: number; windMph?: number; uvIndex?: number; sunrise?: string; sunset?: string;
+}
 interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null }
 interface Note { id: string; message: string; level: string; source: string | null; read: boolean }
 
@@ -57,15 +62,38 @@ function usePolled<T>(url: string, everyMs: number, pick: (j: never) => T): T | 
   return v;
 }
 
-function useScale() {
-  const [s, setS] = useState(1);
+/** Fit the 1440x900 design canvas to any screen: scale so the whole design fits, then hand the
+ *  leftover width (ultrawide) or height (portrait) back to the layout instead of letterboxing. */
+function useViewport() {
+  const [v, setV] = useState({ s: 1, extraW: 0, extraH: 0 });
   useEffect(() => {
-    const f = () => setS(Math.min(window.innerWidth / W, window.innerHeight / H));
+    const f = () => {
+      const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+      setV({ s, extraW: Math.max(0, window.innerWidth / s - W), extraH: Math.max(0, window.innerHeight / s - H) });
+    };
     f();
     window.addEventListener("resize", f);
     return () => window.removeEventListener("resize", f);
   }, []);
-  return s;
+  return v;
+}
+
+/** Left/top items stay anchored, right/bottom items move with the far edge, centred items shift
+ *  half, and anything spanning most of an axis stretches across the extra space. */
+function adapt(it: StandByItem, extraW: number, extraH: number): StandByItem {
+  let { x, y, w, h } = it;
+  const cx = x + w / 2, cy = y + h / 2;
+  if (extraW > 0) {
+    if (w >= W * 0.85) w += extraW;
+    else if (cx > W * 0.6) x += extraW;
+    else if (cx > W * 0.4) x += extraW / 2;
+  }
+  if (extraH > 0) {
+    if (h >= H * 0.8) h += extraH;
+    else if (cy > H * 0.6) y += extraH;
+    else if (cy > H * 0.4) y += extraH / 2;
+  }
+  return { ...it, x, y, w, h };
 }
 
 // ---------- backdrop ----------
@@ -190,6 +218,76 @@ function WeatherTile({ w }: { w: Weather }) {
   );
 }
 
+const uvWord = (uv: number) => (uv < 3 ? "Low" : uv < 6 ? "Moderate" : uv < 8 ? "High" : uv < 11 ? "Very high" : "Extreme");
+
+/** Big, readable weather for the morning scene: giant temperature, hourly with rain chance,
+ *  the week ahead, and the numbers people actually check (UV, wind, humidity, sun times). */
+function WeatherHero({ w }: { w: Weather }) {
+  const [from, to] = weatherGradient(w.weatherCode, w.isDay);
+  const hours = w.hourly.filter((h) => new Date(h.time).getTime() > Date.now() - 3600_000).slice(0, 9);
+  const days = (w.forecast ?? []).slice(0, 5);
+  const t = (iso?: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—");
+  const stat = (label: string, value: string, sub?: string) => (
+    <div className="glass-card flex-1 flex flex-col justify-center px-5" style={{ height: 84, borderRadius: 26 }}>
+      <div className="caps-label" style={{ fontSize: 11 }}>{label}</div>
+      <div className="num-rounded font-bold text-white" style={{ fontSize: 28, lineHeight: 1.1 }}>{value}</div>
+      {sub && <div className="text-white/50 font-semibold" style={{ fontSize: 13 }}>{sub}</div>}
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-4" style={{ width: 820, height: 640 }}>
+      <div
+        className="glass-card flex items-center gap-8 px-10"
+        style={{
+          height: 250, borderRadius: 56,
+          background: `radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, ${from} 80%, transparent), transparent 70%), radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, ${to} 40%, transparent), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05))`,
+        }}
+      >
+        <WeatherIcon code={w.weatherCode} isDay={w.isDay} className="w-36 h-36 shrink-0" />
+        <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 200, lineHeight: 0.9, letterSpacing: "-0.04em" }}>{Math.round(w.tempF)}°</div>
+        <div className="min-w-0">
+          <div className="text-white font-bold leading-tight" style={{ fontSize: 44 }}>{weatherLabel(w.weatherCode)}</div>
+          {w.feelsLikeF != null && <div className="text-white/70 font-semibold" style={{ fontSize: 24 }}>Feels like {Math.round(w.feelsLikeF)}°</div>}
+          <div className="num-rounded text-white/60 font-semibold mt-1" style={{ fontSize: 24 }}>H {Math.round(w.highF)}° · L {Math.round(w.lowF)}°</div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        {hours.map((h, i) => {
+          const rain = h.precipProbability ?? 0;
+          return (
+            <div key={h.time} className="glass-card flex-1 flex flex-col items-center justify-center" style={{ height: 150, borderRadius: 30 }}>
+              <div className="font-semibold text-white/60" style={{ fontSize: 15 }}>{i === 0 ? "Now" : new Date(h.time).toLocaleTimeString([], { hour: "numeric" })}</div>
+              <WeatherIcon code={h.weatherCode} isDay={w.isDay} className="w-9 h-9 my-2" />
+              <div className="num-rounded font-bold text-white" style={{ fontSize: 28 }}>{Math.round(h.tempF)}°</div>
+              <div className="num-rounded font-semibold" style={{ fontSize: 14, color: rain >= 20 ? "#7cc4ff" : "transparent" }}>{rain}%</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {days.length > 0 && (
+        <div className="flex gap-3">
+          {days.map((d, i) => (
+            <div key={d.date} className="glass-card flex-1 flex flex-col items-center justify-center" style={{ height: 110, borderRadius: 26 }}>
+              <div className="caps-label" style={{ fontSize: 11 }}>{i === 0 ? "Today" : new Date(d.date + "T12:00").toLocaleDateString([], { weekday: "short" })}</div>
+              <WeatherIcon code={d.weatherCode} isDay className="w-8 h-8 my-1" />
+              <div className="num-rounded font-bold text-white" style={{ fontSize: 20 }}>{Math.round(d.highF)}° <span className="text-white/45">{Math.round(d.lowF)}°</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        {w.uvIndex != null && stat("UV index", String(Math.round(w.uvIndex)), uvWord(w.uvIndex))}
+        {w.windMph != null && stat("Wind", `${Math.round(w.windMph)} mph`)}
+        {w.humidity != null && stat("Humidity", `${Math.round(w.humidity)}%`)}
+        {stat("Sun", t(w.sunrise), `sets ${t(w.sunset)}`)}
+      </div>
+    </div>
+  );
+}
+
 function Drifting({ children, width, deps }: { children: React.ReactNode; width: number; deps: unknown[] }) {
   const box = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
@@ -238,8 +336,22 @@ function classRank(c: string) {
   return i === -1 ? 99 : i;
 }
 
+function DeviceGlyph({ cls, color }: { cls: string; color: string }) {
+  const k = cls.toLowerCase();
+  const p = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (k.includes("watch")) return <svg {...p}><rect x="7" y="6" width="10" height="12" rx="3" /><path d="M9 6l.7-3h4.6L15 6M9 18l.7 3h4.6l.7-3" /></svg>;
+  if (k.includes("pad") || k.includes("tablet")) return <svg {...p}><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M11 18h2" /></svg>;
+  if (k.includes("mac") || k.includes("book") || k.includes("laptop")) return <svg {...p}><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M2.5 19h19" /></svg>;
+  if (k.includes("pod") || k.includes("head") || k.includes("buds")) return <svg {...p}><path d="M8 4a3.5 3.5 0 0 0-3.5 3.5c0 2 1.5 3 3.5 3v8a1.5 1.5 0 0 0 3 0V7.5A3.5 3.5 0 0 0 8 4zM16 4a3.5 3.5 0 0 1 3.5 3.5c0 2-1.5 3-3.5 3v8a1.5 1.5 0 0 1-3 0" /></svg>;
+  if (k.includes("phone")) return <svg {...p}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></svg>;
+  return <svg {...p}><rect x="6" y="4" width="12" height="16" rx="2.5" /></svg>;
+}
+
+/** "Alex's iPhone 15 Pro" -> "iPhone 15 Pro" when the owner prefix is obvious, else the full name. */
+const shortName = (n: string) => n.replace(/^.{1,24}?[’']s\s+/, "") || n;
+
 /** Your own iCloud devices' batteries (via Find My), not whatever device is
- *  rendering the screen. Hidden when Find My isn't connected. */
+ *  rendering the screen. Each chip: device-type icon, level, and the device's name as a subnote. */
 function BatteryChips({ width }: { width: number }) {
   const devices = usePolled<FmDevice[]>("/api/icloud/findmy", 5 * 60_000, (j: { devices?: FmDevice[] }) => j.devices ?? []);
   const list = (devices ?? [])
@@ -253,14 +365,17 @@ function BatteryChips({ width }: { width: number }) {
         const pct = Math.round((d.batteryLevel as number) * 100);
         const color = pct <= 20 ? "#ff6b6b" : "#fff";
         return (
-          <div key={d.id} className="glass-card inline-flex items-center gap-3 px-5" style={{ height: 52, borderRadius: 26 }}>
-            <svg width="30" height="16" viewBox="0 0 34 18" fill="none">
-              <rect x="1" y="1" width="28" height="16" rx="5" stroke={color} strokeOpacity="0.5" strokeWidth="1.6" />
-              <rect x="3.5" y="3.5" width={Math.max(2, 23 * (pct / 100))} height="11" rx="3" fill={color} />
-              <rect x="31" y="6" width="2" height="6" rx="1" fill={color} fillOpacity="0.5" />
-            </svg>
-            <span className="text-white/60 font-semibold truncate" style={{ fontSize: 15, maxWidth: 120 }}>{d.name.replace(/’s .*|'s .*/, "")}</span>
-            <span className="num-rounded font-semibold" style={{ fontSize: 20, color }}>{pct}%</span>
+          <div key={d.id} className="glass-card flex flex-col justify-center px-5" style={{ height: 84, width: 178, borderRadius: 28 }}>
+            <div className="flex items-center gap-2.5">
+              <DeviceGlyph cls={d.deviceClass} color="rgba(255,255,255,0.75)" />
+              <svg width="30" height="16" viewBox="0 0 34 18" fill="none">
+                <rect x="1" y="1" width="28" height="16" rx="5" stroke={color} strokeOpacity="0.5" strokeWidth="1.6" />
+                <rect x="3.5" y="3.5" width={Math.max(2, 23 * (pct / 100))} height="11" rx="3" fill={color} />
+                <rect x="31" y="6" width="2" height="6" rx="1" fill={color} fillOpacity="0.5" />
+              </svg>
+              <span className="num-rounded font-bold" style={{ fontSize: 24, color }}>{pct}%</span>
+            </div>
+            <FitText className="caps-label mt-1.5" style={{ fontSize: 11 }}>{shortName(d.name)}</FitText>
           </div>
         );
       })}
@@ -302,8 +417,8 @@ function NowPlayingCard({ accent }: { accent: string }) {
           <img src={track.albumArtUrl} alt="" className="object-cover shrink-0" style={{ width: 190, height: 190, borderRadius: 48, boxShadow: `0 10px 40px ${accent}80` }} />
         )}
         <div className="min-w-0 flex-1 flex flex-col justify-center">
-          <div className="text-white font-bold leading-tight line-clamp-2" style={{ fontSize: 34 }}>{track.name}</div>
-          <div className="text-white/60 font-medium truncate" style={{ fontSize: 22 }}>{track.artists}</div>
+          <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 34 }}>{track.name}</FitText>
+          <FitText className="text-white/60 font-medium" style={{ fontSize: 22 }}>{track.artists}</FitText>
           <div className="flex items-center gap-6 mt-5 text-white" style={{ pointerEvents: "auto" }}>
             <button onClick={() => controlSpotify("previous")} className="opacity-90"><Icon d={PREV} /></button>
             <button
@@ -321,8 +436,8 @@ function NowPlayingCard({ accent }: { accent: string }) {
       <div className="flex-1 flex flex-col justify-center min-h-0 mt-2">
         {cur ? (
           <>
-            <div key={active} className="text-white font-bold leading-[1.12] line-clamp-2" style={{ fontSize: 46, animation: "reveal-up 0.5s ease-out both" }}>{cur}</div>
-            {nxt && <div className="font-bold leading-tight truncate mt-1" style={{ fontSize: 34, color: "rgba(255,255,255,0.35)" }}>{nxt}</div>}
+            <FitText key={active} lines={2} className="text-white font-bold leading-[1.12]" style={{ fontSize: 46, animation: "reveal-up 0.5s ease-out both" }}>{cur}</FitText>
+            {nxt && <FitText className="font-bold leading-tight mt-1" style={{ fontSize: 34, color: "rgba(255,255,255,0.35)" }}>{nxt}</FitText>}
           </>
         ) : (
           <div className="text-white/35 font-bold" style={{ fontSize: 28 }}>{lyrics === null ? "" : lyrics.length ? "♪" : "No synced lyrics"}</div>
@@ -446,7 +561,7 @@ function AgendaList({ events, connected }: { events: CalEvent[]; connected: bool
                   <div key={i} className="glass-card flex items-center gap-4 px-6" style={{ minHeight: 84, borderRadius: 28 }}>
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 8px ${col}cc` }} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-white font-semibold leading-tight line-clamp-2" style={{ fontSize: 22 }}>{e.summary}</div>
+                      <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 22 }}>{e.summary}</FitText>
                       <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 17 }}>
                         {e.allDay ? "All day" : `${s.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.end ? ` – ${new Date(e.end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`}
                       </div>
@@ -472,7 +587,7 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
       <div className="caps-label mb-3" style={{ fontSize: 15 }}>Up next</div>
       {e ? (
         <>
-          <div className="text-white font-bold leading-tight line-clamp-2" style={{ fontSize: 38 }}>{e.summary}</div>
+          <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 38 }}>{e.summary}</FitText>
           <div className="num-rounded font-semibold text-white/60 mt-2" style={{ fontSize: 22 }}>{eventWhen(e)}</div>
         </>
       ) : (
@@ -493,7 +608,7 @@ function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string
           style={{ height: 52, borderRadius: 26, maxWidth: 460, pointerEvents: "auto" }}
         >
           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: n.level === "important" ? "#ff6b6b" : n.level === "action_needed" ? "#ffb84d" : "#5ac8fa", boxShadow: "0 0 8px currentColor" }} />
-          <span className="text-white font-semibold truncate" style={{ fontSize: 17 }}>{n.message}</span>
+          <FitText className="text-white font-semibold flex-1 min-w-0" style={{ fontSize: 17 }}>{n.message}</FitText>
         </button>
       ))}
     </div>
@@ -546,7 +661,7 @@ const REVEAL_DELAY: Record<string, number> = {
 };
 
 export function StandBy({ draft = null, sceneId = null }: { draft?: string | null; sceneId?: string | null }) {
-  const scale = useScale();
+  const { s: scale, extraW, extraH } = useViewport();
   const np = useNowPlaying();
   const playing = Boolean(np?.connected && np.isPlaying && np.track);
   const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
@@ -574,7 +689,7 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
     weatherCode: weather?.weatherCode ?? null,
     todaysEventTitles: (events ?? []).filter((e) => new Date(e.start).toDateString() === now.toDateString()).map((e) => e.summary),
   };
-  const active = cfg.isDraft ? null : (sceneId ? cfg.scenes.find((s) => s.id === sceneId) ?? null : pickScene(cfg.scenes, ctx));
+  const active = cfg.isDraft ? null : (sceneId ? (sceneId === "base" ? null : cfg.scenes.find((s) => s.id === sceneId) ?? null) : pickScene(cfg.scenes, ctx));
   const layout = (active?.items ?? cfg.layout).filter((it) => cfg.isDraft || isWidgetVisible(it.visibility, ctx));
 
   function dismiss(id: string) {
@@ -586,6 +701,7 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
     switch (it.id) {
       case "clock": return <Clock />;
       case "weather": return weather && <WeatherTile w={weather} />;
+      case "weatherhero": return weather && <WeatherHero w={weather} />;
       case "forecast": return weather && <Forecast hours={weather.hourly} isDay={weather.isDay} width={it.w} />;
       case "battery": return <BatteryChips width={it.w} />;
       case "nowplaying":
@@ -612,7 +728,7 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     const k = row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h);
@@ -630,9 +746,9 @@ export function StandBy({ draft = null, sceneId = null }: { draft?: string | nul
         <Backdrop art={backdrop} playing={playing} accent={color} />
         <div
           className="absolute"
-          style={{ left: "50%", top: "50%", width: W, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}
+          style={{ left: "50%", top: "50%", width: W + extraW, height: H + extraH, transform: `translate(-50%, -50%) scale(${scale})` }}
         >
-          {layout.filter((it) => it.enabled).map((it) => (
+          {layout.filter((it) => it.enabled).map((raw) => adapt(raw, extraW, extraH)).map((it) => (
             <div
               key={it.id}
               className="absolute"

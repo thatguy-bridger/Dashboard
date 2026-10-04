@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useDisplayMode } from "@/lib/useDisplayMode";
@@ -72,7 +73,7 @@ export function DriveWidget({ size = "md" }: { size?: WidgetSize }) {
                   style={{ background: driveTypeColor(f.mimeType) }}
                 />
               )}
-              <span className="truncate">{f.name}</span>
+              <FitText className="min-w-0">{f.name}</FitText>
             </span>
             <span className="text-[var(--muted)] text-xs whitespace-nowrap">{formatAge(f.modifiedTime)}</span>
           </li>

@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useDisplayMode } from "@/lib/useDisplayMode";
@@ -56,7 +57,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
     return (
       <div className={`w-full text-left ${fade}`}>
         <div className="caps-label !text-[0.5625rem] mb-0.5">News</div>
-        <div className="text-base font-semibold leading-snug line-clamp-2">{current.title}</div>
+        <FitText lines={2} className="text-base font-semibold leading-snug">{current.title}</FitText>
       </div>
     );
   }
@@ -72,7 +73,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-3">
             <div className="text-[9px] uppercase tracking-widest text-white/70 mb-1">News</div>
-            <div className="text-sm text-white font-medium line-clamp-2">{current.title}</div>
+            <FitText lines={2} className="text-sm text-white font-medium">{current.title}</FitText>
           </div>
         </div>
       );
@@ -100,7 +101,7 @@ export function NewsWidget({ size = "md" }: { size?: WidgetSize }) {
               // eslint-disable-next-line @next/next/no-img-element -- external, frequently-rotating news photo, not worth Next/Image's pipeline
               <img src={item.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
             )}
-            <span className="line-clamp-2">{item.title}</span>
+            <FitText lines={2}>{item.title}</FitText>
           </li>
         ))}
       </ul>

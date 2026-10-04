@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useReportContent } from "@/lib/temporaryContent";
@@ -86,7 +87,7 @@ export function NotificationsWidget({ size = "md" }: { size?: WidgetSize }) {
           >
             <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${LEVEL_COLOR[n.level]}`} />
             <span className="flex-1 min-w-0">
-              <div className="truncate">{n.message}</div>
+              <FitText lines={2}>{n.message}</FitText>
               <div className="text-[10px] text-[var(--muted)]">
                 {n.source ? `${n.source} · ` : ""}
                 {timeAgo(n.createdAt)}

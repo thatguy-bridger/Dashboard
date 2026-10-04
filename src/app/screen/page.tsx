@@ -40,6 +40,8 @@ function usePreviewDevice(deviceId: string | null) {
     name: string | null;
     presetId: string | null;
     layout: DeviceLayout | null;
+    viewMode: "standby" | "grid" | null;
+    sceneId: string | null;
   } | null>(null);
   useEffect(() => {
     if (!deviceId) return;
@@ -177,6 +179,21 @@ function ScreenGrid({
   widgets: PresetWidget[];
   background: BackgroundConfig;
 }) {
+  // Tiles mode adapts to the screen: every rem-based size scales with the display
+  // (design reference 1440x900), so text and spacing stay proportionate on any panel.
+  useEffect(() => {
+    const apply = () => {
+      const k = Math.min(window.innerWidth / 1440, window.innerHeight / 900);
+      document.documentElement.style.fontSize = `${16 * Math.min(2.2, Math.max(0.7, k))}px`;
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => {
+      window.removeEventListener("resize", apply);
+      document.documentElement.style.fontSize = "";
+    };
+  }, []);
+
   const visibilityCtx = useVisibilityContext(widgets);
   const now = useNowPlaying();
   const playing = Boolean(now?.connected && now.isPlaying && now.track);
@@ -255,7 +272,7 @@ function ScreenPageInner() {
   const storedLayout = useLayoutMode();
   // ?layout=standby|grid forces a view (handy for previewing without approving a device).
   const forced = searchParams.get("layout");
-  const layoutMode = forced === "standby" || forced === "grid" ? forced : storedLayout;
+  const forcedMode = forced === "standby" || forced === "grid" ? forced : null;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
@@ -277,8 +294,13 @@ function ScreenPageInner() {
     return <UnapprovedNotice deviceId={deviceId} status={device?.status} />;
   }
 
-  if (!isDraft && !isPreview && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
-  if (!isDraft && !isPreview && layoutMode === "standby") return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene")} />;
+  // Per-screen override wins over the global setting; ?layout= wins over both.
+  const layoutMode = forcedMode ?? device?.viewMode ?? storedLayout;
+
+  if (!isDraft && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
+  if (!isDraft && layoutMode === "standby") {
+    return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} />;
+  }
 
   return <ScreenGrid widgets={widgets} background={background} />;
 }

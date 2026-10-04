@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useDisplayMode } from "@/lib/useDisplayMode";
@@ -67,7 +68,7 @@ export function CalendarWidget({ size = "md" }: { size?: WidgetSize }) {
                   style={{ background: eventColor(e.colorId, e.source), boxShadow: `0 0 8px ${eventColor(e.colorId, e.source)}` }}
                 />
               )}
-              <span className="truncate">{e.summary}</span>
+              <FitText className="min-w-0">{e.summary}</FitText>
             </span>
             <span className="text-[var(--muted)] text-xs whitespace-nowrap">{formatEvent(e)}</span>
           </li>

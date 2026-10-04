@@ -623,6 +623,33 @@ export default function ControlPage() {
 
               <div className="flex items-center gap-2 shrink-0">
                 <select
+                  title="Which view this screen shows"
+                  value={d.viewMode ?? ""}
+                  onChange={(e) => patchDevice(d.id, { viewMode: e.target.value || null })}
+                  className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
+                >
+                  <option value="">View: follow global ({layoutMode === "standby" ? "StandBy" : "Tiles"})</option>
+                  <option value="standby">View: StandBy</option>
+                  <option value="grid">View: Tiles</option>
+                </select>
+                {(d.viewMode ?? layoutMode) === "standby" && (
+                  <select
+                    title="Which StandBy scene this screen shows"
+                    value={d.sceneId ?? ""}
+                    onChange={(e) => patchDevice(d.id, { sceneId: e.target.value || null })}
+                    className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
+                  >
+                    <option value="">Scene: automatic</option>
+                    <option value="base">Scene: Default layout</option>
+                    {standbyScenes.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        Scene: {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {(d.viewMode ?? layoutMode) === "grid" && (
+                <select
                   value={d.presetId ?? ""}
                   onChange={(e) => patchDevice(d.id, { presetId: e.target.value || null })}
                   className="bg-transparent border border-[var(--surface-border)] rounded-lg text-xs px-2 py-1.5"
@@ -634,6 +661,7 @@ export default function ControlPage() {
                     </option>
                   ))}
                 </select>
+                )}
                 {d.status !== "approved" && (
                   <button
                     onClick={() => patchDevice(d.id, { status: "approved" })}

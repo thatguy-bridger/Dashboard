@@ -22,6 +22,10 @@ export interface Device {
   touchOverride: boolean | null;
   presetId: string | null;
   layout: DeviceLayout | null;
+  /** Per-screen view: "standby" | "grid", or null to follow the global setting. */
+  viewMode: "standby" | "grid" | null;
+  /** StandBy scene pinned to this screen ("base" = Default layout), or null = automatic by schedule. */
+  sceneId: string | null;
   firstSeen: number;
   lastSeen: number;
 }
@@ -36,6 +40,8 @@ interface DeviceRow {
   touch_override: number | null;
   preset_id: string | null;
   layout: string | null;
+  view_mode: string | null;
+  scene_id: string | null;
   first_seen: number;
   last_seen: number;
 }
@@ -62,6 +68,8 @@ function fromRow(row: DeviceRow): Device {
     touchOverride: row.touch_override === null ? null : Boolean(row.touch_override),
     presetId: row.preset_id,
     layout: parseLayout(row.layout),
+    viewMode: row.view_mode === "standby" || row.view_mode === "grid" ? row.view_mode : null,
+    sceneId: row.scene_id ?? null,
     firstSeen: row.first_seen,
     lastSeen: row.last_seen,
   };
@@ -72,10 +80,8 @@ function fromRow(row: DeviceRow): Device {
 let layoutColumnReady: Promise<void> | null = null;
 function ensureLayoutColumn(): Promise<void> {
   if (!layoutColumnReady) {
-    layoutColumnReady = d1Query("ALTER TABLE devices ADD COLUMN layout TEXT").then(
-      () => undefined,
-      () => undefined // already exists
-    );
+    const add = (col: string) => d1Query(`ALTER TABLE devices ADD COLUMN ${col} TEXT`).then(() => undefined, () => undefined); // already exists
+    layoutColumnReady = add("layout").then(() => add("view_mode")).then(() => add("scene_id"));
   }
   return layoutColumnReady;
 }
@@ -115,7 +121,7 @@ export async function touchDevice(params: {
 
 export async function updateDevice(
   id: string,
-  patch: Partial<Pick<Device, "name" | "status" | "touchOverride" | "presetId" | "layout">>
+  patch: Partial<Pick<Device, "name" | "status" | "touchOverride" | "presetId" | "layout" | "viewMode" | "sceneId">>
 ): Promise<Device | null> {
   await ensureLayoutColumn();
   const sets: string[] = [];
@@ -140,6 +146,15 @@ export async function updateDevice(
   if ("layout" in patch) {
     sets.push("layout = ?");
     values.push(patch.layout ? JSON.stringify(patch.layout) : null);
+  }
+
+  if ("viewMode" in patch) {
+    sets.push("view_mode = ?");
+    values.push(patch.viewMode);
+  }
+  if ("sceneId" in patch) {
+    sets.push("scene_id = ?");
+    values.push(patch.sceneId);
   }
 
   if (sets.length === 0) return getDevice(id);

@@ -28,6 +28,8 @@ export async function PATCH(
     touchOverride?: boolean | null;
     presetId?: string | null;
     layout?: DeviceLayout | null;
+    viewMode?: "standby" | "grid" | null;
+    sceneId?: string | null;
   } = {};
   if (typeof body.name === "string") patch.name = body.name;
   if (body.status === "pending" || body.status === "approved" || body.status === "rejected") {
@@ -38,6 +40,12 @@ export async function PATCH(
   }
   if (body.presetId === null || typeof body.presetId === "string") {
     patch.presetId = body.presetId;
+  }
+  if (body.viewMode === null || body.viewMode === "standby" || body.viewMode === "grid") {
+    patch.viewMode = body.viewMode;
+  }
+  if (body.sceneId === null || typeof body.sceneId === "string") {
+    patch.sceneId = body.sceneId;
   }
   if (body.layout === null) {
     patch.layout = null;

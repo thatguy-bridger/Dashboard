@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNowPlaying, useEstimatedProgress, useLyrics } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
@@ -76,7 +77,7 @@ function ActivityPill({ a, expanded }: { a: LiveActivity; expanded: boolean }) {
       />
       <div className="min-w-0 flex-1">
         {expanded ? (
-          <div className="text-white text-base font-bold leading-tight line-clamp-2">{a.title}</div>
+          <FitText lines={2} className="text-white text-base font-bold leading-tight">{a.title}</FitText>
         ) : (
           <Marquee className="text-white text-[0.8125rem] font-semibold">{a.title}</Marquee>
         )}
@@ -175,7 +176,7 @@ export function SpotifyIsland({ includeMusic = true }: { includeMusic?: boolean 
                 className="overflow-hidden transition-all duration-500"
                 style={{ maxHeight: expanded ? 80 : 0, opacity: expanded ? 1 : 0 }}
               >
-                <div className="text-sm font-medium text-white/60 truncate">{track.artists}</div>
+                <FitText className="text-sm font-medium text-white/60">{track.artists}</FitText>
                 <div className="mt-1.5"><LyricTicker progressMs={progress} trackId={track.id} /></div>
                 <div className="h-1.5 rounded-full mt-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.18)" }}>
                   <div className="h-full rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />

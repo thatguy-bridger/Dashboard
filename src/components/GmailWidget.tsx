@@ -1,5 +1,6 @@
 "use client";
 
+import { FitText } from "@/components/FitText";
 import { useEffect, useState } from "react";
 import type { WidgetSize } from "@/lib/presets";
 import { useDisplayMode } from "@/lib/useDisplayMode";
@@ -78,9 +79,9 @@ export function GmailWidget({ size = "md" }: { size?: WidgetSize }) {
             )}
             <div className="min-w-0">
               <div className="flex justify-between gap-3">
-                <span className="font-medium truncate">{m.from}</span>
+                <FitText className="font-medium">{m.from}</FitText>
               </div>
-              <div className="text-[var(--muted)] text-xs truncate">{m.subject}</div>
+              <FitText className="text-[var(--muted)] text-xs">{m.subject}</FitText>
             </div>
           </li>
         ))}

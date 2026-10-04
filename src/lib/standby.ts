@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "clock" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
+export type CustomItemId = "clock" | "weatherhero" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather" | "notifications">;
 
 export interface StandByItem {
@@ -33,8 +33,9 @@ const widgetLabel = (t: WidgetType) => WIDGET_LABELS[t];
 const RAW_DEFS: Def[] = [
   D("clock", "Clock & date", true, 60, 70, 620, 300, true),
   D("weather", "Weather", true, 60, 382, 380, 112, true),
+  D("weatherhero", "Weather (detailed, large)", false, 60, 100, 820, 640, true),
   D("forecast", "Hourly forecast", true, 60, 510, 600, 118, true),
-  D("battery", "Device batteries (iCloud)", true, 60, 640, 600, 52, true),
+  D("battery", "Device batteries (iCloud)", true, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
   D("notifications", "Notification pills", true, 900, 14, 480, 116, true),
@@ -136,11 +137,10 @@ export function defaultScenes(): StandByScene[] {
       name: "Morning",
       schedule: { timeStart: "05:30", timeEnd: "10:00" },
       items: scene({
-        weather: { x: 60, y: 100, w: 760, h: 320 },
-        forecast: { x: 60, y: 450, w: 800, h: 140 },
-        clock: { x: 60, y: 620, w: 400, h: 190 },
-        calendar: { x: 900, y: 100, w: 480, h: 740 },
-        notifications: { x: 500, y: 640, w: 380, h: 70 },
+        weatherhero: { x: 50, y: 96, w: 840, h: 650 },
+        clock: { x: 60, y: 770, w: 330, h: 130 },
+        calendar: { x: 930, y: 100, w: 450, h: 760 },
+        notifications: { x: 440, y: 790, w: 440, h: 70 },
       }),
     },
     {
