@@ -119,75 +119,105 @@ function adapt(it: StandByItem, extraW: number, extraH: number): StandByItem {
 
 // ---------- backdrop ----------
 
-/** Pre-blurred once per image (sigma ~22, saturation x1.25), shown scaled up. */
-function useLandscape() {
-  const [urls, setUrls] = useState<(string | null)[]>([null, null]);
-  const [front, setFront] = useState(0);
-  const idx = useRef(0);
+/** Loads one landscape and lightly pre-blurs it once (data URL), or null if it can't load. */
+function loadLandscape(i: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = 960;
+        c.height = Math.round((960 * img.height) / img.width);
+        const ctx = c.getContext("2d")!;
+        ctx.filter = "blur(5px) saturate(1.25)"; // light blur: the photo should stay recognisable
+        ctx.drawImage(img, -12, -12, c.width + 24, c.height + 24);
+        resolve(c.toDataURL("image/jpeg", 0.8));
+      } catch {
+        resolve(img.src);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = LANDSCAPE_URLS[i % LANDSCAPE_URLS.length];
+  });
+}
+
+const ROLL_MS = 9000; // a slow roll, not a flip
+const ROLL_EVERY_MS = 40_000;
+
+/** New photos roll in from the top as a ripple whose edge is heavily feathered (a soft wavefront,
+ *  no hard line). The settled photo underneath never swaps while it is visible. */
+function LandscapeRoll({ visible }: { visible: boolean }) {
+  const [base, setBase] = useState<string | null>(null);
+  const [incoming, setIncoming] = useState<string | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const next = useRef(1);
 
   useEffect(() => {
     let off = false;
+    let raf = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
-    function load(i: number, slot: number) {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        if (off) return;
-        let out: string | null = null;
-        try {
-          const c = document.createElement("canvas");
-          c.width = 960;
-          c.height = Math.round((960 * img.height) / img.width);
-          const ctx = c.getContext("2d")!;
-          ctx.filter = "blur(5px) saturate(1.25)"; // light blur: the photo should stay recognisable
-          ctx.drawImage(img, -12, -12, c.width + 24, c.height + 24);
-          out = c.toDataURL("image/jpeg", 0.8);
-        } catch {
-          out = img.src;
+
+    loadLandscape(0).then((u) => !off && u && setBase(u));
+
+    async function roll() {
+      if (off) return;
+      const url = await loadLandscape(next.current++);
+      if (off) return;
+      if (!url) {
+        if (++failures <= LANDSCAPE_URLS.length) timer = setTimeout(roll, 1000);
+        return;
+      }
+      setIncoming(url);
+      const t0 = performance.now();
+      const frame = (now: number) => {
+        const el = topRef.current;
+        if (off || !el) return;
+        const t = Math.min(1, (now - t0) / ROLL_MS);
+        const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease in-out
+        const maxR = Math.hypot(el.clientWidth / 2, el.clientHeight);
+        const feather = maxR * 0.55;
+        const r = e * (maxR + feather);
+        const mask = `radial-gradient(circle at 50% 0%, #000 ${Math.max(0, r - feather)}px, transparent ${Math.max(1, r)}px)`;
+        el.style.maskImage = mask;
+        el.style.webkitMaskImage = mask;
+        if (t < 1) raf = requestAnimationFrame(frame);
+        else {
+          setBase(url);
+          setIncoming(null);
         }
-        setUrls((u) => u.map((x, k) => (k === slot ? out : x)));
       };
-      img.onerror = () => {
-        // skip a bad photo, but give up after one lap rather than looping forever
-        if (off || ++failures > LANDSCAPE_URLS.length) return;
-        idx.current = (idx.current + 1) % LANDSCAPE_URLS.length;
-        load(idx.current, slot);
-      };
-      img.src = LANDSCAPE_URLS[i];
+      raf = requestAnimationFrame(frame);
     }
-    load(0, 0);
-    idx.current = 0;
-    const id = setInterval(() => {
-      idx.current = (idx.current + 1) % LANDSCAPE_URLS.length;
-      const next = 1 - front;
-      load(idx.current, next);
-      setTimeout(() => !off && setFront((f) => 1 - f), 600);
-    }, 30_000);
+
+    const iv = setInterval(roll, ROLL_EVERY_MS);
     return () => {
       off = true;
-      clearInterval(id);
+      clearInterval(iv);
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- front toggles inside the interval
   }, []);
 
-  return { urls, front };
+  return (
+    <div className="absolute inset-0" style={{ opacity: visible && base ? 0.72 : 0, transition: "opacity 3s ease" }}>
+      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: base ? `url(${base})` : undefined }} />
+      {incoming && (
+        <div
+          ref={topRef}
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${incoming})`, maskImage: "radial-gradient(circle at 50% 0%, transparent 0, transparent 1px)" }}
+        />
+      )}
+    </div>
+  );
 }
 
 function Backdrop({ art, playing, accent }: { art: string | null; playing: boolean; accent: string }) {
-  const { urls, front } = useLandscape();
   return (
     <div className="absolute inset-0 bg-black overflow-hidden">
-      {[0, 1].map((slot) => (
-        <div
-          key={slot}
-          className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage: urls[slot] ? `url(${urls[slot]})` : undefined,
-            opacity: !playing && front === slot && urls[slot] ? 0.72 : 0,
-            transition: "opacity 3s ease",
-          }}
-        />
-      ))}
+      <LandscapeRoll visible={!playing} />
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{ backgroundImage: art ? `url(${art})` : undefined, opacity: playing && art ? 0.65 : 0, transition: "opacity 2.5s ease" }}
@@ -921,7 +951,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).
-    const k0 = it.id === "clock" ? Math.min(it.w / 600, it.h / def.h) : null;
+    const k0 = it.id === "clock" ? it.w / 600 : null;
     const k = k0 ?? (row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h));
     const innerW = row ? it.w / k : def.w;
     if (WIDTH_FIT_ITEMS.includes(it.id)) {

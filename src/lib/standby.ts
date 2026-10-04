@@ -149,8 +149,8 @@ export function defaultScenes(): StandByScene[] {
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
-        clock: { x: 930, y: 80, w: 450, h: 290 },
-        calendar: { x: 930, y: 400, w: 450, h: 480 },
+        clock: { x: 930, y: 80, w: 450, h: 190 },
+        calendar: { x: 930, y: 312, w: 450, h: 568 },
       }),
     },
     {
@@ -223,9 +223,9 @@ export function personalScenes(): StandByScene[] {
       items: scene({
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
-        clock: { x: 930, y: 80, w: 450, h: 280 },
-        upnext: { x: 930, y: 390, w: 450, h: 150 },
-        calendar: { x: 930, y: 556, w: 450, h: 324 },
+        clock: { x: 930, y: 80, w: 450, h: 190 },
+        upnext: { x: 930, y: 312, w: 450, h: 150 },
+        calendar: { x: 930, y: 476, w: 450, h: 404 },
       }),
     },
     {
