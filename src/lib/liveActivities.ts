@@ -15,15 +15,22 @@ export interface LiveActivity {
   subtitle?: string;
 }
 
+export interface FeedNote { id: string; message: string; level: string; source: string | null; read: boolean }
+export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null }
+
 interface Snapshot {
   alerts: LiveActivity[];
   event: LiveActivity | null;
   game: LiveActivity | null;
+  /** Raw feeds, shared so StandBy doesn't poll the same endpoints a second time. */
+  notes: FeedNote[] | null;
+  events: FeedEvent[] | null;
+  calendarConnected: boolean;
 }
 
 // One shared poller per page (same pattern as spotifyClient): every consumer
 // reads the same snapshot instead of each hitting the API.
-let snap: Snapshot = { alerts: [], event: null, game: null };
+let snap: Snapshot = { alerts: [], event: null, game: null, notes: null, events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
 const timers: ReturnType<typeof setInterval>[] = [];
 
@@ -47,7 +54,7 @@ async function pollNotifications() {
         title: n.message,
         subtitle: n.source ?? "Claude",
       }));
-    publish({ alerts });
+    publish({ alerts, notes: notifications });
   } catch {
     // keep last
   }
@@ -57,8 +64,8 @@ async function pollCalendar() {
   try {
     const res = await fetch("/api/calendar", { cache: "no-store" });
     if (!res.ok) return;
-    const { events } = await res.json();
-    publish({ event: pickSoonEvent(events ?? []) });
+    const { events, connected } = await res.json();
+    publish({ event: pickSoonEvent(events ?? []), events: events ?? [], calendarConnected: Boolean(connected) });
   } catch {
     // keep last
   }
@@ -113,7 +120,7 @@ function start() {
   pollNotifications();
   pollCalendar();
   pollGame();
-  timers.push(setInterval(pollNotifications, 30_000), setInterval(pollCalendar, 3 * 60_000), setInterval(pollGame, 60_000));
+  timers.push(setInterval(pollNotifications, 30_000), setInterval(pollCalendar, 5 * 60_000), setInterval(pollGame, 60_000));
 }
 
 function stop() {
@@ -175,4 +182,19 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
     });
   }
   return list.sort((a, b) => b.priority - a.priority);
+}
+
+/** Shared notification + calendar feeds (one poller for the whole page). */
+export function useFeeds() {
+  const [s, setS] = useState(snap);
+  useEffect(() => {
+    listeners.add(setS);
+    setS(snap);
+    start();
+    return () => {
+      listeners.delete(setS);
+      if (listeners.size === 0) stop();
+    };
+  }, []);
+  return { notes: s.notes, events: s.events, calendarConnected: s.calendarConnected };
 }

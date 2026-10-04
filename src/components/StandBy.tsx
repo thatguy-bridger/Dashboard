@@ -14,7 +14,7 @@ import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { SpotifyIsland } from "@/components/SpotifyIsland";
-import { useRoutine } from "@/lib/liveActivities";
+import { useFeeds, useRoutine } from "@/lib/liveActivities";
 import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
@@ -758,10 +758,8 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   }, []);
 
   const weather = usePolled<Weather>("/api/weather", 10 * 60_000, (j: Weather) => j);
-  const calData = usePolled<{ events: CalEvent[]; connected: boolean }>("/api/calendar", 5 * 60_000, (j: { events?: CalEvent[]; connected?: boolean }) => ({ events: j.events ?? [], connected: Boolean(j.connected) }));
-  const events = calData?.events ?? null;
-  const calConnected = calData?.connected ?? false;
-  const notes = usePolled<Note[]>("/api/notifications", 30_000, (j: { notifications: Note[] }) => j.notifications);
+  // Calendar + notifications come from the shared feed the island already polls.
+  const { notes, events, calendarConnected: calConnected } = useFeeds();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const upcoming = (events ?? []).filter((e) => new Date(e.end ?? e.start).getTime() > Date.now()).slice(0, 12);
