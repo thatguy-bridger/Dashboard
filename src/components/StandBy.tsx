@@ -37,7 +37,19 @@ interface Weather {
   tempF: number; feelsLikeF?: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: Hour[];
   forecast?: Day[]; humidity?: number; windMph?: number; uvIndex?: number; sunrise?: string; sunset?: string;
 }
-interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null }
+interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
+
+// All-day events arrive as date-only strings; `new Date("2026-10-04")` parses as UTC midnight, which
+// is the previous evening in US time zones. Parse them as local dates instead.
+function parseWhen(s: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  if (/^\d{8}$/.test(s)) return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+  return new Date(s);
+}
+const evStart = (e: { start: string }) => parseWhen(e.start);
+const evEnd = (e: { start: string; end?: string }) => parseWhen(e.end ?? e.start);
+/** The calendar's own colour (from the Mac sync) wins over the Google colour-id palette. */
+const evCol = (e: CalEvent): string => e.color || eventColor(e.colorId, e.source);
 interface Note { id: string; message: string; level: string; source: string | null; read: boolean }
 
 function usePolled<T>(url: string, everyMs: number, pick: (j: never) => T): T | null {
@@ -516,10 +528,10 @@ function dayLabel(d: Date) {
 }
 
 function eventWhen(e: CalEvent) {
-  const s = new Date(e.start);
+  const s = evStart(e);
   if (e.allDay) return `${dayLabel(s)} · All day`;
   const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${dayLabel(s)} ${t(s)}${e.end ? ` – ${t(new Date(e.end))}` : ""}`;
+  return `${dayLabel(s)} ${t(s)}${e.end ? ` – ${t(evEnd(e))}` : ""}`;
 }
 
 function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
@@ -529,7 +541,7 @@ function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
       <div className="caps-label mb-3" style={{ fontSize: 15, paddingLeft: 24 }}>Next up</div>
       <Drifting width={width} deps={[events.length]}>
         {events.map((e, i) => {
-          const c = eventColor(e.colorId, e.source);
+          const c = evCol(e);
           return (
             <div key={i} className="glass-card flex items-center gap-4 px-6 shrink-0" style={{ width: 380, height: 82, borderRadius: 28 }}>
               <div className="w-3 h-3 rounded-full shrink-0" style={{ background: c, boxShadow: `0 0 8px ${c}cc` }} />
@@ -549,7 +561,7 @@ function Agenda({ events, width }: { events: CalEvent[]; width: number }) {
 function AgendaList({ events, connected }: { events: CalEvent[]; connected: boolean }) {
   const groups: { label: string; items: CalEvent[] }[] = [];
   for (const e of events) {
-    const label = dayLabel(new Date(e.start));
+    const label = dayLabel(evStart(e));
     const g = groups[groups.length - 1];
     if (g && g.label === label) g.items.push(e);
     else groups.push({ label, items: [e] });
@@ -565,19 +577,19 @@ function AgendaList({ events, connected }: { events: CalEvent[]; connected: bool
         </div>
       ) : (
         groups.map((g) => (
-          <div key={g.label} className="mb-6">
-            <div className="caps-label mb-3" style={{ fontSize: 15, paddingLeft: 8 }}>{g.label}</div>
-            <div className="flex flex-col gap-3">
+          <div key={g.label} className="mb-4">
+            <div className="caps-label mb-2" style={{ fontSize: 13, paddingLeft: 8 }}>{g.label}</div>
+            <div className="flex flex-col gap-2">
               {g.items.map((e, i) => {
-                const col = eventColor(e.colorId, e.source);
-                const s = new Date(e.start);
+                const col = evCol(e);
+                const s = evStart(e);
                 return (
-                  <div key={i} className="glass-card flex items-center gap-4 px-6" style={{ minHeight: 84, borderRadius: 28 }}>
+                  <div key={i} className="glass-card flex items-center gap-3 px-5" style={{ minHeight: 62, borderRadius: 24 }}>
                     <div className="w-3 h-3 rounded-full shrink-0" style={{ background: col, boxShadow: `0 0 8px ${col}cc` }} />
                     <div className="min-w-0 flex-1">
-                      <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 22 }}>{e.summary}</FitText>
-                      <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 17 }}>
-                        {e.allDay ? "All day" : `${s.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.end ? ` – ${new Date(e.end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`}
+                      <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 18 }}>{e.summary}</FitText>
+                      <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 14 }}>
+                        {e.allDay ? "All day" : `${s.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${e.end ? ` – ${evEnd(e).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`}
                       </div>
                     </div>
                   </div>
@@ -609,11 +621,11 @@ function buildSummary(w: Weather, events: CalEvent[], now: Date): { head: string
   if ((w.uvIndex ?? 0) >= 6) bits.push("high UV, wear sunscreen");
   if ((w.windMph ?? 0) >= 18) bits.push("windy");
 
-  const today = events.filter((e) => new Date(e.start).toDateString() === now.toDateString() && new Date(e.end ?? e.start).getTime() > now.getTime());
+  const today = events.filter((e) => evStart(e).toDateString() === now.toDateString() && evEnd(e).getTime() > now.getTime());
   const timed = today.filter((e) => !e.allDay);
   const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   let sched = "";
-  if (timed.length > 0) sched = `${timed.length} event${timed.length > 1 ? "s" : ""} today — first up, ${timed[0].summary} at ${t(new Date(timed[0].start))}.`;
+  if (timed.length > 0) sched = `${timed.length} event${timed.length > 1 ? "s" : ""} today — first up, ${timed[0].summary.length > 34 ? `${timed[0].summary.slice(0, 32)}…` : timed[0].summary} at ${t(evStart(timed[0]))}.`;
   else if (today.length > 0) sched = `${today.length} all-day item${today.length > 1 ? "s" : ""} today.`;
 
   const advice = bits.length ? `${bits.join("; ").replace(/^./, (c) => c.toUpperCase())}. ` : "";
@@ -643,9 +655,9 @@ function UpNextLive({ events }: { events: CalEvent[] }) {
     const id = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(id);
   }, []);
-  const e = events.find((x) => !x.allDay && new Date(x.end ?? x.start).getTime() > now);
-  const c = e ? eventColor(e.colorId, e.source) : NEUTRAL_ACCENT;
-  const start = e ? new Date(e.start).getTime() : 0;
+  const e = events.find((x) => !x.allDay && evEnd(x).getTime() > now);
+  const c = e ? evCol(e) : NEUTRAL_ACCENT;
+  const start = e ? evStart(e).getTime() : 0;
   const mins = Math.round((start - now) / 60_000);
   const nowOn = Boolean(e) && start <= now;
   const big = !e ? "" : nowOn ? "Now" : mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${Math.max(mins, 1)}m`;
@@ -664,7 +676,7 @@ function UpNextLive({ events }: { events: CalEvent[] }) {
           <div className="min-w-0 flex-1">
             <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 34 }}>{e.summary}</FitText>
             <div className="num-rounded font-semibold text-white/60 mt-1" style={{ fontSize: 20 }}>
-              {t(new Date(e.start))}{e.end ? ` – ${t(new Date(e.end))}` : ""}
+              {t(evStart(e))}{e.end ? ` – ${t(evEnd(e))}` : ""}
             </div>
           </div>
         </>
@@ -678,7 +690,7 @@ function UpNextLive({ events }: { events: CalEvent[] }) {
 /** Evening look-ahead: first thing tomorrow, then the rest, plus tomorrow's weather. */
 function TomorrowPreview({ events, day }: { events: CalEvent[]; day?: Day }) {
   const tm = new Date(Date.now() + 86_400_000).toDateString();
-  const list = events.filter((e) => new Date(e.start).toDateString() === tm).slice(0, 4);
+  const list = events.filter((e) => evStart(e).toDateString() === tm).slice(0, 4);
   const t = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const first = list.find((e) => !e.allDay);
   return (
@@ -689,7 +701,7 @@ function TomorrowPreview({ events, day }: { events: CalEvent[]; day?: Day }) {
       </div>
       {first && (
         <div className="text-white font-bold leading-tight" style={{ fontSize: 30 }}>
-          First up {t(new Date(first.start))}
+          First up {t(evStart(first))}
         </div>
       )}
       <div className="flex flex-col gap-2 min-h-0">
@@ -698,9 +710,9 @@ function TomorrowPreview({ events, day }: { events: CalEvent[]; day?: Day }) {
         ) : (
           list.map((e, i) => (
             <div key={i} className="flex items-center gap-3">
-              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: eventColor(e.colorId, e.source) }} />
+              <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: evCol(e) }} />
               <FitText className="text-white/90 font-semibold flex-1 min-w-0" style={{ fontSize: 20 }}>{e.summary}</FitText>
-              <span className="num-rounded font-semibold text-white/50" style={{ fontSize: 16 }}>{e.allDay ? "all day" : t(new Date(e.start))}</span>
+              <span className="num-rounded font-semibold text-white/50" style={{ fontSize: 16 }}>{e.allDay ? "all day" : t(evStart(e))}</span>
             </div>
           ))
         )}
@@ -710,7 +722,7 @@ function TomorrowPreview({ events, day }: { events: CalEvent[]; day?: Day }) {
 }
 
 function UpNext({ e }: { e: CalEvent | undefined }) {
-  const c = e ? eventColor(e.colorId, e.source) : NEUTRAL_ACCENT;
+  const c = e ? evCol(e) : NEUTRAL_ACCENT;
   return (
     <div
       className="glass-card flex flex-col justify-center"
@@ -805,7 +817,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   const { notes, events, calendarConnected: calConnected } = useFeeds();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  const upcoming = (events ?? []).filter((e) => new Date(e.end ?? e.start).getTime() > Date.now()).slice(0, 12);
+  const upcoming = (events ?? []).filter((e) => evEnd(e).getTime() > Date.now()).slice(0, 12);
   const unreadAll = (notes ?? []).filter((n) => !n.read && n.level === "info" && !dismissed.has(n.id));
   // Pills appear routinely (on arrival, then every few minutes), not permanently.
   const pillsOpen = useRoutine(unreadAll.map((n) => n.id).join(","));
@@ -815,7 +827,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   const ctx: VisibilityContext = {
     now,
     weatherCode: weather?.weatherCode ?? null,
-    todaysEventTitles: (events ?? []).filter((e) => new Date(e.start).toDateString() === now.toDateString()).map((e) => e.summary),
+    todaysEventTitles: (events ?? []).filter((e) => evStart(e).toDateString() === now.toDateString()).map((e) => e.summary),
   };
   const active = cfg.isDraft ? null : (sceneId ? (sceneId === "base" ? null : cfg.scenes.find((s) => s.id === sceneId) ?? null) : pickScene(cfg.scenes, ctx));
   const layout = (active?.items ?? cfg.layout).filter((it) => cfg.isDraft || isWidgetVisible(it.visibility, ctx));

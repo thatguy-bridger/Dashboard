@@ -1,7 +1,8 @@
-import { cacheHeaders } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/google";
 import { getICloudEvents } from "@/lib/icloud";
+import { cacheHeaders } from "@/lib/http";
+import { getHiddenCalendars, getMacCalendar, MAC_FRESH_MS } from "@/lib/macCalendar";
 
 interface CalendarEvent {
   summary: string;
@@ -10,6 +11,7 @@ interface CalendarEvent {
   end?: string;
   source: string;
   colorId: string | null;
+  color?: string | null;
 }
 
 async function safeGoogleToken(): Promise<string | null> {
@@ -78,7 +80,42 @@ async function fetchICloudEvents(): Promise<CalendarEvent[]> {
   }
 }
 
+/** Events pushed from the Mac's Calendar app: every account, one source of truth. */
+async function macEvents(): Promise<{ events: CalendarEvent[]; updatedAt: number } | null> {
+  const mac = await getMacCalendar();
+  if (!mac || Date.now() - mac.updatedAt > MAC_FRESH_MS) return null;
+  const hidden = new Set(await getHiddenCalendars());
+  const now = Date.now();
+  const events = mac.events
+    .filter((e) => !hidden.has(e.calendarId))
+    .filter((e) => {
+      // all-day ends are exclusive dates; timed events drop off once they've ended
+      const end = new Date(e.end ?? e.start).getTime();
+      return e.allDay ? end > now - 12 * 3600_000 : end >= now;
+    })
+    .map((e) => ({
+      summary: e.summary,
+      start: e.start,
+      end: e.end,
+      allDay: e.allDay,
+      source: e.calendar,
+      colorId: null,
+      color: e.color,
+    }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+  return { events, updatedAt: mac.updatedAt };
+}
+
 export async function GET() {
+  // The Mac sync already covers Google + iCloud + Exchange, so when it's fresh skip the
+  // per-account fetches entirely (also far cheaper than hitting each API every poll).
+  const mac = await macEvents();
+  if (mac) {
+    return NextResponse.json(
+      { connected: true, source: "mac", updatedAt: mac.updatedAt, events: mac.events.slice(0, 80) },
+      cacheHeaders(120)
+    );
+  }
   const [google, icloud] = await Promise.all([fetchGoogleEvents(), fetchICloudEvents()]);
   const seen = new Set<string>();
   const events = [...google, ...icloud]

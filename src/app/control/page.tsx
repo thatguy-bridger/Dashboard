@@ -19,6 +19,7 @@ import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { pollEvery } from "@/lib/poll";
+import { CalendarPicker } from "@/components/CalendarPicker";
 import { RulesEditor } from "@/components/RulesEditor";
 import { hasAnyRule } from "@/lib/visibility";
 import { StandByEditor } from "@/components/StandByEditor";
@@ -763,6 +764,11 @@ export default function ControlPage() {
           account is actively playing to have playback visible to the Spotify app (not in a private/incognito
           session).
         </p>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">Calendars (from your Mac)</h2>
+        <CalendarPicker />
       </section>
 
       <section className="glass-panel p-6">

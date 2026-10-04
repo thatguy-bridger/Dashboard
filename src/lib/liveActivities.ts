@@ -17,7 +17,7 @@ export interface LiveActivity {
 }
 
 export interface FeedNote { id: string; message: string; level: string; source: string | null; read: boolean }
-export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null }
+export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
 
 interface Snapshot {
   alerts: LiveActivity[];
