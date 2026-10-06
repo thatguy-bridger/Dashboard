@@ -5,7 +5,7 @@ import { useNowPlaying } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
 import { useLiveActivities, type ActivityKind, type LiveActivity } from "@/lib/liveActivities";
 import { Marquee } from "@/components/Marquee";
-import { FitText } from "@/components/FitText";
+import { NotificationTicker } from "@/components/NotificationTicker";
 
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const pill = "relative flex items-center rounded-full overflow-hidden shrink-0";
@@ -36,15 +36,6 @@ function GamePill({ a }: { a: LiveActivity }) {
       <span className="num-rounded font-bold text-white" style={{ fontSize: 20 }}>{g.homeScore}</span>
       <Logo src={g.homeBadge} name={g.home} />
       <span className="text-white/50 font-semibold whitespace-nowrap" style={{ fontSize: 12 }}>{g.status}</span>
-    </div>
-  );
-}
-
-function AlertPill({ a }: { a: LiveActivity }) {
-  return (
-    <div className={`${pill} gap-3 px-5 py-2`} style={{ ...pillStyle, minHeight: 46, maxWidth: 400, borderRadius: 24 }}>
-      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
-      <FitText lines={2} className="text-white font-semibold leading-tight" style={{ fontSize: 14, minWidth: 0 }}>{a.title}</FitText>
     </div>
   );
 }
@@ -104,11 +95,13 @@ function MusicPill({ a }: { a: LiveActivity }) {
 export function ActivityPills({ hide = [] as ActivityKind[], includeMusic = true }: { hide?: ActivityKind[]; includeMusic?: boolean }) {
   const activities = useLiveActivities(includeMusic).filter((a) => !hide.includes(a.kind));
   if (activities.length === 0) return null;
+  // Every alert shares ONE pill that scrolls through them.
+  const alerts = activities.filter((a) => a.kind === "alert");
+  const others = activities.filter((a) => a.kind !== "alert");
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-start gap-3">
-      {activities.map((a) =>
-        a.kind === "music" ? <MusicPill key={a.id} a={a} /> : a.kind === "game" ? <GamePill key={a.id} a={a} /> : <AlertPill key={a.id} a={a} />
-      )}
+      {others.map((a) => (a.kind === "music" ? <MusicPill key={a.id} a={a} /> : <GamePill key={a.id} a={a} />))}
+      {alerts.length > 0 && <NotificationTicker items={alerts.map((a) => ({ id: a.id, message: a.title, color: a.color }))} />}
     </div>
   );
 }

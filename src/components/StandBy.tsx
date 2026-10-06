@@ -10,6 +10,7 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
+import { NotificationTicker } from "@/components/NotificationTicker";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
@@ -836,20 +837,11 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
   );
 }
 
-function NotePills({ notes, onDismiss, max = 2 }: { notes: Note[]; onDismiss: (id: string) => void; max?: number }) {
+function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string) => void }) {
+  const color = (l: string) => (l === "important" ? "#ff6b6b" : l === "action_needed" ? "#ffb84d" : "#5ac8fa");
   return (
-    <div className="flex flex-col gap-3 items-end w-full">
-      {notes.slice(0, max).map((n) => (
-        <button
-          key={n.id}
-          onClick={() => onDismiss(n.id)}
-          className="glass-card flex items-center gap-3 px-5 text-left"
-          style={{ height: 52, borderRadius: 26, maxWidth: 460, pointerEvents: "auto" }}
-        >
-          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: n.level === "important" ? "#ff6b6b" : n.level === "action_needed" ? "#ffb84d" : "#5ac8fa", boxShadow: "0 0 8px currentColor" }} />
-          <FitText className="text-white font-semibold flex-1 min-w-0" style={{ fontSize: 17 }}>{n.message}</FitText>
-        </button>
-      ))}
+    <div className="w-full flex justify-end">
+      <NotificationTicker items={notes.map((n) => ({ id: n.id, message: n.message, color: color(n.level) }))} onDismiss={onDismiss} maxWidth={460} />
     </div>
   );
 }
@@ -959,7 +951,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
           <UpNext e={upcoming[0]} />
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
-      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} max={it.h >= 100 ? 2 : 1} />;
+      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
       case "sports": return <SportsStrip width={it.w} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
