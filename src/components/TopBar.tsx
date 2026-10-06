@@ -109,7 +109,7 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
 
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 250px)" }}>
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 290px)" }}>
         {weather && !hide.includes("weather") && (
           <div className={chip} style={chipStyle}>
             <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-6 h-6 shrink-0" />
@@ -127,7 +127,7 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
         )}
       </div>
 
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 250px)" }}>
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 290px)" }}>
         {next && !hide.includes("countdown") && (
           <div className={chip} style={{ ...chipStyle, borderColor: soon ? "rgba(255,184,77,0.55)" : "rgba(255,255,255,0.12)" }}>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: soon ? "#ffb84d" : (next.color ?? eventColor(next.colorId, next.source)), boxShadow: `0 0 8px ${soon ? "#ffb84d" : (next.color ?? "#fff")}` }} />

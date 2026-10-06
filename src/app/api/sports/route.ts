@@ -210,7 +210,10 @@ async function getLiveGame() {
     if (!res.ok) return { live: null, games: [] };
     const data = await res.json();
     const entries: LiveScoreEntry[] = data.livescore ?? [];
+    // Only games actually in progress: the feed also lists not-started / finished / postponed ones.
+    const notLive = /^(ns|ft|aet|pen|tbd|canc|post|abd|awd|wo|not started|match finished|finished|postponed|cancelled)/i;
     const matches = entries
+      .filter((e) => !notLive.test((e.strStatus ?? "").trim()))
       .filter((e) =>
         favoriteTeams.some(
           (team) =>

@@ -58,7 +58,7 @@ function MusicPill({ a }: { a: LiveActivity }) {
 
   if (!track) return null;
   return (
-    <div className="relative shrink-0">
+    <div className="relative min-w-0" style={{ flex: "0 1 auto" }}>
       <div
         className="absolute pointer-events-none"
         style={{
@@ -67,19 +67,36 @@ function MusicPill({ a }: { a: LiveActivity }) {
         }}
       />
       <div
-        className={`${pill} gap-3 pl-2 pr-5`}
-        style={{ ...pillStyle, height: open ? 58 : 46, width: open ? 320 : 230, transition: `all 0.4s ${EASE}` }}
+        className={`${pill} gap-3 pl-2 pr-5 min-w-0`}
+        // Width is whatever the title needs (no minimum), up to a cap so the other pills still fit.
+        style={{ ...pillStyle, height: open ? 58 : 46, maxWidth: open ? 300 : 230, transition: `height 0.4s ${EASE}, max-width 0.4s ${EASE}` }}
       >
         {track.albumArtUrl && (
-          // eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image
-          <img
-            src={track.albumArtUrl}
-            alt=""
-            className="object-cover shrink-0 rounded-full"
+          // A little record: the art spins while playing (paused when not), with fine grooves, a bright
+          // sheen that stays still as the label turns, and a centre spindle hole.
+          <div
+            className="relative shrink-0 rounded-full"
             style={{ width: open ? 42 : 34, height: open ? 42 : 34, boxShadow: `0 2px 12px ${accent}66`, transition: `all 0.4s ${EASE}` }}
-          />
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image */}
+            <img
+              src={track.albumArtUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover rounded-full"
+              style={{ animation: "vinyl-spin 7s linear infinite", animationPlayState: np?.isPlaying ? "running" : "paused" }}
+            />
+            <div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background:
+                  "repeating-radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0 1.5px, rgba(0,0,0,0.16) 1.5px 2.5px), conic-gradient(from 35deg, transparent 0 18%, rgba(255,255,255,0.28) 24%, transparent 30% 68%, rgba(255,255,255,0.18) 74%, transparent 80%)",
+              }}
+            />
+            <div className="absolute rounded-full bg-black/80" style={{ inset: "38%", boxShadow: "0 0 0 1px rgba(255,255,255,0.25)" }} />
+            <div className="absolute rounded-full bg-white/60" style={{ inset: "46%" }} />
+          </div>
         )}
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <Marquee className="text-white font-semibold text-[14px]">{a.title}</Marquee>
           <div className="text-white/55 font-medium truncate overflow-hidden" style={{ fontSize: 12, maxHeight: open ? 18 : 0, opacity: open ? 1 : 0, transition: "all 0.4s" }}>
             {track.artists}
@@ -95,11 +112,15 @@ function MusicPill({ a }: { a: LiveActivity }) {
 export function ActivityPills({ hide = [] as ActivityKind[], includeMusic = true }: { hide?: ActivityKind[]; includeMusic?: boolean }) {
   const activities = useLiveActivities(includeMusic).filter((a) => !hide.includes(a.kind));
   if (activities.length === 0) return null;
-  // Every alert shares ONE pill that scrolls through them.
+  // The centre lane between the top-bar groups: one row, and the flexible pills (music title, notification
+  // ticker) shrink to share it, so nothing wraps down over content or leaves the screen. Every alert shares ONE pill that scrolls through them.
   const alerts = activities.filter((a) => a.kind === "alert");
   const others = activities.filter((a) => a.kind !== "alert");
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-start gap-3">
+    <div
+      className="fixed top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-nowrap items-start justify-center gap-3"
+      style={{ width: "min(560px, calc(100vw - 40px))" }}
+    >
       {others.map((a) => (a.kind === "music" ? <MusicPill key={a.id} a={a} /> : <GamePill key={a.id} a={a} />))}
       {alerts.length > 0 && <NotificationTicker items={alerts.map((a) => ({ id: a.id, message: a.title, color: a.color }))} />}
     </div>

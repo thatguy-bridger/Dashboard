@@ -976,7 +976,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).
-    const k0 = it.id === "clock" ? it.w / 600 : null;
+    const k0 = it.id === "clock" ? Math.min(it.w / 600, it.h / 235) : null;
     const k = k0 ?? (row ? it.h / def.h : Math.min(it.w / def.w, it.h / def.h));
     const innerW = row ? it.w / k : def.w;
     if (WIDTH_FIT_ITEMS.includes(it.id)) {

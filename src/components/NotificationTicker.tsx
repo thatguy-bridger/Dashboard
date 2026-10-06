@@ -56,7 +56,7 @@ export function NotificationTicker({
       style={{ animation: `${anim} 0.5s cubic-bezier(0.32,0.72,0,1) both`, paddingRight: items.length > 1 ? 44 : 20 }}
     >
       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: it.color, boxShadow: `0 0 10px ${it.color}` }} />
-      <FitText lines={2} className="text-white font-semibold leading-tight flex-1 min-w-0" style={{ fontSize: 14 }}>
+      <FitText lines={2} min={0.72} className="text-white font-semibold leading-tight flex-1 min-w-0" style={{ fontSize: 14 }}>
         {it.message}
       </FitText>
     </div>
@@ -68,8 +68,10 @@ export function NotificationTicker({
       className="relative overflow-hidden shrink-0"
       style={{
         height: 46,
-        width: maxWidth,
-        maxWidth: "100%",
+        // Takes whatever room is left in its row (shrinking next to other pills), never more than maxWidth.
+        flex: "1 1 0",
+        minWidth: 180,
+        maxWidth,
         borderRadius: 23,
         background: "linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))",
         border: "1px solid rgba(255,255,255,0.12)",
