@@ -31,13 +31,13 @@ const D = (id: StandByItemId, label: string, enabled: boolean, x: number, y: num
 const widgetLabel = (t: WidgetType) => WIDGET_LABELS[t];
 
 const RAW_DEFS: Def[] = [
-  D("clock", "Clock & date", true, 60, 70, 620, 300, true),
-  D("weather", "Weather", true, 60, 382, 380, 112, true),
+  D("clock", "Clock & date", true, 60, 128, 620, 300, true),
+  D("weather", "Weather", true, 60, 440, 380, 112, true),
   D("weatherhero", "Weather (detailed, large)", false, 60, 100, 820, 640, true),
   D("daysummary", "Day summary (what to expect)", false, 60, 760, 830, 130, true),
   D("upnext", "Up next (live countdown)", false, 60, 400, 640, 200, true),
   D("tomorrow", "Tomorrow preview", false, 60, 400, 560, 300, true),
-  D("forecast", "Hourly forecast", true, 60, 510, 600, 118, true),
+  D("forecast", "Hourly forecast", true, 60, 568, 600, 118, true),
   D("battery", "Device batteries (large chips)", false, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
@@ -134,9 +134,9 @@ export function defaultScenes(): StandByScene[] {
       name: "Rainy day",
       schedule: { weather: "rain" },
       items: scene({
-        clock: { x: 60, y: 60, w: 460, h: 220 },
-        weather: { x: 60, y: 300, w: 380, h: 112 },
-        forecast: { x: 60, y: 430, w: 600, h: 118 },
+        clock: { x: 60, y: 110, w: 460, h: 220 },
+        weather: { x: 60, y: 350, w: 380, h: 112 },
+        forecast: { x: 60, y: 480, w: 600, h: 118 },
         radar: { x: 740, y: 100, w: 640, h: 500 },
         agenda: { x: 60, y: 710, w: 1320, h: 130 },
         notifications: { x: 900, y: 70, w: 480, h: 60 },
@@ -167,8 +167,8 @@ export function defaultScenes(): StandByScene[] {
       name: "Evening",
       schedule: { timeStart: "17:00", timeEnd: "22:00" },
       items: scene({
-        clock: { x: 60, y: 70 },
-        weather: { x: 60, y: 382 },
+        clock: { x: 60, y: 128 },
+        weather: { x: 60, y: 440 },
         nowplaying: { x: 740, y: 134 },
         agenda: { x: 60, y: 710 },
         notifications: { x: 900, y: 70, w: 480, h: 60 },
@@ -244,9 +244,9 @@ export function personalScenes(): StandByScene[] {
       name: "Evening",
       schedule: { timeStart: "17:00", timeEnd: "22:00" },
       items: scene({
-        clock: { x: 60, y: 70 },
-        weather: { x: 60, y: 382 },
-        forecast: { x: 60, y: 510 },
+        clock: { x: 60, y: 128 },
+        weather: { x: 60, y: 440 },
+        forecast: { x: 60, y: 568 },
         nowplaying: { x: 740, y: 134 },
         upnext: { x: 740, y: 640, w: 640, h: 130 },
         notifications: { x: 900, y: 70, w: 480, h: 60 },
