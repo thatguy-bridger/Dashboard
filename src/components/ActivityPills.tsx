@@ -9,9 +9,10 @@ import { FitText } from "@/components/FitText";
 
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const pill = "relative flex items-center rounded-full overflow-hidden shrink-0";
+// Clear glass, matching the top-bar chips (flat gradient + hairline, no black fill, no live blur).
 const pillStyle = {
-  background: "#000",
-  boxShadow: "0 0 0 1px rgba(255,255,255,0.12)",
+  background: "linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))",
+  border: "1px solid rgba(255,255,255,0.12)",
 } as const;
 
 const initials = (n: string) => n.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean).slice(-1)[0]?.slice(0, 3).toUpperCase() ?? "";
