@@ -199,6 +199,10 @@ export function StandByEditor({
           </p>
           <RulesEditor visibility={scene.schedule} onChange={(v) => patchScene({ schedule: v })} />
           <label className="flex items-center gap-2 text-xs text-[var(--muted)] mt-2">
+            <input type="checkbox" checked={Boolean(scene.blackBg)} onChange={(ev) => patchScene({ blackBg: ev.target.checked || undefined })} />
+            Pure black background (no photo or album art)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-[var(--muted)] mt-2">
             Dim screen
             <input
               type="range" min={0} max={0.85} step={0.05}

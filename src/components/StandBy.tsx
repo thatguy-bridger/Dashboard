@@ -214,7 +214,9 @@ function LandscapeRoll({ visible }: { visible: boolean }) {
   );
 }
 
-function Backdrop({ art, playing, accent }: { art: string | null; playing: boolean; accent: string }) {
+function Backdrop({ art, playing, accent, black }: { art: string | null; playing: boolean; accent: string; black?: boolean }) {
+  // Night: nothing but black (also stops loading photos while it is dark).
+  if (black) return <div className="absolute inset-0 bg-black" />;
   return (
     <div className="absolute inset-0 bg-black overflow-hidden">
       <LandscapeRoll visible={!playing} />
@@ -997,7 +999,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   return (
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
       <RippleReveal accent={color} duration={draft ? 1 : 1600}>
-        <Backdrop art={backdrop} playing={playing} accent={color} />
+        <Backdrop art={backdrop} playing={playing} accent={color} black={active?.blackBg} />
         <div
           className="absolute"
           style={{ left: "50%", top: "50%", width: W + extraW, height: H + extraH, transform: `translate(-50%, -50%) scale(${scale})` }}
@@ -1014,9 +1016,11 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
         </div>
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
-      {dim > 0 && <div className="absolute inset-0 pointer-events-none bg-black transition-opacity duration-[2000ms]" style={{ opacity: dim }} />}
+      
       <TopBar hide={topHide} />
       <ActivityPills hide={pillHide} includeMusic={!musicCardShown} />
+      {/* dimmer sits above everything (top bar and pills included) so night is uniformly dark */}
+      <div className="fixed inset-0 z-30 pointer-events-none bg-black transition-opacity duration-[2000ms]" style={{ opacity: dim }} />
     </div>
   );
 }

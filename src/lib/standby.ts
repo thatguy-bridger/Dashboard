@@ -117,6 +117,8 @@ export interface StandByScene {
   schedule?: WidgetVisibility;
   /** 0-1 black overlay (night-time dimming). */
   dim?: number;
+  /** Pure black background: no photo, no album-art backdrop. */
+  blackBg?: boolean;
 }
 
 /** Everything off, then the listed items on at the given boxes. */
@@ -157,6 +159,9 @@ export function defaultScenes(): StandByScene[] {
       id: "scene-night",
       name: "Night",
       schedule: { timeStart: "22:00", timeEnd: "05:30" },
+      // As dark as it gets: black background, content just barely lit.
+      dim: 0.82,
+      blackBg: true,
       items: scene({
         clock: { x: 320, y: 230, w: 800, h: 390 },
         weather: { x: 530, y: 650, w: 380, h: 112 },
@@ -191,6 +196,7 @@ export function mergeScenes(raw: unknown): StandByScene[] {
       items: mergeStandByLayout(r.items),
       ...(schedule ? { schedule } : {}),
       ...(dim ? { dim } : {}),
+      ...(r.blackBg ? { blackBg: true } : {}),
     });
   }
   return out;
@@ -256,7 +262,8 @@ export function personalScenes(): StandByScene[] {
       id: "p-wind-down",
       name: "Wind down",
       schedule: { timeStart: "22:00", timeEnd: "05:30" },
-      dim: 0.55,
+      dim: 0.82,
+      blackBg: true,
       items: scene({
         clock: { x: 300, y: 120, w: 840, h: 380 },
         tomorrow: { x: 450, y: 540, w: 540, h: 300 },
