@@ -186,38 +186,61 @@ interface LiveScoreEntry {
   strLeague: string;
 }
 
+/** Team badge by name (TheSportsDB search), cached for a day. */
+async function badgeFor(name: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/searchteams.php?t=${encodeURIComponent(name)}`, { next: { revalidate: 86400 } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.teams?.[0]?.strBadge ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** The livescore endpoint has no team filter, so this pulls every live game
- * and matches any favorite team's name client-side — cheap since there are
- * only ever a handful of live games at once. */
+ * and matches favorite teams client-side. Returns every live favorite game with
+ * both teams' badges; `live` is kept as the first one for older callers. */
 async function getLiveGame() {
   const { favoriteTeams } = await getSettings();
-  if (favoriteTeams.length === 0) return { live: null };
+  if (favoriteTeams.length === 0) return { live: null, games: [] };
 
   try {
     const res = await fetch(`${BASE}/livescore.php`, { cache: "no-store" });
-    if (!res.ok) return { live: null };
+    if (!res.ok) return { live: null, games: [] };
     const data = await res.json();
     const entries: LiveScoreEntry[] = data.livescore ?? [];
-    const match = entries.find((e) =>
-      favoriteTeams.some(
-        (team) =>
-          e.strHomeTeam.toLowerCase().includes(team.name.toLowerCase()) ||
-          e.strAwayTeam.toLowerCase().includes(team.name.toLowerCase())
+    const matches = entries
+      .filter((e) =>
+        favoriteTeams.some(
+          (team) =>
+            e.strHomeTeam.toLowerCase().includes(team.name.toLowerCase()) ||
+            e.strAwayTeam.toLowerCase().includes(team.name.toLowerCase())
+        )
       )
+      .slice(0, 3);
+    const games = await Promise.all(
+      matches.map(async (m) => {
+        const fav = (n: string) => favoriteTeams.find((t) => n.toLowerCase().includes(t.name.toLowerCase()))?.badge ?? null;
+        const [homeBadge, awayBadge] = await Promise.all([
+          fav(m.strHomeTeam) ? Promise.resolve(fav(m.strHomeTeam)) : badgeFor(m.strHomeTeam),
+          fav(m.strAwayTeam) ? Promise.resolve(fav(m.strAwayTeam)) : badgeFor(m.strAwayTeam),
+        ]);
+        return {
+          home: m.strHomeTeam,
+          away: m.strAwayTeam,
+          homeScore: m.intHomeScore,
+          awayScore: m.intAwayScore,
+          homeBadge,
+          awayBadge,
+          status: m.strStatus,
+          league: m.strLeague,
+        };
+      })
     );
-    if (!match) return { live: null };
-    return {
-      live: {
-        home: match.strHomeTeam,
-        away: match.strAwayTeam,
-        homeScore: match.intHomeScore,
-        awayScore: match.intAwayScore,
-        status: match.strStatus,
-        league: match.strLeague,
-      },
-    };
+    return { live: games[0] ?? null, games };
   } catch {
-    return { live: null };
+    return { live: null, games: [] };
   }
 }
 

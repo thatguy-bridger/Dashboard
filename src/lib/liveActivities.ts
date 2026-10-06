@@ -14,6 +14,8 @@ export interface LiveActivity {
   color: string;
   title: string;
   subtitle?: string;
+  /** Live game details for the score pill. */
+  game?: { home: string; away: string; homeScore: string; awayScore: string; homeBadge: string | null; awayBadge: string | null; status: string; league: string };
 }
 
 export interface FeedNote { id: string; message: string; level: string; source: string | null; read: boolean }
@@ -32,7 +34,7 @@ interface Snapshot {
   devices: FeedDevice[] | null;
   alerts: LiveActivity[];
   event: LiveActivity | null;
-  game: LiveActivity | null;
+  games: LiveActivity[];
   /** Raw feeds, shared so StandBy doesn't poll the same endpoints a second time. */
   notes: FeedNote[] | null;
   events: FeedEvent[] | null;
@@ -41,7 +43,7 @@ interface Snapshot {
 
 // One shared poller per page (same pattern as spotifyClient): every consumer
 // reads the same snapshot instead of each hitting the API.
-let snap: Snapshot = { weather: null, devices: null, alerts: [], event: null, game: null, notes: null, events: null, calendarConnected: false };
+let snap: Snapshot = { weather: null, devices: null, alerts: [], event: null, games: [], notes: null, events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
 const stops: (() => void)[] = [];
 
@@ -126,18 +128,17 @@ async function pollGame() {
   try {
     const res = await fetch("/api/sports?mode=live", { cache: "no-store" });
     if (!res.ok) return;
-    const { live } = await res.json();
+    const { games } = await res.json();
     publish({
-      game: live
-        ? {
-            id: `g-${live.away}-${live.home}`,
-            kind: "game",
-            priority: 70,
-            color: "#34d399",
-            title: `${live.away} ${live.awayScore} – ${live.homeScore} ${live.home}`,
-            subtitle: `${live.league} · ${live.status}`,
-          }
-        : null,
+      games: ((games ?? []) as NonNullable<LiveActivity["game"]>[]).map((g) => ({
+        id: `g-${g.away}-${g.home}`,
+        kind: "game" as const,
+        priority: 70,
+        color: "#34d399",
+        title: `${g.away} ${g.awayScore} – ${g.homeScore} ${g.home}`,
+        subtitle: `${g.league} · ${g.status}`,
+        game: g,
+      })),
     });
   } catch {
     // keep last
@@ -200,8 +201,8 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
 
   const alertsOpen = useRoutine(s.alerts.map((a) => a.id).join(","));
   const list: LiveActivity[] = alertsOpen ? [...s.alerts] : [];
-  if (s.event) list.push(s.event);
-  if (s.game) list.push(s.game);
+  // The next-event countdown lives in the top bar, so it is not a pill as well.
+  list.push(...s.games);
   if (includeMusic && np?.connected && np.isPlaying && np.track) {
     list.push({
       id: `m-${np.track.id}`,

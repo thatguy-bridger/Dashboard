@@ -81,7 +81,9 @@ function Car() {
 
 /** Fixed bar across the top of every screen and mode: weather + commute on the left,
  *  what's next + batteries + unread count on the right. The island owns the middle. */
-export function TopBar() {
+export type TopBarHide = "weather" | "countdown" | "batteries" | "unread";
+
+export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
   const { weather, events, devices, notes } = useFeeds();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -108,7 +110,7 @@ export function TopBar() {
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
       <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 250px)" }}>
-        {weather && (
+        {weather && !hide.includes("weather") && (
           <div className={chip} style={chipStyle}>
             <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-6 h-6 shrink-0" />
             <span className="num-rounded font-bold text-white" style={{ fontSize: 20 }}>{Math.round(weather.tempF)}°</span>
@@ -126,7 +128,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 250px)" }}>
-        {next && (
+        {next && !hide.includes("countdown") && (
           <div className={chip} style={{ ...chipStyle, borderColor: soon ? "rgba(255,184,77,0.55)" : "rgba(255,255,255,0.12)" }}>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: soon ? "#ffb84d" : (next.color ?? eventColor(next.colorId, next.source)), boxShadow: `0 0 8px ${soon ? "#ffb84d" : (next.color ?? "#fff")}` }} />
             <div style={{ width: Math.min(210, Math.round(next.summary.length * 8.4)) }}>
@@ -137,7 +139,7 @@ export function TopBar() {
             </span>
           </div>
         )}
-        {batteries.map((d) => {
+        {(hide.includes("batteries") ? [] : batteries).map((d) => {
           const pct = Math.round((d.batteryLevel as number) * 100);
           const low = pct <= 20;
           return (
@@ -152,7 +154,7 @@ export function TopBar() {
             </div>
           );
         })}
-        {unread > 0 && (
+        {unread > 0 && !hide.includes("unread") && (
           <div className={chip} style={chipStyle} title={`${unread} unread`}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7 2.5 7h-17S6 15 6 9zM10 19a2 2 0 0 0 4 0" />

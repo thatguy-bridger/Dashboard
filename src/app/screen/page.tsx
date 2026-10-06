@@ -6,9 +6,10 @@ import { useDevice } from "@/lib/useDevice";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { StandBy } from "@/components/StandBy";
-import { TopBar } from "@/components/TopBar";
+import { TopBar, type TopBarHide } from "@/components/TopBar";
+import type { ActivityKind } from "@/lib/liveActivities";
 import { useLayoutMode } from "@/lib/useLayoutMode";
-import { SpotifyIsland } from "@/components/SpotifyIsland";
+import { ActivityPills } from "@/components/ActivityPills";
 import { useNowPlaying } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
 import type { Preset, PresetWidget } from "@/lib/presets";
@@ -175,6 +176,8 @@ function TemporaryTile({ children }: { children: React.ReactNode }) {
   );
 }
 
+const visibleWidgetTypes = (ws: PresetWidget[]) => ws.map((w) => w.type);
+
 function ScreenGrid({
   widgets,
   background,
@@ -197,6 +200,10 @@ function ScreenGrid({
     };
   }, []);
 
+  // Anything a tile already shows must not repeat as a pill or top-bar chip.
+  const types = new Set(visibleWidgetTypes(widgets));
+  const pillHide: ActivityKind[] = [...(types.has("sports") ? (["game"] as const) : []), ...(types.has("notifications") ? (["alert"] as const) : [])];
+  const tileHide: TopBarHide[] = [...(types.has("weather") ? (["weather"] as const) : []), ...(types.has("notifications") ? (["unread"] as const) : [])];
   const visibilityCtx = useVisibilityContext(widgets);
   const now = useNowPlaying();
   const playing = Boolean(now?.connected && now.isPlaying && now.track);
@@ -221,8 +228,8 @@ function ScreenGrid({
         className="fixed inset-0 -z-10 pointer-events-none"
         style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.15), rgba(0,0,0,0.6))" }}
       />
-      <TopBar />
-      <SpotifyIsland />
+      <TopBar hide={tileHide} />
+      <ActivityPills hide={pillHide} />
       <div className="h-full w-full p-[0.9375rem] relative">
         {visibleWidgets.map((w) => {
           const content = (

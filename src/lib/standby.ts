@@ -44,7 +44,7 @@ const RAW_DEFS: Def[] = [
   D("notifications", "Notification pills", true, 900, 70, 480, 60, true),
   D("news", widgetLabel("news"), true, 740, 624, 420, 66, true),
   D("stocks", widgetLabel("stocks"), true, 1170, 624, 210, 66, true),
-  D("sports", widgetLabel("sports"), false, 740, 300, 400, 220, true),
+  D("sports", widgetLabel("sports"), false, 60, 600, 620, 100, true),
   D("traffic", widgetLabel("traffic"), false, 740, 300, 400, 260, true),
   D("trafficcamera", widgetLabel("trafficcamera"), false, 740, 300, 400, 260, true),
   D("locations", widgetLabel("locations"), false, 740, 300, 400, 300, true),
@@ -68,7 +68,7 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 
 /** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
  *  instead of stretching it. */
-export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications", "daysummary"];
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications", "daysummary", "sports"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 /** Lists that reflow: scale by width and use however much height the box has. */
@@ -172,7 +172,7 @@ export function defaultScenes(): StandByScene[] {
         nowplaying: { x: 740, y: 134 },
         agenda: { x: 60, y: 710 },
         notifications: { x: 900, y: 70, w: 480, h: 60 },
-        sports: { x: 60, y: 590, w: 600, h: 100 },
+        sports: { x: 60, y: 600, w: 620, h: 100 },
       }),
     },
   ];

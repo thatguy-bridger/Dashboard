@@ -11,14 +11,14 @@ import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
-import { TopBar } from "@/components/TopBar";
+import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
 import { pollEvery } from "@/lib/poll";
 import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
-import { SpotifyIsland } from "@/components/SpotifyIsland";
-import { useFeeds, useRoutine, type FeedDay, type FeedHour, type FeedWeather } from "@/lib/liveActivities";
+import { ActivityPills } from "@/components/ActivityPills";
+import { useFeeds, useRoutine, type ActivityKind, type FeedDay, type FeedHour, type FeedWeather } from "@/lib/liveActivities";
 import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, STRETCH_ITEMS, WIDTH_FIT_ITEMS, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
@@ -340,6 +340,41 @@ function WeatherHero({ w }: { w: Weather }) {
         {stat("Sun", t(w.sunrise), `sets ${t(w.sunset)}`)}
       </div>
     </div>
+  );
+}
+
+interface SportsGame { team: string; teamBadge: string | null; opponent: string; isHome: boolean; date: string; time: string | null; league: string }
+
+/** Upcoming favourite-team games as simple logo cards (replaces the bare-text widget here). */
+function SportsStrip({ width }: { width: number }) {
+  const data = usePolled<{ games: SportsGame[] }>("/api/sports", 10 * 60_000, (j: { games?: SportsGame[] }) => ({ games: j.games ?? [] }));
+  const games = data?.games ?? [];
+  const when = (g: SportsGame) => {
+    // TheSportsDB times are UTC; show them in local time
+    const d = g.time ? new Date(`${g.date}T${g.time.slice(0, 8)}Z`) : new Date(`${g.date}T12:00:00`);
+    const days = Math.round((new Date(d.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000);
+    const day = days === 0 ? "Today" : days === 1 ? "Tomorrow" : d.toLocaleDateString([], { weekday: "short" });
+    return g.time ? `${day} ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : day;
+  };
+  if (data && games.length === 0) return <div className="text-white/45 font-semibold" style={{ fontSize: 20 }}>No upcoming games</div>;
+  return (
+    <Drifting width={width} deps={[games.length]}>
+      {games.map((g, i) => (
+        <div key={i} className="glass-card flex items-center gap-4 px-5 shrink-0" style={{ height: 100, width: 340, borderRadius: 30 }}>
+          {g.teamBadge ? (
+            // eslint-disable-next-line @next/next/no-img-element -- external team badge
+            <img src={g.teamBadge} alt={g.team} className="w-14 h-14 object-contain shrink-0" />
+          ) : (
+            <div className="w-14 h-14 rounded-full bg-white/10 shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            <FitText className="text-white font-bold" style={{ fontSize: 20 }}>{g.team}</FitText>
+            <FitText className="text-white/70 font-semibold" style={{ fontSize: 16 }}>{g.isHome ? "vs" : "@"} {g.opponent}</FitText>
+            <div className="num-rounded font-semibold text-white/50" style={{ fontSize: 14 }}>{when(g)}</div>
+          </div>
+        </div>
+      ))}
+    </Drifting>
   );
 }
 
@@ -877,7 +912,8 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const upcoming = (events ?? []).filter((e) => evEnd(e).getTime() > Date.now()).slice(0, 12);
-  const unreadAll = (notes ?? []).filter((n) => !n.read && n.level === "info" && !dismissed.has(n.id));
+  // every level: when this item is on screen it is the one place notifications show (no alert pill)
+  const unreadAll = (notes ?? []).filter((n) => !n.read && !dismissed.has(n.id));
   // Pills appear routinely (on arrival, then every few minutes), not permanently.
   const pillsOpen = useRoutine(unreadAll.map((n) => n.id).join(","));
   const unread = pillsOpen ? unreadAll : [];
@@ -894,6 +930,15 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   // now-playing card, the top pill carries it.
   const musicCardShown = layout.some((it) => it.id === "nowplaying" && it.enabled);
   const dim = active?.dim ?? 0;
+  // Content a visible item already shows is never repeated as a pill or top-bar chip.
+  const shown = new Set(layout.filter((it) => it.enabled).map((it) => it.id));
+  const pillHide: ActivityKind[] = [...(shown.has("sports") ? (["game"] as const) : []), ...(shown.has("notifications") ? (["alert"] as const) : [])];
+  const topHide: TopBarHide[] = [
+    ...(shown.has("weather") || shown.has("weatherhero") ? (["weather"] as const) : []),
+    ...(shown.has("upnext") ? (["countdown"] as const) : []),
+    ...(shown.has("battery") ? (["batteries"] as const) : []),
+    ...(shown.has("notifications") ? (["unread"] as const) : []),
+  ];
 
   function dismiss(id: string) {
     setDismissed((s) => new Set(s).add(id));
@@ -915,6 +960,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "notifications": return <NotePills notes={unread} onDismiss={dismiss} max={it.h >= 100 ? 2 : 1} />;
+      case "sports": return <SportsStrip width={it.w} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
       case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.find((d) => d.date === new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA")) ?? weather?.forecast?.[0]} />;
@@ -934,7 +980,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow", "daysummary"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow", "daysummary", "sports"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).
@@ -977,8 +1023,8 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
       {dim > 0 && <div className="absolute inset-0 pointer-events-none bg-black transition-opacity duration-[2000ms]" style={{ opacity: dim }} />}
-      <TopBar />
-      <SpotifyIsland includeMusic={!musicCardShown} />
+      <TopBar hide={topHide} />
+      <ActivityPills hide={pillHide} includeMusic={!musicCardShown} />
     </div>
   );
 }
