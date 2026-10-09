@@ -19,6 +19,7 @@ import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { pollEvery } from "@/lib/poll";
+import { SmartHomeSetup } from "@/components/SmartHomeSetup";
 import { CommutePicker } from "@/components/CommutePicker";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { RulesEditor } from "@/components/RulesEditor";
@@ -635,6 +636,7 @@ export default function ControlPage() {
                   <option value="">View: follow global ({layoutMode === "standby" ? "StandBy" : "Tiles"})</option>
                   <option value="standby">View: StandBy</option>
                   <option value="grid">View: Tiles</option>
+                  <option value="touch">View: Touch (smart home + music control)</option>
                 </select>
                 {(d.viewMode ?? layoutMode) === "standby" && (
                   <button
@@ -765,6 +767,11 @@ export default function ControlPage() {
           account is actively playing to have playback visible to the Spotify app (not in a private/incognito
           session).
         </p>
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">Smart home (touch screen)</h2>
+        <SmartHomeSetup />
       </section>
 
       <section className="glass-panel p-6">

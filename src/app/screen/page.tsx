@@ -6,6 +6,7 @@ import { useDevice } from "@/lib/useDevice";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { StandBy } from "@/components/StandBy";
+import { TouchControl } from "@/components/TouchControl";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import type { ActivityKind } from "@/lib/liveActivities";
 import { useLayoutMode } from "@/lib/useLayoutMode";
@@ -42,7 +43,7 @@ function usePreviewDevice(deviceId: string | null) {
     name: string | null;
     presetId: string | null;
     layout: DeviceLayout | null;
-    viewMode: "standby" | "grid" | null;
+    viewMode: "standby" | "grid" | "touch" | null;
     sceneId: string | null;
     standby: DeviceStandBy | null;
   } | null>(null);
@@ -283,7 +284,7 @@ function ScreenPageInner() {
   const storedLayout = useLayoutMode();
   // ?layout=standby|grid forces a view (handy for previewing without approving a device).
   const forced = searchParams.get("layout");
-  const forcedMode = forced === "standby" || forced === "grid" ? forced : null;
+  const forcedMode = forced === "standby" || forced === "grid" || forced === "touch" ? forced : null;
 
   const ownDevice = useDevice();
   const previewDevice = usePreviewDevice(previewId);
@@ -293,7 +294,7 @@ function ScreenPageInner() {
 
   const device = isPreview ? previewDevice : ownDevice.device;
   const deviceId = isPreview ? previewId : ownDevice.deviceId;
-  const approved = isDraft || device?.status === "approved" || forced === "standby";
+  const approved = isDraft || device?.status === "approved" || forced === "standby" || forced === "touch";
   const usesPreset = !isDraft && !device?.layout;
   // Per-screen override wins over the global setting; ?layout= wins over both.
   const layoutMode = forcedMode ?? device?.viewMode ?? storedLayout;
@@ -308,6 +309,7 @@ function ScreenPageInner() {
   }
 
   if (!isDraft && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
+  if (!isDraft && layoutMode === "touch") return <TouchControl />;
   if (!isDraft && layoutMode === "standby") {
     return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} profile={device?.standby ?? null} />;
   }

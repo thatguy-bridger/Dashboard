@@ -29,8 +29,8 @@ export interface Device {
   touchOverride: boolean | null;
   presetId: string | null;
   layout: DeviceLayout | null;
-  /** Per-screen view: "standby" | "grid", or null to follow the global setting. */
-  viewMode: "standby" | "grid" | null;
+  /** Per-screen view: "standby" | "grid" | "touch" (control panel), or null to follow the global setting. */
+  viewMode: "standby" | "grid" | "touch" | null;
   /** StandBy scene pinned to this screen ("base" = Default layout), or null = automatic by schedule. */
   sceneId: string | null;
   /** Per-screen StandBy profile; null = use the global one. */
@@ -89,7 +89,7 @@ function fromRow(row: DeviceRow): Device {
     touchOverride: row.touch_override === null ? null : Boolean(row.touch_override),
     presetId: row.preset_id,
     layout: parseLayout(row.layout),
-    viewMode: row.view_mode === "standby" || row.view_mode === "grid" ? row.view_mode : null,
+    viewMode: row.view_mode === "standby" || row.view_mode === "grid" || row.view_mode === "touch" ? row.view_mode : null,
     sceneId: row.scene_id ?? null,
     standby: parseStandBy(row.standby),
     firstSeen: row.first_seen,

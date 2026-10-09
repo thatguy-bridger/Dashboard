@@ -214,7 +214,7 @@ function LandscapeRoll({ visible }: { visible: boolean }) {
   );
 }
 
-function Backdrop({ art, playing, accent, black }: { art: string | null; playing: boolean; accent: string; black?: boolean }) {
+export function Backdrop({ art, playing, accent, black }: { art: string | null; playing: boolean; accent: string; black?: boolean }) {
   // Night: nothing but black (also stops loading photos while it is dark).
   if (black) return <div className="absolute inset-0 bg-black" />;
   return (

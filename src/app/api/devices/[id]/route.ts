@@ -29,7 +29,7 @@ export async function PATCH(
     touchOverride?: boolean | null;
     presetId?: string | null;
     layout?: DeviceLayout | null;
-    viewMode?: "standby" | "grid" | null;
+    viewMode?: "standby" | "grid" | "touch" | null;
     sceneId?: string | null;
     standby?: DeviceStandBy | null;
   } = {};
@@ -43,7 +43,7 @@ export async function PATCH(
   if (body.presetId === null || typeof body.presetId === "string") {
     patch.presetId = body.presetId;
   }
-  if (body.viewMode === null || body.viewMode === "standby" || body.viewMode === "grid") {
+  if (body.viewMode === null || body.viewMode === "standby" || body.viewMode === "grid" || body.viewMode === "touch") {
     patch.viewMode = body.viewMode;
   }
   if (body.sceneId === null || typeof body.sceneId === "string") {
