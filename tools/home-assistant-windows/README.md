@@ -10,5 +10,5 @@ Runs Home Assistant OS in a VirtualBox VM with a **bridged** network adapter, so
    Settings > System > tick **Enable EFI**. Settings > Network > **Attached to: Bridged Adapter**, pick the laptop's **Ethernet** adapter.
    Name the VM `HomeAssistant`. Start it once and wait about 5 minutes.
 5. From another device open `http://homeassistant.local:8123` and create your account.
-6. In an Administrator PowerShell on the laptop: `powershell -ExecutionPolicy Bypass -File setup.ps1`.
+6. In an Administrator PowerShell on the laptop: `powershell -ExecutionPolicy Bypass -File setup.ps1 -CoolMode` (`-CoolMode` caps the CPU at 85% and turns off turbo boost to run cooler).
 7. Reboot the laptop once and confirm Home Assistant comes back by itself without anyone signing in.

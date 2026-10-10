@@ -1,9 +1,11 @@
 # Keeps a Windows laptop running a Home Assistant VM 24/7 with the lid closed.
 # Run in an ADMIN PowerShell AFTER you have created the VirtualBox VM (see README.md).
-#   powershell -ExecutionPolicy Bypass -File setup.ps1 -VmName HomeAssistant
+#   powershell -ExecutionPolicy Bypass -File setup.ps1 -VmName HomeAssistant [-CoolMode]
 param(
   [string]$VmName = "HomeAssistant",
-  [string]$VBox = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe"
+  [string]$VBox = "C:\Program Files\Oracle\VirtualBox\VBoxManage.exe",
+  # Cooler and quieter: cap the CPU at 85% and turn off turbo boost (Home Assistant needs very little).
+  [switch]$CoolMode
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +29,13 @@ powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
 powercfg /setdcvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
 # USB selective suspend off (keeps a USB Ethernet adapter alive)
 powercfg /setacvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+if ($CoolMode) {
+  powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+  powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 85
+  powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 0
+  powercfg /setdcvalueindex SCHEME_CURRENT SUB_PROCESSOR PERFBOOSTMODE 0
+  Write-Host "Cool mode on: CPU capped at 85%, turbo boost off."
+}
 powercfg /setactive SCHEME_CURRENT
 Write-Host "Power settings applied."
 
@@ -44,5 +53,5 @@ Write-Host ""
 Write-Host "Still to do by hand:"
 Write-Host " 1. BIOS: set 'AC Recovery' / 'After power loss' to Power On."
 Write-Host " 2. Ethernet adapter > Properties > Power Management: untick 'Allow the computer to turn off this device'."
-Write-Host " 3. Keep the laptop plugged in and the vents clear (lid shut traps heat; stand it up or raise it)."
+Write-Host " 3. Keep the exhaust vents (usually back/side) clear. On a Dell, Dell Power Manager > Battery > Primarily AC Use lowers battery heat and wear."
 Write-Host " 4. Settings > Windows Update > pause updates, or set active hours, so it does not reboot unattended."
