@@ -111,7 +111,6 @@ const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   history: GenericTileIcon,
   stocks: GenericTileIcon,
   radar: GenericTileIcon,
-  notifications: GenericTileIcon,
   lyrics: GenericTileIcon,
 };
 

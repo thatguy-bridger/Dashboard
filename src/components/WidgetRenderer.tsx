@@ -16,7 +16,6 @@ import { AirQualityWidget } from "@/components/AirQualityWidget";
 import { HistoryWidget } from "@/components/HistoryWidget";
 import { StocksWidget } from "@/components/StocksWidget";
 import { RadarWidget } from "@/components/RadarWidget";
-import { NotificationsWidget } from "@/components/NotificationsWidget";
 import { LyricsWidget } from "@/components/LyricsWidget";
 
 export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?: WidgetSize }) {
@@ -55,8 +54,6 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <StocksWidget size={size} />;
     case "radar":
       return <RadarWidget size={size} />;
-    case "notifications":
-      return <NotificationsWidget size={size} />;
     case "lyrics":
       return <LyricsWidget size={size} />;
     default:

@@ -80,11 +80,11 @@ function Car() {
 }
 
 /** Fixed bar across the top of every screen and mode: weather + commute on the left,
- *  what's next + batteries + unread count on the right. The island owns the middle. */
-export type TopBarHide = "weather" | "countdown" | "batteries" | "unread";
+ *  what's next + batteries on the right. The island owns the middle. */
+export type TopBarHide = "weather" | "countdown" | "batteries";
 
 export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
-  const { weather, events, devices, notes } = useFeeds();
+  const { weather, events, devices } = useFeeds();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -105,7 +105,6 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
     .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && (d.batteryLevel as number) >= 0)
     .sort((a, b) => ["iphone", "watch", "ipad", "mac", "pod"].findIndex((k) => a.deviceClass.toLowerCase().includes(k)) - ["iphone", "watch", "ipad", "mac", "pod"].findIndex((k) => b.deviceClass.toLowerCase().includes(k)))
     .slice(0, 3);
-  const unread = (notes ?? []).filter((n) => !n.read).length;
 
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
@@ -154,14 +153,6 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
             </div>
           );
         })}
-        {unread > 0 && !hide.includes("unread") && (
-          <div className={chip} style={chipStyle} title={`${unread} unread`}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7 2.5 7h-17S6 15 6 9zM10 19a2 2 0 0 0 4 0" />
-            </svg>
-            <span className="num-rounded font-bold text-white" style={{ fontSize: 16 }}>{unread}</span>
-          </div>
-        )}
       </div>
     </div>
   );

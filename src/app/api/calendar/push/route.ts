@@ -3,7 +3,7 @@ import { saveMacCalendar, type MacCalendarInfo, type MacEvent } from "@/lib/macC
 
 const str = (v: unknown, max = 200) => (typeof v === "string" ? v.slice(0, max) : "");
 
-/** The Mac's calendar sync posts here (same shared secret as the notifications endpoint). */
+/** The Mac's calendar sync posts here (authenticated with the NOTIFY_TOKEN shared secret). */
 export async function POST(req: NextRequest) {
   const expected = process.env.NOTIFY_TOKEN;
   if (!expected || req.headers.get("x-notify-token") !== expected) {

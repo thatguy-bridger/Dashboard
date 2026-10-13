@@ -10,7 +10,6 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
-import { NotificationTicker } from "@/components/NotificationTicker";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
@@ -19,7 +18,7 @@ import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { sizeForFootprint } from "@/lib/grid";
 import { ActivityPills } from "@/components/ActivityPills";
-import { useFeeds, useRoutine, type ActivityKind, type FeedDay, type FeedHour, type FeedWeather } from "@/lib/liveActivities";
+import { useFeeds, type ActivityKind, type FeedDay, type FeedHour, type FeedWeather } from "@/lib/liveActivities";
 import { defaultScenes, mergeScenes, mergeStandByLayout, pickScene, ROW_ITEMS, STANDBY_DEFAULT_SIZE, STRETCH_ITEMS, WIDTH_FIT_ITEMS, type StandByItem, type StandByScene } from "@/lib/standby";
 import { isWidgetVisible, type VisibilityContext } from "@/lib/visibility";
 import type { WidgetType } from "@/lib/presets";
@@ -50,7 +49,6 @@ const evStart = (e: { start: string }) => parseWhen(e.start);
 const evEnd = (e: { start: string; end?: string }) => parseWhen(e.end ?? e.start);
 /** The calendar's own colour (from the Mac sync) wins over the Google colour-id palette. */
 const evCol = (e: CalEvent): string => e.color || eventColor(e.colorId, e.source);
-interface Note { id: string; message: string; level: string; source: string | null; read: boolean }
 
 function usePolled<T>(url: string, everyMs: number, pick: (j: never) => T): T | null {
   const [v, setV] = useState<T | null>(null);
@@ -839,14 +837,6 @@ function UpNext({ e }: { e: CalEvent | undefined }) {
   );
 }
 
-function NotePills({ notes, onDismiss }: { notes: Note[]; onDismiss: (id: string) => void }) {
-  const color = (l: string) => (l === "important" ? "#ff6b6b" : l === "action_needed" ? "#ffb84d" : "#5ac8fa");
-  return (
-    <div className="w-full flex justify-end">
-      <NotificationTicker items={notes.map((n) => ({ id: n.id, message: n.message, color: color(n.level) }))} onDismiss={onDismiss} maxWidth={460} />
-    </div>
-  );
-}
 
 // ---------- screen ----------
 
@@ -885,7 +875,7 @@ function useStandByConfig(draft: string | null, profile: { layout: StandByItem[]
 }
 
 const REVEAL_DELAY: Record<string, number> = {
-  notifications: 0.5, clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
+  clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
 };
 
 export function StandBy({ draft = null, sceneId = null, profile = null }: { draft?: string | null; sceneId?: string | null; profile?: { layout: StandByItem[]; scenes: StandByScene[] } | null }) {
@@ -901,17 +891,10 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
     return () => clearInterval(id);
   }, []);
 
-  // Calendar + notifications come from the shared feed the island already polls.
-  const { notes, events, calendarConnected: calConnected, weather } = useFeeds();
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Calendar, weather and devices come from the shared feed.
+  const { events, calendarConnected: calConnected, weather } = useFeeds();
 
   const upcoming = (events ?? []).filter((e) => evEnd(e).getTime() > Date.now()).slice(0, 12);
-  // every level: when this item is on screen it is the one place notifications show (no alert pill)
-  const unreadAll = (notes ?? []).filter((n) => !n.read && !dismissed.has(n.id));
-  // Pills appear routinely (on arrival, then every few minutes), not permanently.
-  const pillsOpen = useRoutine(unreadAll.map((n) => n.id).join(","));
-  const unread = pillsOpen ? unreadAll : [];
-
   // Scenes switch on their own schedule; per-item rules then hide individual pieces.
   const ctx: VisibilityContext = {
     now,
@@ -926,18 +909,12 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
   const dim = active?.dim ?? 0;
   // Content a visible item already shows is never repeated as a pill or top-bar chip.
   const shown = new Set(layout.filter((it) => it.enabled).map((it) => it.id));
-  const pillHide: ActivityKind[] = [...(shown.has("sports") ? (["game"] as const) : []), ...(shown.has("notifications") ? (["alert"] as const) : [])];
+  const pillHide: ActivityKind[] = shown.has("sports") ? ["game"] : [];
   const topHide: TopBarHide[] = [
     ...(shown.has("weather") || shown.has("weatherhero") ? (["weather"] as const) : []),
     ...(shown.has("upnext") ? (["countdown"] as const) : []),
     ...(shown.has("battery") ? (["batteries"] as const) : []),
-    ...(shown.has("notifications") ? (["unread"] as const) : []),
   ];
-
-  function dismiss(id: string) {
-    setDismissed((s) => new Set(s).add(id));
-    fetch(`/api/notifications/${id}`, { method: "PATCH" }).catch(() => {});
-  }
 
   function body(it: StandByItem): React.ReactNode {
     switch (it.id) {
@@ -953,7 +930,6 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
           <UpNext e={upcoming[0]} />
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
-      case "notifications": return <NotePills notes={unread} onDismiss={dismiss} />;
       case "sports": return <SportsStrip width={it.w} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
@@ -974,7 +950,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "notifications", "calendar", "upnext", "tomorrow", "daysummary", "sports"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "calendar", "upnext", "tomorrow", "daysummary", "sports"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).

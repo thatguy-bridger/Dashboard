@@ -5,8 +5,8 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "clock" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda" | "notifications";
-export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather" | "notifications">;
+export type CustomItemId = "clock" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
+export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather">;
 
 export interface StandByItem {
   id: StandByItemId;
@@ -41,7 +41,6 @@ const RAW_DEFS: Def[] = [
   D("battery", "Device batteries (large chips)", false, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
-  D("notifications", "Notification pills", true, 900, 70, 480, 60, true),
   D("news", widgetLabel("news"), true, 740, 624, 420, 66, true),
   D("stocks", widgetLabel("stocks"), true, 1170, 624, 210, 66, true),
   D("sports", widgetLabel("sports"), false, 60, 600, 620, 100, true),
@@ -68,7 +67,7 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 
 /** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
  *  instead of stretching it. */
-export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "notifications", "daysummary", "sports"];
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "daysummary", "sports"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 /** Lists that reflow: scale by width and use however much height the box has. */
@@ -141,7 +140,6 @@ export function defaultScenes(): StandByScene[] {
         forecast: { x: 60, y: 480, w: 600, h: 118 },
         radar: { x: 740, y: 100, w: 640, h: 500 },
         agenda: { x: 60, y: 710, w: 1320, h: 130 },
-        notifications: { x: 900, y: 70, w: 480, h: 60 },
       }),
     },
     {
@@ -176,7 +174,6 @@ export function defaultScenes(): StandByScene[] {
         weather: { x: 60, y: 440 },
         nowplaying: { x: 740, y: 134 },
         agenda: { x: 60, y: 710 },
-        notifications: { x: 900, y: 70, w: 480, h: 60 },
         sports: { x: 60, y: 600, w: 620, h: 100 },
       }),
     },
@@ -242,7 +239,6 @@ export function personalScenes(): StandByScene[] {
         weather: { x: 60, y: 340, w: 380, h: 112 },
         upnext: { x: 700, y: 110, w: 680, h: 230 },
         calendar: { x: 700, y: 360, w: 680, h: 500 },
-        notifications: { x: 60, y: 520, w: 560, h: 116 },
       }),
     },
     {
@@ -255,7 +251,6 @@ export function personalScenes(): StandByScene[] {
         forecast: { x: 60, y: 568 },
         nowplaying: { x: 740, y: 134 },
         upnext: { x: 740, y: 640, w: 640, h: 130 },
-        notifications: { x: 900, y: 70, w: 480, h: 60 },
       }),
     },
     {
@@ -274,7 +269,7 @@ export function personalScenes(): StandByScene[] {
       name: "Full content (manual)",
       items: defaultStandByLayout().map((i) => ({
         ...i,
-        enabled: ["clock", "weather", "forecast", "nowplaying", "agenda", "notifications", "news", "stocks"].includes(i.id),
+        enabled: ["clock", "weather", "forecast", "nowplaying", "agenda", "news", "stocks"].includes(i.id),
       })),
     },
   ];

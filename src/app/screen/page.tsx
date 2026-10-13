@@ -203,8 +203,8 @@ function ScreenGrid({
 
   // Anything a tile already shows must not repeat as a pill or top-bar chip.
   const types = new Set(visibleWidgetTypes(widgets));
-  const pillHide: ActivityKind[] = [...(types.has("sports") ? (["game"] as const) : []), ...(types.has("notifications") ? (["alert"] as const) : [])];
-  const tileHide: TopBarHide[] = [...(types.has("weather") ? (["weather"] as const) : []), ...(types.has("notifications") ? (["unread"] as const) : [])];
+  const pillHide: ActivityKind[] = types.has("sports") ? ["game"] : [];
+  const tileHide: TopBarHide[] = types.has("weather") ? ["weather"] : [];
   const visibilityCtx = useVisibilityContext(widgets);
   const now = useNowPlaying();
   const playing = Boolean(now?.connected && now.isPlaying && now.track);

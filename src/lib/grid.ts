@@ -11,7 +11,7 @@ export interface GridWidget {
   y: number;
   w: number;
   h: number;
-  /** Hides itself on the live screen when it has nothing to show (countdowns, notifications,
+  /** Hides itself on the live screen when it has nothing to show (countdowns,
    *  sports, etc.) instead of permanently occupying space with an empty state. */
   temporary?: boolean;
   /** Optional time/weather/calendar conditions — all set ones must pass for

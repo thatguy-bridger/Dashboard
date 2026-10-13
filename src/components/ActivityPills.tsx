@@ -5,7 +5,6 @@ import { useNowPlaying } from "@/lib/spotifyClient";
 import { useArtTheme } from "@/lib/useArtTheme";
 import { useLiveActivities, type ActivityKind, type LiveActivity } from "@/lib/liveActivities";
 import { Marquee } from "@/components/Marquee";
-import { NotificationTicker } from "@/components/NotificationTicker";
 
 const EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 const pill = "relative flex items-center rounded-full overflow-hidden shrink-0";
@@ -107,22 +106,18 @@ function MusicPill({ a }: { a: LiveActivity }) {
   );
 }
 
-/** Top-centre pills: music, alerts and live scores, each its own flexible pill. Anything a visible
+/** Top-centre pills: music and live scores, each its own flexible pill. Anything a visible
  *  widget already shows is passed in `hide` so the same content never appears twice. */
 export function ActivityPills({ hide = [] as ActivityKind[], includeMusic = true }: { hide?: ActivityKind[]; includeMusic?: boolean }) {
   const activities = useLiveActivities(includeMusic).filter((a) => !hide.includes(a.kind));
   if (activities.length === 0) return null;
-  // The centre lane between the top-bar groups: one row, and the flexible pills (music title, notification
-  // ticker) shrink to share it, so nothing wraps down over content or leaves the screen. Every alert shares ONE pill that scrolls through them.
-  const alerts = activities.filter((a) => a.kind === "alert");
-  const others = activities.filter((a) => a.kind !== "alert");
+  // The centre lane between the top-bar groups: one row, so pills never wrap down over content.
   return (
     <div
       className="fixed top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-nowrap items-start justify-center gap-3"
       style={{ width: "min(560px, calc(100vw - 40px))" }}
     >
-      {others.map((a) => (a.kind === "music" ? <MusicPill key={a.id} a={a} /> : <GamePill key={a.id} a={a} />))}
-      {alerts.length > 0 && <NotificationTicker items={alerts.map((a) => ({ id: a.id, message: a.title, color: a.color }))} />}
+      {activities.map((a) => (a.kind === "music" ? <MusicPill key={a.id} a={a} /> : <GamePill key={a.id} a={a} />))}
     </div>
   );
 }

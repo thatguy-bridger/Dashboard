@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useNowPlaying } from "@/lib/spotifyClient";
 import { pollEvery } from "@/lib/poll";
 
-export type ActivityKind = "alert" | "event" | "game" | "music";
+export type ActivityKind = "event" | "game" | "music";
 
 export interface LiveActivity {
   id: string;
@@ -18,7 +18,6 @@ export interface LiveActivity {
   game?: { home: string; away: string; homeScore: string; awayScore: string; homeBadge: string | null; awayBadge: string | null; status: string; league: string };
 }
 
-export interface FeedNote { id: string; message: string; level: string; source: string | null; read: boolean }
 export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
 
 export interface FeedHour { time: string; tempF: number; weatherCode: number; precipProbability?: number }
@@ -32,45 +31,22 @@ export interface FeedDevice { id: string; name: string; deviceClass: string; bat
 interface Snapshot {
   weather: FeedWeather | null;
   devices: FeedDevice[] | null;
-  alerts: LiveActivity[];
   event: LiveActivity | null;
   games: LiveActivity[];
   /** Raw feeds, shared so StandBy doesn't poll the same endpoints a second time. */
-  notes: FeedNote[] | null;
   events: FeedEvent[] | null;
   calendarConnected: boolean;
 }
 
 // One shared poller per page (same pattern as spotifyClient): every consumer
 // reads the same snapshot instead of each hitting the API.
-let snap: Snapshot = { weather: null, devices: null, alerts: [], event: null, games: [], notes: null, events: null, calendarConnected: false };
+let snap: Snapshot = { weather: null, devices: null, event: null, games: [], events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
 const stops: (() => void)[] = [];
 
 function publish(patch: Partial<Snapshot>) {
   snap = { ...snap, ...patch };
   listeners.forEach((fn) => fn(snap));
-}
-
-async function pollNotifications() {
-  try {
-    const res = await fetch("/api/notifications", { cache: "no-store" });
-    if (!res.ok) return;
-    const { notifications } = await res.json();
-    const alerts: LiveActivity[] = (notifications as { id: string; message: string; level: string; read: boolean; source: string | null }[])
-      .filter((n) => !n.read && (n.level === "important" || n.level === "action_needed"))
-      .map((n) => ({
-        id: `n-${n.id}`,
-        kind: "alert" as const,
-        priority: n.level === "important" ? 100 : 90,
-        color: n.level === "important" ? "#ff6b6b" : "#ffb84d",
-        title: n.message,
-        subtitle: n.source ?? "Claude",
-      }));
-    publish({ alerts, notes: notifications });
-  } catch {
-    // keep last
-  }
 }
 
 async function pollCalendar() {
@@ -147,39 +123,15 @@ async function pollGame() {
 
 function start() {
   if (stops.length) return;
-  pollNotifications();
   pollCalendar();
   pollGame();
   pollWeather();
   pollDevices();
-  stops.push(pollEvery(pollNotifications, 2 * 60_000), pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000), pollEvery(pollWeather, 10 * 60_000), pollEvery(pollDevices, 10 * 60_000));
+  stops.push(pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000), pollEvery(pollWeather, 10 * 60_000), pollEvery(pollDevices, 10 * 60_000));
 }
 
 function stop() {
   stops.splice(0).forEach((f) => f());
-}
-
-/** Notifications surface routinely instead of all the time: open for `holdMs` whenever the set
- *  of notifications changes (something new), then again every `everyMs`. */
-export function useRoutine(key: string, everyMs = 8 * 60_000, holdMs = 20_000): boolean {
-  const [open, setOpen] = useState(Boolean(key));
-  useEffect(() => {
-    if (!key) {
-      setOpen(false);
-      return;
-    }
-    setOpen(true);
-    let hide = setTimeout(() => setOpen(false), holdMs);
-    const iv = setInterval(() => {
-      setOpen(true);
-      hide = setTimeout(() => setOpen(false), holdMs);
-    }, everyMs);
-    return () => {
-      clearTimeout(hide);
-      clearInterval(iv);
-    };
-  }, [key, everyMs, holdMs]);
-  return open;
 }
 
 /** Priority-ordered live activities: music (when it needs the pill) > important alerts >
@@ -199,8 +151,7 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
     };
   }, []);
 
-  const alertsOpen = useRoutine(s.alerts.map((a) => a.id).join(","));
-  const list: LiveActivity[] = alertsOpen ? [...s.alerts] : [];
+  const list: LiveActivity[] = [];
   // The next-event countdown lives in the top bar, so it is not a pill as well.
   list.push(...s.games);
   if (includeMusic && np?.connected && np.isPlaying && np.track) {
@@ -216,7 +167,7 @@ export function useLiveActivities(includeMusic = true): LiveActivity[] {
   return list.sort((a, b) => b.priority - a.priority);
 }
 
-/** Shared notification + calendar feeds (one poller for the whole page). */
+/** Shared calendar, weather and device feeds (one poller for the whole page). */
 export function useFeeds() {
   const [s, setS] = useState(snap);
   useEffect(() => {
@@ -228,5 +179,5 @@ export function useFeeds() {
       if (listeners.size === 0) stop();
     };
   }, []);
-  return { notes: s.notes, events: s.events, calendarConnected: s.calendarConnected, weather: s.weather, devices: s.devices };
+  return { events: s.events, calendarConnected: s.calendarConnected, weather: s.weather, devices: s.devices };
 }
