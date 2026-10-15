@@ -156,3 +156,25 @@ export async function controlSpotify(action: "play" | "pause" | "next" | "previo
   }
   setTimeout(pollOnce, 600);
 }
+
+/** Spotify briefly reports "nothing playing" between songs (and during ads). Reading that straight
+ *  made the backdrop and pills drop out for a moment, which showed up as a black flash. This keeps
+ *  "playing" true, and keeps the last album art, for `holdMs` after the last real playing state. */
+export function useStickyPlaying(np: NowPlaying | null, holdMs = 8000): { playing: boolean; artUrl: string | null } {
+  const raw = Boolean(np?.connected && np.isPlaying && np.track);
+  const lastArt = useRef<string | null>(null);
+  if (raw) lastArt.current = np?.track?.albumArtUrl ?? lastArt.current;
+  const [held, setHeld] = useState(raw);
+
+  useEffect(() => {
+    if (raw) {
+      setHeld(true);
+      return;
+    }
+    const t = setTimeout(() => setHeld(false), holdMs);
+    return () => clearTimeout(t);
+  }, [raw, holdMs]);
+
+  const playing = raw || held;
+  return { playing, artUrl: playing ? lastArt.current : null };
+}

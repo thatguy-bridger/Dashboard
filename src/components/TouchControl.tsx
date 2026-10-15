@@ -5,7 +5,7 @@ import { Backdrop } from "@/components/StandBy";
 import { TopBar } from "@/components/TopBar";
 import { ActivityPills } from "@/components/ActivityPills";
 import { FitText } from "@/components/FitText";
-import { controlSpotify, useEstimatedProgress, useNowPlaying } from "@/lib/spotifyClient";
+import { controlSpotify, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import type { HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
@@ -313,8 +313,8 @@ function PinPad({ gate, onSubmit }: { gate: Gate; onSubmit: (pin: string) => voi
 export function TouchControl() {
   const scale = useScale();
   const np = useNowPlaying();
-  const playing = Boolean(np?.connected && np.isPlaying && np.track);
-  const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
+  const { playing, artUrl } = useStickyPlaying(np);
+  const { backdrop, accent } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);

@@ -311,7 +311,7 @@ function ScreenPageInner() {
   if (!isDraft && layoutMode === null) return <div className="fixed inset-0 bg-black" />;
   if (!isDraft && layoutMode === "touch") return <TouchControl />;
   if (!isDraft && layoutMode === "standby") {
-    return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} profile={device?.standby ?? null} />;
+    return <StandBy draft={searchParams.get("sbdraft")} sceneId={searchParams.get("scene") ?? device?.sceneId ?? null} profile={device?.standby ?? null} debug={searchParams.get("debug") === "1"} />;
   }
 
   return <ScreenGrid widgets={widgets} background={background} />;

@@ -7,12 +7,14 @@ import { eventColor } from "@/lib/eventColors";
 import { useDrift } from "@/lib/useDrift";
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { LANDSCAPE_URLS } from "@/lib/landscapes";
-import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying } from "@/lib/spotifyClient";
+import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
+import { hbLog, installFlashLog } from "@/lib/flashLog";
+import { DebugOverlay } from "@/components/DebugOverlay";
 import { pollEvery } from "@/lib/poll";
 import { RippleReveal } from "@/components/RippleReveal";
 import { WidgetRenderer } from "@/components/WidgetRenderer";
@@ -117,61 +119,143 @@ function adapt(it: StandByItem, extraW: number, extraH: number): StandByItem {
 
 // ---------- backdrop ----------
 
-/** Loads one landscape and lightly pre-blurs it once (data URL), or null if it can't load. */
-function loadLandscape(i: number): Promise<string | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const c = document.createElement("canvas");
-        c.width = 960;
-        c.height = Math.round((960 * img.height) / img.width);
-        const ctx = c.getContext("2d")!;
-        ctx.filter = "blur(5px) saturate(1.25)"; // light blur: the photo should stay recognisable
-        ctx.drawImage(img, -12, -12, c.width + 24, c.height + 24);
-        resolve(c.toDataURL("image/jpeg", 0.8));
-      } catch {
-        resolve(img.src);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = LANDSCAPE_URLS[i % LANDSCAPE_URLS.length];
-  });
+/** Loads one landscape, lightly pre-blurs it once, and returns an object URL (not a giant data URL),
+ *  or null if it can't load. The image is also fully decoded before it is returned. */
+/** decode() waits for a rendered frame, so it can stall in a hidden tab; never let it block longer than this. */
+const decodeWithin = (img: HTMLImageElement, ms = 3000) =>
+  Promise.race([img.decode(), new Promise<void>((resolve) => setTimeout(resolve, ms))]);
+
+async function loadLandscape(i: number): Promise<string | null> {
+  const src = LANDSCAPE_URLS[i % LANDSCAPE_URLS.length];
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  try {
+    img.src = src;
+    await decodeWithin(img);
+    if (!img.complete || img.naturalWidth === 0) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const c = document.createElement("canvas");
+    c.width = 960;
+    c.height = Math.round((960 * img.height) / img.width);
+    const ctx = c.getContext("2d")!;
+    ctx.filter = "blur(5px) saturate(1.25)"; // light blur: the photo should stay recognisable
+    ctx.drawImage(img, -12, -12, c.width + 24, c.height + 24);
+    const blob: Blob | null = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.8));
+    return blob ? URL.createObjectURL(blob) : src;
+  } catch {
+    return src;
+  }
+}
+
+/** Resolve once the browser has the image decoded, so showing it never produces an empty frame. */
+async function predecode(url: string) {
+  try {
+    const im = new Image();
+    im.src = url;
+    await decodeWithin(im, 2000);
+  } catch {
+    // best effort
+  }
+}
+
+/** Fire TV sticks and low-memory devices get a simple fade instead of the animated ripple mask,
+ *  which repaints a full-screen layer every frame. Force either way with ?lite=1 / ?lite=0. */
+function isLite(): boolean {
+  const q = new URLSearchParams(window.location.search).get("lite");
+  if (q === "1") return true;
+  if (q === "0") return false;
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+  return /\bAFT[A-Z0-9]*\b|Silk/.test(navigator.userAgent) || (mem != null && mem <= 2);
 }
 
 const ROLL_MS = 9000; // a slow roll, not a flip
 const ROLL_EVERY_MS = 40_000;
+const HIDDEN_MASK = "radial-gradient(circle at 50% 0%, transparent 0, transparent 1px)";
 
-/** New photos roll in from the top as a ripple whose edge is heavily feathered (a soft wavefront,
- *  no hard line). The settled photo underneath never swaps while it is visible. */
+/** New photos roll in from the top as a ripple whose edge is heavily feathered. Two layers stay
+ *  in the DOM for good and trade places: the next photo is loaded, decoded and masked out while it
+ *  sits underneath, and only then is it raised and revealed. Nothing is removed or re-pointed while
+ *  visible, which is what used to flash black on slow devices when the roll ended. */
 function LandscapeRoll({ visible }: { visible: boolean }) {
-  const [base, setBase] = useState<string | null>(null);
-  const [incoming, setIncoming] = useState<string | null>(null);
-  const topRef = useRef<HTMLDivElement>(null);
-  const next = useRef(1);
+  const l0 = useRef<HTMLDivElement>(null);
+  const l1 = useRef<HTMLDivElement>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let off = false;
     let raf = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
+    let next = 1;
+    let top = 0; // index of the layer that is currently fully visible
+    const layer = (i: number) => (i === 0 ? l0.current! : l1.current!);
+    const urls: (string | null)[] = [null, null];
+    const setImage = (i: number, url: string) => {
+      layer(i).style.backgroundImage = `url(${url})`;
+      const old = urls[i];
+      urls[i] = url;
+      if (old && old.startsWith("blob:") && old !== url) setTimeout(() => URL.revokeObjectURL(old), 2000);
+    };
 
-    loadLandscape(0).then((u) => !off && u && setBase(u));
+    (async () => {
+      const u = await loadLandscape(0);
+      if (off || !u) return;
+      setImage(0, u);
+      await predecode(u);
+      layer(0).style.zIndex = "1";
+      setReady(true);
+      hbLog("landscape ready");
+    })();
 
     async function roll() {
-      if (off) return;
-      const url = await loadLandscape(next.current++);
+      if (off || !l0.current || !l1.current) return;
+      const under = top;
+      const incoming = 1 - under;
+      const url = await loadLandscape(next++);
       if (off) return;
       if (!url) {
         if (++failures <= LANDSCAPE_URLS.length) timer = setTimeout(roll, 1000);
         return;
       }
-      setIncoming(url);
+      const el = layer(incoming);
+      // prepare while fully hidden and underneath
+      el.style.zIndex = "0";
+      el.style.maskImage = HIDDEN_MASK;
+      el.style.webkitMaskImage = HIDDEN_MASK;
+      setImage(incoming, url);
+      await predecode(url);
+      if (off) return;
+      hbLog(`roll start -> layer ${incoming}${isLite() ? " (lite fade)" : ""}`);
+      el.style.zIndex = "2";
+      const finish = () => {
+        // fully revealed: drop the mask and swap roles without touching either image
+        el.style.maskImage = "none";
+        el.style.webkitMaskImage = "none";
+        el.style.transition = "";
+        el.style.opacity = "";
+        el.style.zIndex = "1";
+        layer(under).style.zIndex = "0";
+        top = incoming;
+        hbLog("roll end");
+      };
+      if (isLite()) {
+        // cheap path: opacity crossfade, no per-frame mask repaint
+        el.style.maskImage = "none";
+        el.style.webkitMaskImage = "none";
+        el.style.transition = "none";
+        el.style.opacity = "0";
+        void el.offsetHeight; // commit the starting state
+        el.style.transition = "opacity 5s ease";
+        el.style.opacity = "1";
+        timer = setTimeout(finish, 5200);
+        return;
+      }
       const t0 = performance.now();
       const frame = (now: number) => {
-        const el = topRef.current;
-        if (off || !el) return;
+        if (off) return;
         const t = Math.min(1, (now - t0) / ROLL_MS);
         const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease in-out
         const maxR = Math.hypot(el.clientWidth / 2, el.clientHeight);
@@ -181,10 +265,7 @@ function LandscapeRoll({ visible }: { visible: boolean }) {
         el.style.maskImage = mask;
         el.style.webkitMaskImage = mask;
         if (t < 1) raf = requestAnimationFrame(frame);
-        else {
-          setBase(url);
-          setIncoming(null);
-        }
+        else finish();
       };
       raf = requestAnimationFrame(frame);
     }
@@ -199,20 +280,21 @@ function LandscapeRoll({ visible }: { visible: boolean }) {
   }, []);
 
   return (
-    <div className="absolute inset-0" style={{ opacity: visible && base ? 0.72 : 0, transition: "opacity 3s ease" }}>
-      <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: base ? `url(${base})` : undefined }} />
-      {incoming && (
-        <div
-          ref={topRef}
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${incoming})`, maskImage: "radial-gradient(circle at 50% 0%, transparent 0, transparent 1px)" }}
-        />
-      )}
+    <div className="absolute inset-0" style={{ opacity: visible && ready ? 0.72 : 0, transition: "opacity 3s ease" }}>
+      <div ref={l0} className="absolute inset-0 bg-cover bg-center" style={{ zIndex: 1 }} />
+      <div ref={l1} className="absolute inset-0 bg-cover bg-center" style={{ zIndex: 0, maskImage: HIDDEN_MASK, WebkitMaskImage: HIDDEN_MASK }} />
     </div>
   );
 }
 
 export function Backdrop({ art, playing, accent, black }: { art: string | null; playing: boolean; accent: string; black?: boolean }) {
+  // Keep the last album art in place while its layer fades out: clearing the image at once (when a
+  // song ends) leaves a still-opaque layer with nothing in it, which reads as a black flash.
+  const [heldArt, setHeldArt] = useState<string | null>(art);
+  useEffect(() => {
+    if (art && art !== heldArt) setHeldArt(art);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to a new image
+  }, [art]);
   // Night: nothing but black (also stops loading photos while it is dark).
   if (black) return <div className="absolute inset-0 bg-black" />;
   return (
@@ -220,7 +302,7 @@ export function Backdrop({ art, playing, accent, black }: { art: string | null; 
       <LandscapeRoll visible={!playing} />
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: art ? `url(${art})` : undefined, opacity: playing && art ? 0.65 : 0, transition: "opacity 2.5s ease" }}
+        style={{ backgroundImage: heldArt ? `url(${heldArt})` : undefined, opacity: playing && art ? 0.65 : 0, transition: "opacity 2.5s ease" }}
       />
       <div
         className="absolute inset-0"
@@ -878,12 +960,19 @@ const REVEAL_DELAY: Record<string, number> = {
   clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
 };
 
-export function StandBy({ draft = null, sceneId = null, profile = null }: { draft?: string | null; sceneId?: string | null; profile?: { layout: StandByItem[]; scenes: StandByScene[] } | null }) {
+export function StandBy({ draft = null, sceneId = null, profile = null, debug = false }: {
+  debug?: boolean; draft?: string | null; sceneId?: string | null; profile?: { layout: StandByItem[]; scenes: StandByScene[] } | null }) {
   const { s: scale, extraW, extraH } = useViewport();
   const np = useNowPlaying();
-  const playing = Boolean(np?.connected && np.isPlaying && np.track);
-  const { backdrop, accent } = useArtTheme(playing ? np?.track?.albumArtUrl : null);
+  const { playing, artUrl } = useStickyPlaying(np);
+  const { backdrop, accent } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
+  useEffect(() => {
+    installFlashLog(); // always on (cheap): ?debug=1 shows it
+  }, []);
+  useEffect(() => {
+    hbLog(`music ${playing ? "playing" : "stopped"}`);
+  }, [playing]);
   const cfg = useStandByConfig(draft, profile);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -993,6 +1082,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null }: { draf
       </RippleReveal>
       {/* island: alerts / imminent events / live games (music has its own card here) */}
       
+      {debug && <DebugOverlay />}
       <TopBar hide={topHide} />
       <ActivityPills hide={pillHide} includeMusic={!musicCardShown} />
       {/* dimmer sits above everything (top bar and pills included) so night is uniformly dark */}
