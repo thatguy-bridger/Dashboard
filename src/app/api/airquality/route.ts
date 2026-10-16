@@ -1,10 +1,11 @@
+import { DEFAULT_LOCATION } from "@/lib/location";
 import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
 // Same default placeholder location as /api/weather until per-device
 // location is configurable.
-const DEFAULT_LAT = 40.7128;
-const DEFAULT_LON = -74.006;
+const DEFAULT_LAT = DEFAULT_LOCATION.lat;
+const DEFAULT_LON = DEFAULT_LOCATION.lon;
 
 function aqiLabel(aqi: number): string {
   if (aqi <= 50) return "Good";

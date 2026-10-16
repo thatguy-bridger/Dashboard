@@ -41,8 +41,8 @@ const RAW_DEFS: Def[] = [
   D("battery", "Device batteries (large chips)", false, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
-  D("news", widgetLabel("news"), true, 740, 624, 420, 66, true),
-  D("stocks", widgetLabel("stocks"), true, 1170, 624, 210, 66, true),
+  D("news", widgetLabel("news"), false, 740, 624, 420, 66, true),
+  D("stocks", widgetLabel("stocks"), false, 1170, 624, 210, 66, true),
   D("sports", widgetLabel("sports"), false, 60, 600, 620, 100, true),
   D("traffic", widgetLabel("traffic"), false, 740, 300, 400, 260, true),
   D("trafficcamera", widgetLabel("trafficcamera"), false, 740, 300, 400, 260, true),
@@ -269,7 +269,7 @@ export function personalScenes(): StandByScene[] {
       name: "Full content (manual)",
       items: defaultStandByLayout().map((i) => ({
         ...i,
-        enabled: ["clock", "weather", "forecast", "nowplaying", "agenda", "news", "stocks"].includes(i.id),
+        enabled: ["clock", "weather", "forecast", "nowplaying", "agenda"].includes(i.id),
       })),
     },
   ];

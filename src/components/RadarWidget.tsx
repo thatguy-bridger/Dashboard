@@ -1,9 +1,9 @@
+import { DEFAULT_LOCATION } from "@/lib/location";
 import type { WidgetSize } from "@/lib/presets";
 
-// Same default placeholder location as /api/weather until per-device
-// location is configurable.
-const DEFAULT_LAT = 40.7128;
-const DEFAULT_LON = -74.006;
+// Same default location as /api/weather (Sandy, UT).
+const DEFAULT_LAT = DEFAULT_LOCATION.lat;
+const DEFAULT_LON = DEFAULT_LOCATION.lon;
 
 /** Windy's free embeddable radar map — no key, no account, just an iframe.
  * Building a tile-compositing radar renderer from scratch (RainViewer's raw

@@ -1,10 +1,10 @@
 import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 
-// Placeholder default location (New York City) until per-device location is
-// configurable from the controller (Phase 4).
-const DEFAULT_LAT = 40.7128;
-const DEFAULT_LON = -74.006;
+import { DEFAULT_LOCATION } from "@/lib/location";
+
+const DEFAULT_LAT = DEFAULT_LOCATION.lat;
+const DEFAULT_LON = DEFAULT_LOCATION.lon;
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
