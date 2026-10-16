@@ -46,7 +46,8 @@ function analyse(img: HTMLImageElement): ArtTheme {
   if (colourful > 20) {
     const best = buckets.indexOf(Math.max(...buckets));
     const [r, g, b] = hsvToRgb((best * 30 + 15) / 360, 0.55, 0.95);
-    accent = `rgb(${r}, ${g}, ${b})`;
+    // hex, so callers can append an alpha suffix ("#rrggbbaa") for glows and gradients
+    accent = `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
   }
 
   // 240px with a ~6% blur (was 160px at ~9%): the artwork stays a little more legible.

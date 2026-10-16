@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SmartHomeManager } from "@/components/SmartHomeManager";
 
 /** Shows whether the touch screen is talking to real devices (Home Assistant) or the demo set. */
 export function SmartHomeSetup() {
@@ -35,6 +36,10 @@ export function SmartHomeSetup() {
         </li>
         <li>Redeploy. Rooms come from Home Assistant areas; scenes, lights, switches and media players are picked up automatically.</li>
       </ol>
+      <div className="border-t border-[var(--surface-border)] pt-4 mt-1">
+        <div className="text-sm font-medium mb-3">Devices on the touch screen</div>
+        <SmartHomeManager />
+      </div>
     </div>
   );
 }

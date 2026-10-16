@@ -12,6 +12,10 @@ interface HaState {
     supported_color_modes?: string[];
     volume_level?: number;
     media_title?: string;
+    color_temp_kelvin?: number;
+    min_color_temp_kelvin?: number;
+    max_color_temp_kelvin?: number;
+    hs_color?: [number, number];
   };
 }
 
@@ -42,7 +46,20 @@ function toEntity(s: HaState, room: string): HomeEntity {
   if (kind === "light") {
     const modes = s.attributes.supported_color_modes ?? [];
     const dimmable = modes.some((m) => m !== "onoff");
-    return { ...base, on: s.state === "on", dimmable, brightness: s.attributes.brightness != null ? Math.round((s.attributes.brightness / 255) * 100) : undefined };
+    const supportsColorTemp = modes.includes("color_temp");
+    const supportsColor = modes.some((m) => ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(m));
+    return {
+      ...base,
+      on: s.state === "on",
+      dimmable,
+      brightness: s.attributes.brightness != null ? Math.round((s.attributes.brightness / 255) * 100) : undefined,
+      supportsColorTemp,
+      supportsColor,
+      colorTemp: s.attributes.color_temp_kelvin,
+      minKelvin: s.attributes.min_color_temp_kelvin,
+      maxKelvin: s.attributes.max_color_temp_kelvin,
+      hs: s.attributes.hs_color,
+    };
   }
   if (kind === "switch") return { ...base, on: s.state === "on" };
   if (kind === "media") {
@@ -84,6 +101,8 @@ export const homeAssistantProvider: HomeProvider = {
       case "on": return call(domain, "turn_on", { entity_id: id });
       case "off": return call(domain, "turn_off", { entity_id: id });
       case "brightness": return call("light", "turn_on", { entity_id: id, brightness_pct: Math.max(1, Math.min(100, Math.round(action.value))) });
+      case "colorTemp": return call("light", "turn_on", { entity_id: id, color_temp_kelvin: Math.round(action.value) });
+      case "color": return call("light", "turn_on", { entity_id: id, hs_color: [Math.max(0, Math.min(360, action.h)), Math.max(0, Math.min(100, action.s))] });
       case "volume": return call("media_player", "volume_set", { entity_id: id, volume_level: Math.max(0, Math.min(100, action.value)) / 100 });
       case "play": return call("media_player", "media_play", { entity_id: id });
       case "pause": return call("media_player", "media_pause", { entity_id: id });

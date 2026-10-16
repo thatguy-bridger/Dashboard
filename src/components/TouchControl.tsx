@@ -50,13 +50,14 @@ function useHome(pin: string | null) {
 
   /** Apply the change locally first (feels instant on a touch screen), send it, then re-sync. */
   const act = useCallback(
-    async (id: string, action: HomeAction) => {
-      setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (e.id === id ? applyLocal(e, action) : e)) } : s));
+    async (target: string | string[], action: HomeAction) => {
+      const ids = Array.isArray(target) ? target : [target];
+      setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (ids.includes(e.id) ? applyLocal(e, action) : e)) } : s));
       try {
         await fetch("/api/home/action", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" },
-          body: JSON.stringify({ id, action }),
+          body: JSON.stringify({ ids, action }),
         });
       } catch {
         // re-sync below shows the truth
@@ -66,7 +67,20 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load };
+  /** Remember the lights as they are now under a name (stored on the server). */
+  const saveScene = useCallback(
+    async (name: string) => {
+      await fetch("/api/home/scenes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" },
+        body: JSON.stringify({ name }),
+      });
+      load();
+    },
+    [load]
+  );
+
+  return { snap, gate, error, act, load, saveScene };
 }
 
 function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
@@ -76,6 +90,8 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
     case "off": return { ...e, on: false };
     case "brightness": return { ...e, on: true, brightness: a.value };
     case "volume": return { ...e, volume: a.value };
+    case "colorTemp": return { ...e, on: true, colorTemp: a.value, hs: undefined };
+    case "color": return { ...e, on: true, hs: [a.h, a.s] as [number, number] };
     case "play": return { ...e, playing: true, on: true };
     case "pause": return { ...e, playing: false };
     default: return e;
@@ -96,8 +112,10 @@ function useScale() {
 // ---------- primitives ----------
 
 /** Big, finger-sized slider: drag anywhere on the track; commits on release. */
-function Slider({ value, onChange, onCommit, accent, height = 44, disabled }: {
+function Slider({ value, onChange, onCommit, accent, height = 44, disabled, track }: {
   value: number; onChange: (v: number) => void; onCommit: (v: number) => void; accent: string; height?: number; disabled?: boolean;
+  /** a CSS gradient: shows a thumb on that gradient instead of the accent fill (warmth / hue) */
+  track?: string;
 }) {
   const drag = useRef(false);
   const last = useRef(value);
@@ -110,12 +128,16 @@ function Slider({ value, onChange, onCommit, accent, height = 44, disabled }: {
   return (
     <div
       className="relative rounded-full overflow-hidden touch-none select-none"
-      style={{ height, background: "rgba(255,255,255,0.14)", opacity: disabled ? 0.4 : 1 }}
+      style={{ height, background: track ?? "rgba(255,255,255,0.14)", opacity: disabled ? 0.4 : 1 }}
       onPointerDown={(e) => { if (disabled) return; drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); set(e); }}
       onPointerMove={(e) => { if (drag.current) set(e); }}
       onPointerUp={(e) => { if (!drag.current) return; drag.current = false; set(e); onCommit(last.current); }}
     >
-      <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${value}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+      {track ? (
+        <div className="absolute top-1/2 rounded-full bg-white" style={{ left: `calc(${value}% - ${height * 0.4}px)`, width: height * 0.8, height: height * 0.8, transform: "translateY(-50%)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }} />
+      ) : (
+        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${value}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+      )}
     </div>
   );
 }
@@ -148,7 +170,7 @@ function Press({ children, onClick, className = "", style }: { children: React.R
 
 // ---------- pieces ----------
 
-function SceneButton({ e, act, accent }: { e: HomeEntity; act: (id: string, a: HomeAction) => void; accent: string }) {
+function SceneButton({ e, act, accent }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void; accent: string }) {
   const [fired, setFired] = useState(false);
   return (
     <Press
@@ -162,7 +184,7 @@ function SceneButton({ e, act, accent }: { e: HomeEntity; act: (id: string, a: H
   );
 }
 
-function LightTile({ e, act, accent }: { e: HomeEntity; act: (id: string, a: HomeAction) => void; accent: string }) {
+function LightTile({ e, act, accent, onMore }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void; accent: string; onMore: () => void }) {
   const [live, setLive] = useState<number | null>(null);
   const level = live ?? e.brightness ?? (e.on ? 100 : 0);
   const on = Boolean(e.on);
@@ -177,7 +199,20 @@ function LightTile({ e, act, accent }: { e: HomeEntity; act: (id: string, a: Hom
       }}
     >
       <Press onClick={() => act(e.id, { type: "toggle" })} className="text-left flex-1 flex flex-col justify-between">
-        <Bulb on={on} />
+        <div className="flex items-start justify-between">
+          <Bulb on={on} />
+          {(e.supportsColor || e.supportsColorTemp) && (
+            <span
+              role="button"
+              onClick={(ev) => { ev.stopPropagation(); onMore(); }}
+              className="glass-card flex items-center justify-center text-white/80"
+              style={{ width: 40, height: 40, borderRadius: 20 }}
+              aria-label="Color and warmth"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 8h10M18 8h2M4 16h2M10 16h10" /><circle cx="16" cy="8" r="2" /><circle cx="8" cy="16" r="2" /></svg>
+            </span>
+          )}
+        </div>
         <div>
           <FitText className="text-white font-bold" style={{ fontSize: 20 }}>{e.name}</FitText>
           <div className="num-rounded font-semibold text-white/55" style={{ fontSize: 15 }}>{on ? (e.dimmable ? `On · ${level}%` : "On") : "Off"}</div>
@@ -192,7 +227,7 @@ function LightTile({ e, act, accent }: { e: HomeEntity; act: (id: string, a: Hom
   );
 }
 
-function SwitchTile({ e, act }: { e: HomeEntity; act: (id: string, a: HomeAction) => void }) {
+function SwitchTile({ e, act }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void }) {
   const on = Boolean(e.on);
   return (
     <Press
@@ -254,7 +289,7 @@ function MusicCard({ accent }: { accent: string }) {
   );
 }
 
-function MediaRow({ e, act, accent }: { e: HomeEntity; act: (id: string, a: HomeAction) => void; accent: string }) {
+function MediaRow({ e, act, accent }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void; accent: string }) {
   const [live, setLive] = useState<number | null>(null);
   const vol = live ?? e.volume ?? 0;
   return (
@@ -271,6 +306,85 @@ function MediaRow({ e, act, accent }: { e: HomeEntity; act: (id: string, a: Home
         <Press onClick={() => act(e.id, { type: "next" })} className="p-2 text-white/80"><Icon d={NEXT} size={28} /></Press>
       </div>
       {e.volume != null && <Slider value={vol} onChange={setLive} onCommit={(v) => { setLive(null); act(e.id, { type: "volume", value: v }); }} accent={accent} height={30} />}
+    </div>
+  );
+}
+
+const HUES: { name: string; h: number; s: number }[] = [
+  { name: "Red", h: 0, s: 90 }, { name: "Orange", h: 25, s: 90 }, { name: "Yellow", h: 50, s: 85 }, { name: "Green", h: 120, s: 80 },
+  { name: "Teal", h: 175, s: 80 }, { name: "Blue", h: 215, s: 85 }, { name: "Purple", h: 270, s: 80 }, { name: "Pink", h: 320, s: 75 },
+];
+
+/** Full control of one light: brightness, warm/cool white, and colour swatches. */
+function LightSheet({ e, act, accent, onClose }: { e: HomeEntity; act: (t: string | string[], a: HomeAction) => void; accent: string; onClose: () => void }) {
+  const [bri, setBri] = useState<number | null>(null);
+  const min = e.minKelvin ?? 2000, max = e.maxKelvin ?? 6500;
+  const pos = e.colorTemp ? Math.round(((e.colorTemp - min) / (max - min)) * 100) : 40;
+  const [warm, setWarm] = useState<number | null>(null);
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55" onClick={onClose}>
+      <div className="glass-card w-[640px] flex flex-col gap-6" style={{ borderRadius: 48, padding: 36, background: "rgba(24,24,28,0.92)" }} onClick={(ev) => ev.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <div className="text-white font-bold" style={{ fontSize: 30 }}>{e.name}</div>
+          <Press onClick={onClose} className="glass-card px-6 py-3 text-white font-semibold" style={{ borderRadius: 24, fontSize: 18 }}>Done</Press>
+        </div>
+        {e.dimmable && (
+          <div>
+            <div className="caps-label mb-2" style={{ fontSize: 13 }}>Brightness · {bri ?? e.brightness ?? 0}%</div>
+            <Slider value={bri ?? e.brightness ?? 0} onChange={setBri} onCommit={(v) => { setBri(null); act(e.id, v <= 0 ? { type: "off" } : { type: "brightness", value: v }); }} accent={accent} height={52} />
+          </div>
+        )}
+        {e.supportsColorTemp && (
+          <div>
+            <div className="caps-label mb-2" style={{ fontSize: 13 }}>Warmth · warm to cool white</div>
+            <Slider
+              value={warm ?? pos}
+              onChange={setWarm}
+              onCommit={(v) => { setWarm(null); act(e.id, { type: "colorTemp", value: min + ((max - min) * v) / 100 }); }}
+              accent={accent}
+              height={52}
+              track="linear-gradient(90deg, #ffb25e, #ffe2b8 45%, #ffffff 60%, #bcd6ff)"
+            />
+          </div>
+        )}
+        {e.supportsColor && (
+          <div>
+            <div className="caps-label mb-3" style={{ fontSize: 13 }}>Color</div>
+            <div className="flex flex-wrap gap-3">
+              {HUES.map((c) => (
+                <Press key={c.name} onClick={() => act(e.id, { type: "color", h: c.h, s: c.s })} className="rounded-full" style={{ width: 64, height: 64, background: `hsl(${c.h} ${c.s}% 55%)`, boxShadow: e.hs && Math.abs(e.hs[0] - c.h) < 12 ? "0 0 0 4px rgba(255,255,255,0.9)" : "0 2px 10px rgba(0,0,0,0.4)" }}>
+                  <span className="sr-only">{c.name}</span>
+                </Press>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Name the current lights as a scene (uses the tablet's on-screen keyboard). */
+function SaveSceneSheet({ onSave, onClose }: { onSave: (name: string) => void; onClose: () => void }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55" onClick={onClose}>
+      <div className="glass-card w-[560px] flex flex-col gap-5" style={{ borderRadius: 44, padding: 34, background: "rgba(24,24,28,0.92)" }} onClick={(ev) => ev.stopPropagation()}>
+        <div className="text-white font-bold" style={{ fontSize: 26 }}>Save the lights as a scene</div>
+        <div className="text-white/55 font-semibold" style={{ fontSize: 16 }}>Brightness, warmth and color are remembered exactly as they are now.</div>
+        <input
+          autoFocus
+          value={name}
+          onChange={(ev) => setName(ev.target.value)}
+          placeholder="Scene name, e.g. Reading"
+          className="bg-white/10 text-white rounded-3xl px-6 py-4 outline-none"
+          style={{ fontSize: 22 }}
+        />
+        <div className="flex gap-3 justify-end">
+          <Press onClick={onClose} className="glass-card px-7 py-3 text-white/80 font-semibold" style={{ borderRadius: 24, fontSize: 18 }}>Cancel</Press>
+          <Press onClick={() => { if (name.trim()) { onSave(name.trim()); onClose(); } }} className="px-7 py-3 text-black font-bold" style={{ borderRadius: 24, fontSize: 18, background: "var(--accent)" }}>Save</Press>
+        </div>
+      </div>
     </div>
   );
 }
@@ -321,7 +435,9 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act } = useHome(pin);
+  const { snap, gate, error, act, saveScene } = useHome(pin);
+  const [sheetId, setSheetId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Set after mount: rendering the time on the server would mismatch the client on hydration.
   const [now, setNow] = useState<Date | null>(null);
@@ -363,11 +479,26 @@ export function TouchControl() {
               </div>
               {error && !snap && <div className="glass-card px-6 py-4 text-white/70 font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>{error}</div>}
 
-              {scenes.length > 0 && (
+              {snap && (
                 <div className="mb-6">
                   <div className="caps-label mb-3" style={{ fontSize: 13 }}>Scenes</div>
                   <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                    {devices.length > 0 && (
+                      <>
+                        <Press onClick={() => act(devices.map((d) => d.id), { type: "off" })} className="glass-card flex items-center gap-3 px-6 shrink-0" style={{ height: 92, borderRadius: 30 }}>
+                          <Bulb on={false} /><span className="text-white font-bold" style={{ fontSize: 22 }}>All off</span>
+                        </Press>
+                        <Press onClick={() => act(devices.map((d) => d.id), { type: "on" })} className="glass-card flex items-center gap-3 px-6 shrink-0" style={{ height: 92, borderRadius: 30 }}>
+                          <Bulb on /><span className="text-white font-bold" style={{ fontSize: 22 }}>All on</span>
+                        </Press>
+                      </>
+                    )}
                     {scenes.map((s) => <SceneButton key={s.id} e={s} act={act} accent={color} />)}
+                    {devices.some((d) => d.kind === "light") && (
+                      <Press onClick={() => setSaving(true)} className="flex items-center gap-3 px-6 shrink-0 text-white/70 font-semibold" style={{ height: 92, borderRadius: 30, border: "2px dashed rgba(255,255,255,0.25)", fontSize: 20 }}>
+                        + Save scene
+                      </Press>
+                    )}
                   </div>
                 </div>
               )}
@@ -376,9 +507,20 @@ export function TouchControl() {
                 <div className="flex flex-wrap items-start gap-x-10 gap-y-6">
                 {rooms.map((room) => (
                   <div key={room}>
-                    <div className="caps-label mb-3" style={{ fontSize: 13 }}>{room}</div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="caps-label" style={{ fontSize: 13 }}>{room}</div>
+                      {(() => {
+                        const inRoom = devices.filter((d) => d.room === room);
+                        const anyOn = inRoom.some((d) => d.on);
+                        return (
+                          <Press onClick={() => act(inRoom.map((d) => d.id), { type: anyOn ? "off" : "on" })} className="glass-card px-4 py-1.5 text-white/70 font-semibold" style={{ borderRadius: 18, fontSize: 14 }}>
+                            {anyOn ? "Turn off" : "Turn on"}
+                          </Press>
+                        );
+                      })()}
+                    </div>
                     <div className="flex flex-wrap gap-3" style={{ maxWidth: 2 * 212 }}>
-                      {devices.filter((d) => d.room === room).map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} accent={color} /> : <SwitchTile key={d.id} e={d} act={act} />))}
+                      {devices.filter((d) => d.room === room).map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} accent={color} onMore={() => setSheetId(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
                     </div>
                   </div>
                 ))}
@@ -395,6 +537,11 @@ export function TouchControl() {
             </div>
           </>
         )}
+        {sheetId && snap && (() => {
+          const e = snap.entities.find((x) => x.id === sheetId);
+          return e ? <LightSheet e={e} act={act} accent={color} onClose={() => setSheetId(null)} /> : null;
+        })()}
+        {saving && <SaveSceneSheet onSave={saveScene} onClose={() => setSaving(false)} />}
       </div>
       <TopBar />
       <ActivityPills includeMusic={false} hide={["game"]} />

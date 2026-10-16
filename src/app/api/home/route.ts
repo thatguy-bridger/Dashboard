@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
+import { checkPin, getProvider, haConfigured, homeSnapshot } from "@/lib/smarthome";
 
 /** Current state of every controllable thing. `?status=1` only reports how it's set up. */
 export async function GET(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return NextResponse.json({ error: gate }, { status: gate === "pin_not_configured" ? 403 : 401 });
   try {
-    return NextResponse.json(await provider.snapshot());
+    return NextResponse.json(await homeSnapshot());
   } catch (err) {
     return NextResponse.json({ error: "provider_failed", detail: String(err) }, { status: 502 });
   }
