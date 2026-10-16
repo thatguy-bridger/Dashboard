@@ -63,6 +63,10 @@ for e in store.events(matching: store.predicateForEvents(withStart: start, end: 
         "color": hex(e.calendar.cgColor) as Any,
         "allDay": e.isAllDay,
     ]
+    // Where the event is (used for the dashboard's "Leave by" travel time).
+    if let loc = e.structuredLocation?.title ?? e.location, !loc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        item["location"] = loc
+    }
     if e.isAllDay {
         // EventKit's all-day end is 23:59:59 of the last day; send an exclusive end date.
         item["start"] = dayFmt.string(from: e.startDate)

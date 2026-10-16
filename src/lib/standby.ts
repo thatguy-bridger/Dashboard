@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "clock" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
+export type CustomItemId = "clock" | "leaveby" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather">;
 
 export interface StandByItem {
@@ -35,6 +35,7 @@ const RAW_DEFS: Def[] = [
   D("weather", "Weather", true, 60, 440, 380, 112, true),
   D("weatherhero", "Weather (detailed, large)", false, 60, 100, 820, 640, true),
   D("daysummary", "Day summary (what to expect)", false, 60, 760, 830, 130, true),
+  D("leaveby", "Leave by (drive time to next event)", false, 930, 300, 450, 130, true),
   D("upnext", "Up next (live countdown)", false, 60, 400, 640, 200, true),
   D("tomorrow", "Tomorrow preview", false, 60, 400, 560, 300, true),
   D("forecast", "Hourly forecast", true, 60, 568, 600, 118, true),
@@ -150,7 +151,8 @@ export function defaultScenes(): StandByScene[] {
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
         clock: { x: 930, y: 80, w: 450, h: 190 },
-        calendar: { x: 930, y: 312, w: 450, h: 568 },
+        leaveby: { x: 930, y: 300, w: 450, h: 120 },
+        calendar: { x: 930, y: 436, w: 450, h: 444 },
       }),
     },
     {
@@ -226,8 +228,8 @@ export function personalScenes(): StandByScene[] {
         weatherhero: { x: 50, y: 96, w: 840, h: 650 },
         daysummary: { x: 50, y: 764, w: 840, h: 120 },
         clock: { x: 930, y: 80, w: 450, h: 190 },
-        upnext: { x: 930, y: 312, w: 450, h: 150 },
-        calendar: { x: 930, y: 476, w: 450, h: 404 },
+        leaveby: { x: 930, y: 312, w: 450, h: 130 },
+        calendar: { x: 930, y: 456, w: 450, h: 424 },
       }),
     },
     {

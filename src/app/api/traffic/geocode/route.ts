@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cacheHeaders } from "@/lib/http";
 
 /** Looks up a free-text place name via TomTom Fuzzy Search and returns its best match. */
 export async function GET(req: NextRequest) {
@@ -30,5 +31,5 @@ export async function GET(req: NextRequest) {
     label: top.address?.freeformAddress ?? top.poi?.name ?? query,
     lat: top.position.lat,
     lon: top.position.lon,
-  });
+  }, cacheHeaders(86400));
 }

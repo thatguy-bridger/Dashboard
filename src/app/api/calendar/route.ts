@@ -12,6 +12,7 @@ interface CalendarEvent {
   source: string;
   colorId: string | null;
   color?: string | null;
+  location?: string;
 }
 
 async function safeGoogleToken(): Promise<string | null> {
@@ -101,6 +102,7 @@ async function macEvents(): Promise<{ events: CalendarEvent[]; updatedAt: number
       source: e.calendar,
       colorId: null,
       color: e.color,
+      location: e.location,
     }))
     .sort((a, b) => a.start.localeCompare(b.start));
   return { events, updatedAt: mac.updatedAt };

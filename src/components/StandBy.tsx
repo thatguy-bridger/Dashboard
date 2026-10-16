@@ -38,7 +38,7 @@ const reveal = (delay: number): React.CSSProperties => ({
 type Hour = FeedHour;
 type Day = FeedDay;
 type Weather = FeedWeather;
-interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
+interface CalEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null; location?: string }
 
 // All-day events arrive as date-only strings; `new Date("2026-10-04")` parses as UTC midnight, which
 // is the previous evening in US time zones. Parse them as local dates instead.
@@ -826,6 +826,128 @@ function DaySummary({ w, events }: { w: Weather; events: CalEvent[] }) {
   );
 }
 
+// Geocodes and travel times are cached for the page's life so a 5-minute re-check is one request.
+const geoCache = new Map<string, { lat: number; lon: number } | null | "unavailable">();
+const BUFFER_MIN = 5; // arrive a few minutes early
+const looksLikeAPlace = (loc: string) => !/^(https?:|www\.)|teams meeting|zoom|google meet|webex|phone|call/i.test(loc.trim());
+
+/** "Leave by 8:25": the next upcoming event that has a place, minus live drive time from Home. */
+function LeaveBy({ events, home }: { events: CalEvent[]; home: { lat: number; lon: number } | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 20_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // next timed event with a real-looking location, starting within the next 14 hours
+  const ev = events.find((e) => {
+    if (e.allDay || !e.location || !looksLikeAPlace(e.location)) return false;
+    const st = evStart(e).getTime();
+    return st > now - 5 * 60_000 && st - now < 14 * 3600_000;
+  });
+
+  const [dest, setDest] = useState<{ lat: number; lon: number } | null>(null);
+  const [eta, setEta] = useState<{ min: number; delay: number } | null>(null);
+  const loc = ev?.location ?? "";
+
+  useEffect(() => {
+    let off = false;
+    setDest(null);
+    setEta(null);
+    if (!loc) return;
+    (async () => {
+      let g = geoCache.get(loc);
+      if (g === undefined) {
+        // Event locations are messy: try the whole thing, then the address part, then just the name.
+        const parts = loc.split(",").map((p) => p.trim()).filter(Boolean);
+        const tries = [...new Set([loc, parts.slice(1).join(", "), parts[0]])].filter((t) => t.length > 2);
+        g = null;
+        let sawServiceError = false;
+        for (const q of tries) {
+          try {
+            const r = await fetch(`/api/traffic/geocode?q=${encodeURIComponent(q)}`);
+            if (r.ok) {
+              g = await r.json();
+              break;
+            }
+            if (r.status >= 500) sawServiceError = true;
+          } catch {
+            sawServiceError = true;
+          }
+        }
+        if (!g && sawServiceError) g = "unavailable";
+        geoCache.set(loc, g ?? null);
+      }
+      if (!off) setDest(g && g !== "unavailable" ? g : null);
+    })();
+    return () => {
+      off = true;
+    };
+  }, [loc]);
+
+  const key = dest && home ? `${home.lat},${home.lon}>${dest.lat},${dest.lon}` : "";
+  useEffect(() => {
+    if (!key || !dest || !home) return;
+    let off = false;
+    async function load() {
+      try {
+        const q = new URLSearchParams({ originLat: String(home!.lat), originLon: String(home!.lon), destLat: String(dest!.lat), destLon: String(dest!.lon) });
+        const r = await fetch(`/api/traffic/eta?${q}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!off) setEta({ min: j.travelTimeMin, delay: j.delayMin });
+      } catch {
+        // keep last
+      }
+    }
+    load();
+    const stop = pollEvery(load, 5 * 60_000);
+    return () => {
+      off = true;
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key captures both coordinates
+  }, [key]);
+
+  const shell = (children: React.ReactNode) => (
+    <div className="glass-card flex items-center gap-6 px-8 w-full h-full" style={{ borderRadius: 40 }}>{children}</div>
+  );
+  const note = (t: string) => shell(<div className="text-white/45 font-semibold" style={{ fontSize: 22 }}>{t}</div>);
+
+  if (!home) return note("Set your Home address in Control to see when to leave");
+  if (!ev) return note("No trips planned");
+  if (!eta) {
+    const g = geoCache.get(loc);
+    if (g === "unavailable") return note("Maps lookup unavailable (check the TomTom key)");
+    return note(g === null ? `Couldn't find “${loc.slice(0, 30)}”` : "Working out your drive…");
+  }
+
+  const start = evStart(ev).getTime();
+  const leaveAt = start - (eta.min + BUFFER_MIN) * 60_000;
+  const mins = Math.round((leaveAt - now) / 60_000);
+  const late = mins <= 0;
+  const urgent = !late && mins <= 15;
+  const color = late ? "#ff6b6b" : urgent ? "#ffb84d" : "#fff";
+  const when = new Date(leaveAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return shell(
+    <>
+      <div className="shrink-0">
+        <div className="caps-label" style={{ fontSize: 13 }}>Leave by</div>
+        <div className="num-rounded font-bold" style={{ fontSize: 60, lineHeight: 1.05, color }}>{when}</div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="num-rounded font-bold" style={{ fontSize: 26, color }}>
+          {late ? "Leave now" : mins >= 60 ? `in ${Math.floor(mins / 60)}h ${mins % 60}m` : `in ${mins} min`}
+        </div>
+        <FitText lines={2} className="text-white/80 font-semibold leading-tight" style={{ fontSize: 17 }}>{ev.summary}</FitText>
+        <div className="num-rounded font-semibold text-white/50" style={{ fontSize: 14 }}>
+          {eta.min} min drive{eta.delay >= 5 ? ` · +${eta.delay} traffic` : ""}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /** The next timed event with a live countdown — what you need to know "right now". */
 function UpNextLive({ events }: { events: CalEvent[] }) {
   const [now, setNow] = useState(() => Date.now());
@@ -974,6 +1096,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
     hbLog(`music ${playing ? "playing" : "stopped"}`);
   }, [playing]);
   const cfg = useStandByConfig(draft, profile);
+  const appSettings = useSettings();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -1020,6 +1143,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "sports": return <SportsStrip width={it.w} />;
+      case "leaveby": return <LeaveBy events={upcoming} home={appSettings?.mapHome ?? null} />;
       case "daysummary": return weather && <DaySummary w={weather} events={upcoming} />;
       case "upnext": return <UpNextLive events={upcoming} />;
       case "tomorrow": return <TomorrowPreview events={events ?? []} day={weather?.forecast?.find((d) => d.date === new Date(Date.now() + 86_400_000).toLocaleDateString("en-CA")) ?? weather?.forecast?.[0]} />;
@@ -1039,7 +1163,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "calendar", "upnext", "tomorrow", "daysummary", "sports"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "calendar", "upnext", "tomorrow", "daysummary", "sports", "leaveby"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).

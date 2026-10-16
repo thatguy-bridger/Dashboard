@@ -12,6 +12,8 @@ export interface MacEvent {
   calendarId: string;
   calendar: string;
   color: string | null;
+  /** Free-text place from the event, if it has one. */
+  location?: string;
 }
 
 export interface MacCalendarInfo {

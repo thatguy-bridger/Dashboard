@@ -18,7 +18,7 @@ export interface LiveActivity {
   game?: { home: string; away: string; homeScore: string; awayScore: string; homeBadge: string | null; awayBadge: string | null; status: string; league: string };
 }
 
-export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null }
+export interface FeedEvent { summary: string; start: string; end?: string; allDay: boolean; source: string; colorId: string | null; color?: string | null; location?: string }
 
 export interface FeedHour { time: string; tempF: number; weatherCode: number; precipProbability?: number }
 export interface FeedDay { date: string; highF: number; lowF: number; weatherCode: number }

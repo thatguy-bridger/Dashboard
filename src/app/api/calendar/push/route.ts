@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       calendarId: `${str(e.account, 80)}|${str(e.calendar, 80)}`,
       calendar: str(e.calendar, 80),
       color: typeof e.color === "string" ? e.color.slice(0, 9) : null,
+      ...(typeof e.location === "string" && e.location.trim() ? { location: str(e.location, 200) } : {}),
     }));
 
   await saveMacCalendar({ updatedAt: Date.now(), events, calendars });

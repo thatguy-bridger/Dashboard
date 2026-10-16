@@ -8,3 +8,5 @@ tiny app reads everything Calendar shows (via EventKit) and posts the next 14 da
 - Pick which calendars to show in Control, under "Calendars (from your Mac)".
 - `./uninstall.sh` removes the job, config and app.
 - Test without posting: `build/CalendarSync.app/Contents/MacOS/CalendarSync --dry-run --out /tmp/cal.json`
+
+Event **locations** are sent too (for the dashboard's "Leave by" card). After updating this tool, run `./install.sh` again to replace the installed copy.
