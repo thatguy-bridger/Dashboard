@@ -26,11 +26,9 @@ export interface FeedWeather {
   tempF: number; feelsLikeF?: number; isDay: boolean; weatherCode: number; highF: number; lowF: number; hourly: FeedHour[];
   forecast?: FeedDay[]; humidity?: number; windMph?: number; uvIndex?: number; sunrise?: string; sunset?: string;
 }
-export interface FeedDevice { id: string; name: string; deviceClass: string; batteryLevel: number | null; isPerson: boolean }
 
 interface Snapshot {
   weather: FeedWeather | null;
-  devices: FeedDevice[] | null;
   event: LiveActivity | null;
   games: LiveActivity[];
   /** Raw feeds, shared so StandBy doesn't poll the same endpoints a second time. */
@@ -40,7 +38,7 @@ interface Snapshot {
 
 // One shared poller per page (same pattern as spotifyClient): every consumer
 // reads the same snapshot instead of each hitting the API.
-let snap: Snapshot = { weather: null, devices: null, event: null, games: [], events: null, calendarConnected: false };
+let snap: Snapshot = { weather: null, event: null, games: [], events: null, calendarConnected: false };
 const listeners = new Set<(s: Snapshot) => void>();
 const stops: (() => void)[] = [];
 
@@ -91,15 +89,6 @@ async function pollWeather() {
   }
 }
 
-async function pollDevices() {
-  try {
-    const res = await fetch("/api/icloud/findmy");
-    if (res.ok) publish({ devices: ((await res.json()).devices ?? []) as FeedDevice[] });
-  } catch {
-    // keep last
-  }
-}
-
 async function pollGame() {
   try {
     const res = await fetch("/api/sports?mode=live", { cache: "no-store" });
@@ -126,8 +115,7 @@ function start() {
   pollCalendar();
   pollGame();
   pollWeather();
-  pollDevices();
-  stops.push(pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000), pollEvery(pollWeather, 10 * 60_000), pollEvery(pollDevices, 10 * 60_000));
+  stops.push(pollEvery(pollCalendar, 5 * 60_000), pollEvery(pollGame, 5 * 60_000), pollEvery(pollWeather, 10 * 60_000));
 }
 
 function stop() {
@@ -179,5 +167,5 @@ export function useFeeds() {
       if (listeners.size === 0) stop();
     };
   }, []);
-  return { events: s.events, calendarConnected: s.calendarConnected, weather: s.weather, devices: s.devices };
+  return { events: s.events, calendarConnected: s.calendarConnected, weather: s.weather };
 }

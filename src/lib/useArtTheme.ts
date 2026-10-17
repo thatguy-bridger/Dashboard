@@ -20,13 +20,6 @@ export interface ArtTheme {
 export const NEUTRAL_ACCENT = "#f0b38a";
 const cache = new Map<string, ArtTheme>();
 
-function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  let h = 0;
-  if (d > 0) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return [((h * 60 + 360) % 360) / 360, max === 0 ? 0 : d / max, max];
-}
-
 function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
   const f = (n: number) => {
     const k = (n + h * 6) % 6;

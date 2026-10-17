@@ -27,6 +27,9 @@ const KEEP_ON = /\bled\b/i;
 const AWAY_ID = "home_base_before_leaving";
 const AWAY_SCENE = `scene.${AWAY_ID}`;
 
+/** Screens that happen to be powered by a smart plug: they are displays, not lights, so they stay out of the light counts. */
+const DISPLAY_NAME = /\b(information|display|screen|monitor)\b/i;
+
 const DOMAINS: Record<string, HomeKind> = { light: "light", switch: "switch", scene: "scene", media_player: "media", fan: "fan" };
 
 /** Home Assistant doesn't put the room (area) in /api/states; one template call looks them all up. */
@@ -77,7 +80,7 @@ function toEntity(s: HaState, room: string): HomeEntity {
       hs: s.attributes.hs_color,
     };
   }
-  if (kind === "switch") return { ...base, on: s.state === "on" };
+  if (kind === "switch") return { ...base, kind: DISPLAY_NAME.test(base.name) ? "display" : "switch", on: s.state === "on" };
   if (kind === "fan") {
     const step = s.attributes.percentage_step;
     return { ...base, on: s.state === "on", speed: s.state === "on" ? Math.round(s.attributes.percentage ?? 0) : 0, speedSteps: step && step > 0 ? Math.max(1, Math.round(100 / step)) : 3 };
@@ -121,8 +124,8 @@ function serviceFor(domain: string, action: HomeAction): { domain: string; servi
 async function leaveHomeSlow(keepOn: string[] = []) {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
   const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
-  const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
-  const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
+  const lights = raw.filter((s) => s.entity_id.startsWith("light.") && s.state !== "unavailable").map((s) => s.entity_id);
+  const switches = raw.filter((s) => s.entity_id.startsWith("switch.") && s.state !== "unavailable").map((s) => s.entity_id);
   const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
   // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
   if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
@@ -145,7 +148,9 @@ export const homeAssistantProvider: HomeProvider = {
     const away = raw.some((s) => s.entity_id === AWAY_SCENE);
     const people = raw.filter((s) => s.entity_id.startsWith("person.")).map((s) => ({ name: unescapeName(s.attributes.friendly_name ?? s.entity_id), home: s.state === "home" }));
     // the saved "before I left" scene is bookkeeping, not a button
-    const all = raw.filter((s) => DOMAINS[s.entity_id.split(".")[0]] && s.entity_id !== AWAY_SCENE);
+    // lights and plugs that are powered off or disconnected are left out entirely until they come back
+    const gone = (s: HaState) => s.state === "unavailable" && /^(light|switch|fan)\./.test(s.entity_id);
+    const all = raw.filter((s) => DOMAINS[s.entity_id.split(".")[0]] && s.entity_id !== AWAY_SCENE && !gone(s));
     const rooms = await areas(all.map((s) => s.entity_id));
     const entities = all.map((s) => {
       const kind = DOMAINS[s.entity_id.split(".")[0]];
@@ -276,7 +281,7 @@ export async function playMedia(entityId: string, mediaId: string, mediaType: st
  *  Nabu Casa). Re-run after adding lights so the list stays current. */
 export async function installAwayScripts(keepOn: string[] = []): Promise<string[]> {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
-  const ids = (d: string) => raw.filter((s) => s.entity_id.startsWith(`${d}.`)).map((s) => s.entity_id);
+  const ids = (d: string) => raw.filter((s) => s.entity_id.startsWith(`${d}.`) && s.state !== "unavailable").map((s) => s.entity_id);
   const keep = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
   const lights = ids("light"), switches = ids("switch");
   const offLights = lights.filter((i) => !keep.has(i)), offSwitches = switches.filter((i) => !keep.has(i));

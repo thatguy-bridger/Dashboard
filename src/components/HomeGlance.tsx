@@ -68,15 +68,6 @@ const Dot = ({ color, glow }: { color: string; glow?: boolean }) => (
   <span className="rounded-full shrink-0" style={{ width: 14, height: 14, background: color, boxShadow: glow ? `0 0 10px ${color}` : undefined }} />
 );
 
-function Chip({ children, tone = "plain" }: { children: React.ReactNode; tone?: "plain" | "good" | "warn" }) {
-  const border = tone === "warn" ? "rgba(255,184,77,0.55)" : tone === "good" ? "rgba(120,220,150,0.45)" : "rgba(255,255,255,0.12)";
-  return (
-    <div className="flex items-center gap-2 px-4 rounded-full shrink-0 whitespace-nowrap" style={{ height: 46, background: "linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))", border: `1px solid ${border}` }}>
-      {children}
-    </div>
-  );
-}
-
 const topChip = "flex items-center gap-2.5 px-4 rounded-full shrink-0 min-w-0 whitespace-nowrap";
 const topChipStyle = (tone: "plain" | "good" | "warn") => ({
   height: 46,

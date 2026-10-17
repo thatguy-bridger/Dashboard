@@ -101,7 +101,6 @@ const ICONS: Record<WidgetType, (props: IconProps) => React.JSX.Element> = {
   sports: SportsIcon,
   calendar: CalendarIcon,
   traffic: TrafficIcon,
-  locations: GenericTileIcon,
   gmail: GenericTileIcon,
   drive: GenericTileIcon,
   photos: GenericTileIcon,

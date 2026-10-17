@@ -36,9 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-# copied by scripts/copy-maplibre-worker.js on postinstall
-/public/maplibre-gl-worker.mjs
-/public/maplibre-gl-shared.mjs
 
 # typescript
 *.tsbuildinfo

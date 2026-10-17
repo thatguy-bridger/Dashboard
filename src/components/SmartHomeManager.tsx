@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { HomeConfig, HomeEntity } from "@/lib/smarthome/types";
 
 const PIN_KEY = "hb-control-pin";
-const KIND_LABEL: Record<string, string> = { light: "Lights", switch: "Switches", media: "Speakers & TVs", scene: "Home Assistant scenes" };
+const KIND_LABEL: Record<string, string> = { light: "Lights", switch: "Switches", display: "Displays (screens on smart plugs)", media: "Speakers & TVs", scene: "Home Assistant scenes" };
 
 /** Choose which devices show on the touch screen, what they're called, and which room they're in. */
 export function SmartHomeManager() {
@@ -74,7 +74,7 @@ export function SmartHomeManager() {
   if (!data || !cfg) return <div className="text-xs text-[var(--muted)]">{msg ?? "Loading devices…"}</div>;
 
   const rooms = [...new Set([...data.entities.map((e) => e.room), ...Object.values(cfg.rooms)].filter((r) => r && r !== "Scenes" && r !== "Speakers"))];
-  const groups = ["light", "switch", "media", "scene"].map((k) => [k, data.entities.filter((e) => e.kind === k)] as const).filter(([, l]) => l.length);
+  const groups = ["light", "switch", "display", "media", "scene"].map((k) => [k, data.entities.filter((e) => e.kind === k)] as const).filter(([, l]) => l.length);
   const toggleHidden = (id: string, show: boolean) => setCfg({ ...cfg, hidden: show ? cfg.hidden.filter((h) => h !== id) : [...cfg.hidden, id] });
   const setName = (id: string, v: string) => setCfg({ ...cfg, names: { ...cfg.names, [id]: v } });
   const setRoom = (id: string, v: string) => setCfg({ ...cfg, rooms: { ...cfg.rooms, [id]: v } });

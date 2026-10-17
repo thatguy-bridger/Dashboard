@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "homelights" | "homespeakers" | "homeplugs" | "clock" | "leaveby" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
+export type CustomItemId = "homelights" | "homespeakers" | "homeplugs" | "clock" | "leaveby" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "nowplaying" | "agenda";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather">;
 
 export interface StandByItem {
@@ -39,7 +39,6 @@ const RAW_DEFS: Def[] = [
   D("upnext", "Up next (live countdown)", false, 60, 400, 640, 200, true),
   D("tomorrow", "Tomorrow preview", false, 60, 400, 560, 300, true),
   D("forecast", "Hourly forecast", true, 60, 568, 600, 118, true),
-  D("battery", "Device batteries (large chips)", false, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
   D("homelights", "Lights (every bulb in its real colour)", false, 740, 300, 420, 260, true),
@@ -48,7 +47,6 @@ const RAW_DEFS: Def[] = [
   D("sports", widgetLabel("sports"), false, 60, 600, 620, 100, true),
   D("traffic", widgetLabel("traffic"), false, 740, 300, 400, 260, true),
   D("trafficcamera", widgetLabel("trafficcamera"), false, 740, 300, 400, 260, true),
-  D("locations", widgetLabel("locations"), false, 740, 300, 400, 300, true),
   D("gmail", widgetLabel("gmail"), false, 740, 300, 400, 260, true),
   D("drive", widgetLabel("drive"), false, 740, 300, 400, 260, true),
   D("photos", widgetLabel("photos"), false, 740, 300, 400, 260, true),
@@ -69,7 +67,7 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 
 /** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
  *  instead of stretching it. */
-export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "daysummary", "sports"];
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "daysummary", "sports"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 /** Lists that reflow: scale by width and use however much height the box has. */

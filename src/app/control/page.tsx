@@ -7,14 +7,11 @@ import {
   WIDGET_TYPES,
   WIDGET_LABELS,
   PREFERRED_SIZE,
-  VISIBILITY_WEATHER_CONDITIONS,
   type Preset,
   type PresetWidget,
   type WidgetVisibility,
-  type VisibilityWeatherCondition,
 } from "@/lib/presets";
 import { ScreenPreview } from "@/components/ScreenPreview";
-import { FindMyConnect } from "@/components/FindMyConnect";
 import { GooglePhotosConnect } from "@/components/GooglePhotosConnect";
 import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
@@ -577,13 +574,6 @@ export default function ControlPage() {
           </Modal>
         );
       })()}
-
-      <section className="glass-panel p-6">
-        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
-          iCloud Find My
-        </h2>
-        <FindMyConnect />
-      </section>
 
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">

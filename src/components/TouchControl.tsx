@@ -1463,7 +1463,6 @@ export function TouchControl() {
     appliedKey.current = "";
     lastTrack.current = null; // apply whites and offs again straight away
   };
-  const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name) && l.supportsColor));
   const appliedKey = useRef("");
   const lastTrack = useRef<string | null>(null);
   // How each light really renders: its model (from Home Assistant's device info), fetched once while the scene is on.
@@ -1649,6 +1648,7 @@ export function TouchControl() {
   const media = entities.filter((e) => e.kind === "media");
   const devices = entities.filter((e) => e.kind === "light" || e.kind === "switch");
   const lights = devices.filter((d) => d.kind === "light");
+  const displays = entities.filter((e) => e.kind === "display");
   const fans = entities.filter((e) => e.kind === "fan");
   const rooms = [...new Set(devices.map((d) => d.room))].sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
   // The main volume slider drives every speaker (not TVs) so it actually moves the sound.
@@ -1805,6 +1805,14 @@ export function TouchControl() {
                     <div className="caps-label mb-3" style={{ fontSize: 13 }}>Individual lights</div>
                     <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
                       {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={guest ? undefined : () => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} onOpen={guest ? undefined : () => setSheet({ type: "light", id: d.id })} />))}
+                    </div>
+                  </div>
+                )}
+                {displays.length > 0 && !guest && (
+                  <div className="pb-10">
+                    <div className="caps-label mb-3" style={{ fontSize: 13 }}>Displays</div>
+                    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+                      {displays.map((d) => <SwitchTile key={d.id} e={d} act={act} />)}
                     </div>
                   </div>
                 )}

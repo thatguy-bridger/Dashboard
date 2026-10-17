@@ -11,7 +11,6 @@ import { LANDSCAPE_URLS } from "@/lib/landscapes";
 import { controlSpotify, useEstimatedProgress, useLyrics, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { Marquee } from "@/components/Marquee";
 import { FitText } from "@/components/FitText";
-import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
@@ -415,7 +414,7 @@ function WeatherHero({ w }: { w: Weather }) {
 
       {days.length > 0 && (
         <div className="flex gap-3">
-          {days.map((d, i) => (
+          {days.map((d) => (
             <div key={d.date} className="glass-card flex-1 flex flex-col items-center justify-center" style={{ height: 110, borderRadius: 26 }}>
               <div className="caps-label" style={{ fontSize: 11 }}>{dayLabelFor(d.date)}</div>
               <WeatherIcon code={d.weatherCode} isDay className="w-8 h-8 my-1" />
@@ -507,50 +506,6 @@ function Forecast({ hours, isDay, width }: { hours: Hour[]; isDay?: boolean; wid
         </div>
       ))}
     </Drifting>
-  );
-}
-
-interface FmDevice { id: string; name: string; deviceClass: string; batteryLevel: number | null; isPerson: boolean }
-
-const CLASS_ORDER = ["iPhone", "iPad", "Watch", "Mac", "AirPods"];
-function classRank(c: string) {
-  const i = CLASS_ORDER.findIndex((k) => c.toLowerCase().includes(k.toLowerCase()));
-  return i === -1 ? 99 : i;
-}
-
-/** "Alex's iPhone 15 Pro" -> "iPhone 15 Pro" when the owner prefix is obvious, else the full name. */
-const shortName = (n: string) => n.replace(/^.{1,24}?[’']s\s+/, "") || n;
-
-/** Your own iCloud devices' batteries (via Find My), not whatever device is
- *  rendering the screen. Each chip: device-type icon, level, and the device's name as a subnote. */
-function BatteryChips({ width }: { width: number }) {
-  const { devices } = useFeeds();
-  const list = (devices ?? [])
-    .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && d.batteryLevel >= 0)
-    .sort((a, b) => classRank(a.deviceClass) - classRank(b.deviceClass))
-    .slice(0, 5);
-  if (list.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-3" style={{ width }}>
-      {list.map((d) => {
-        const pct = Math.round((d.batteryLevel as number) * 100);
-        const color = pct <= 20 ? "#ff6b6b" : "#fff";
-        return (
-          <div key={d.id} className="glass-card flex flex-col justify-center px-5" style={{ height: 84, width: 178, borderRadius: 28 }}>
-            <div className="flex items-center gap-2.5">
-              <DeviceGlyph cls={d.deviceClass} color="rgba(255,255,255,0.75)" />
-              <svg width="30" height="16" viewBox="0 0 34 18" fill="none">
-                <rect x="1" y="1" width="28" height="16" rx="5" stroke={color} strokeOpacity="0.5" strokeWidth="1.6" />
-                <rect x="3.5" y="3.5" width={Math.max(2, 23 * (pct / 100))} height="11" rx="3" fill={color} />
-                <rect x="31" y="6" width="2" height="6" rx="1" fill={color} fillOpacity="0.5" />
-              </svg>
-              <span className="num-rounded font-bold" style={{ fontSize: 24, color }}>{pct}%</span>
-            </div>
-            <FitText className="caps-label mt-1.5" style={{ fontSize: 11 }}>{shortName(d.name)}</FitText>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1083,12 +1038,13 @@ function useStandByConfig(draft: string | null, profile: { layout: StandByItem[]
       setCfg({ layout: mergeStandByLayout(settings.standbyLayout), scenes: mergeScenes(settings.standbyScenes) });
       setLoaded(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- profileKey stands in for profile (same content, stable identity)
   }, [draft, profileKey, settings]);
   return { ...cfg, isDraft: Boolean(draft), loaded };
 }
 
 const REVEAL_DELAY: Record<string, number> = {
-  clock: 0.7, weather: 0.8, forecast: 0.8, battery: 0.9, nowplaying: 0.85, agenda: 1.0,
+  clock: 0.7, weather: 0.8, forecast: 0.8, nowplaying: 0.85, agenda: 1.0,
 };
 
 export function StandBy({ draft = null, sceneId = null, profile = null, debug = false }: {
@@ -1135,7 +1091,6 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
   const topHide: TopBarHide[] = [
     ...(shown.has("weather") || shown.has("weatherhero") ? (["weather"] as const) : []),
     ...(shown.has("upnext") ? (["countdown"] as const) : []),
-    ...(shown.has("battery") ? (["batteries"] as const) : []),
   ];
 
   function body(it: StandByItem): React.ReactNode {
@@ -1144,7 +1099,6 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
       case "weather": return weather && <WeatherTile w={weather} />;
       case "weatherhero": return weather && <WeatherHero w={weather} />;
       case "forecast": return weather && <Forecast hours={weather.hourly} isDay={weather.isDay} width={it.w} />;
-      case "battery": return <BatteryChips width={it.w} />;
       case "nowplaying":
         return playing ? (
           <div className="flex gap-4"><NowPlayingCard accent={color} /><VolumePill accent={color} /></div>
@@ -1176,7 +1130,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
    *  the user drags out; row-style pieces keep their height-scale and gain width instead. */
   function scaled(it: StandByItem): React.ReactNode {
     const def = STANDBY_DEFAULT_SIZE[it.id];
-    const custom = ["clock", "weatherhero", "weather", "forecast", "battery", "nowplaying", "agenda", "calendar", "upnext", "tomorrow", "daysummary", "sports", "leaveby"].includes(it.id);
+    const custom = ["clock", "weatherhero", "weather", "forecast", "nowplaying", "agenda", "calendar", "upnext", "tomorrow", "daysummary", "sports", "leaveby"].includes(it.id);
     if (!custom) return body(it);
     const row = ROW_ITEMS.includes(it.id);
     // The clock fills the width it is given (the right-column morning clock spans the whole column).

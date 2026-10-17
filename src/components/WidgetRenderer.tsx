@@ -6,7 +6,6 @@ import { SportsWidget } from "@/components/SportsWidget";
 import { ClockWidget } from "@/components/ClockWidget";
 import { CalendarWidget } from "@/components/CalendarWidget";
 import { TrafficWidget } from "@/components/TrafficWidget";
-import { LocationsWidget } from "@/components/LocationsWidget";
 import { GmailWidget } from "@/components/GmailWidget";
 import { DriveWidget } from "@/components/DriveWidget";
 import { PhotosWidget } from "@/components/PhotosWidget";
@@ -34,8 +33,6 @@ export function WidgetRenderer({ type, size = "md" }: { type: WidgetType; size?:
       return <CalendarWidget size={size} />;
     case "traffic":
       return <TrafficWidget size={size} />;
-    case "locations":
-      return <LocationsWidget size={size} />;
     case "gmail":
       return <GmailWidget size={size} />;
     case "drive":

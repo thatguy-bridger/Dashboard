@@ -8,7 +8,6 @@ import { useFeeds } from "@/lib/liveActivities";
 import { useSettings } from "@/lib/useSettings";
 import { pollEvery } from "@/lib/poll";
 import { Marquee } from "@/components/Marquee";
-import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { HomePeoplePills, HomeStatePills } from "@/components/HomeGlance";
 
 const chip = "flex items-center gap-2.5 px-4 rounded-full shrink-0 min-w-0";
@@ -81,8 +80,8 @@ function Car() {
 }
 
 /** Fixed bar across the top of every screen and mode: weather + commute on the left,
- *  what's next + batteries on the right. The island owns the middle. */
-export type TopBarHide = "weather" | "countdown" | "batteries";
+ *  what's next + this tablet's battery on the right. The island owns the middle. */
+export type TopBarHide = "weather" | "countdown";
 
 /** This tablet's own battery: the browser's Battery API when it has one, otherwise what the Home Assistant app reports. */
 function useSelfBattery(enabled: boolean, pin: string | null) {
@@ -146,7 +145,7 @@ function useFitScale(deps: unknown[]) {
 
 export function TopBar({ hide = [], showTime = false, selfBattery = false, pin = null }: { hide?: TopBarHide[]; showTime?: boolean; selfBattery?: boolean; pin?: string | null }) {
   const self = useSelfBattery(selfBattery, pin);
-  const { weather, events, devices } = useFeeds();
+  const { weather, events } = useFeeds();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -164,10 +163,6 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
   const mins = next ? Math.round((parseWhen(next.start).getTime() - now.getTime()) / 60_000) : 0;
   const soon = Boolean(next) && mins <= 10;
 
-  const batteries = (devices ?? [])
-    .filter((d) => !d.isPerson && typeof d.batteryLevel === "number" && (d.batteryLevel as number) >= 0)
-    .sort((a, b) => ["iphone", "watch", "ipad", "mac", "pod"].findIndex((k) => a.deviceClass.toLowerCase().includes(k)) - ["iphone", "watch", "ipad", "mac", "pod"].findIndex((k) => b.deviceClass.toLowerCase().includes(k)))
-    .slice(0, 3);
 
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
@@ -208,21 +203,6 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
           </div>
         )}
         <HomeStatePills />
-        {(hide.includes("batteries") ? [] : batteries).map((d) => {
-          const pct = Math.round((d.batteryLevel as number) * 100);
-          const low = pct <= 20;
-          return (
-            <div key={d.id} className={chip} style={chipStyle} title={d.name}>
-              <DeviceGlyph cls={d.deviceClass} color="rgba(255,255,255,0.75)" />
-              <div className="leading-none">
-                <div className="num-rounded font-bold" style={{ fontSize: 16, color: low ? "#ff6b6b" : "#fff" }}>{pct}%</div>
-                <div className="text-white/45 font-semibold truncate" style={{ fontSize: 9, maxWidth: 54, marginTop: 2 }}>
-                  {d.name.replace(/^.{1,24}?[’']s\s+/, "")}
-                </div>
-              </div>
-            </div>
-          );
-        })}
         {self && (
           <div className={chip} style={chipStyle} title="This tablet">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={self.pct <= 20 && !self.charging ? "#ff6b6b" : "rgba(255,255,255,0.8)"} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">

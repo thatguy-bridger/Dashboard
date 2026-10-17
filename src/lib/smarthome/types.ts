@@ -1,5 +1,5 @@
 /** One thing on the touch screen: a light/switch, a scene button, or a speaker/TV. */
-export type HomeKind = "light" | "switch" | "scene" | "media" | "fan";
+export type HomeKind = "light" | "switch" | "scene" | "media" | "fan" | "display";
 
 export interface HomeEntity {
   id: string;
