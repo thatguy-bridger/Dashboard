@@ -790,10 +790,11 @@ function useLibrary(pin: string | null) {
     try { await fetch("/api/spotify/playlists", { method: "POST", headers, body: JSON.stringify(patch) }); } catch { /* shown on next load */ }
   };
   /** Start a playlist (the default when no uri). Resolves to an error code or null. */
-  const play = async (uri?: string): Promise<string | null> => {
+  const play = async (uri?: string, name?: string): Promise<string | null> => {
     try {
-      const res = await fetch("/api/spotify/play-playlist", { method: "POST", headers, body: JSON.stringify(uri ? { uri } : {}) });
+      const res = await fetch("/api/spotify/play-playlist", { method: "POST", headers, body: JSON.stringify(uri ? { uri, name } : {}) });
       const j = await res.json().catch(() => ({}));
+      if (j.error === "no_device" && j.speaker) return `no_device:${j.speaker}`;
       setTimeout(pollOnce, 1500);
       setTimeout(pollOnce, 4000);
       return res.ok ? null : (j.error ?? "failed");
@@ -822,7 +823,7 @@ function useUpNext(pin: string | null, trackId: string | undefined): { id: strin
 }
 
 const playError = (code: string | null) =>
-  code === "no_device" ? "Couldn't reach that speaker. Press and hold \"Play on\" in Music to pick another." :
+  code?.startsWith("no_device") ? `Spotify can’t see ${code.split(":")[1] ?? "that speaker"} right now. Nest and Cast speakers only show up in Spotify while something is already playing on them. Start a song on it from your phone once, or connect Google Assistant to Home Assistant so this button can start it by itself.` :
   code === "no_default" ? "Pick a default playlist first." :
   code ? "Couldn't start it. Try again." : null;
 
@@ -948,7 +949,7 @@ function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, ac
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playIt = async (uri: string) => {
     setBusy(uri);
-    setMessage(playError(await music.play(uri)));
+    setMessage(playError(await music.play(uri, lib?.playlists.find((p) => p.uri === uri)?.name)));
     setTimeout(() => setBusy(null), 3000);
   };
   return (

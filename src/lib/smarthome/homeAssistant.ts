@@ -534,3 +534,20 @@ export async function ownerNearby(): Promise<{ nearby: boolean; home: boolean; s
   const wifiBad = ["not connected", "unknown", "unavailable", "none"].includes((ssid ?? "").trim().toLowerCase());
   return { nearby: isHome && !((ssid ?? "").trim() !== "" && wifiBad), home: isHome, ssid: (ssid ?? "").trim() };
 }
+
+/** Home Assistant's Google Assistant SDK integration (if set up) can say things to Google Assistant, the same way a voice
+ *  command does: that is how "play X on Spotify on <speaker>" reaches Nest/Cast speakers Spotify can't list. */
+export async function assistantAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${URL_()}/api/services`, { headers: headers(), cache: "no-store" });
+    if (!res.ok) return false;
+    const all = (await res.json()) as { domain: string; services: Record<string, unknown> }[];
+    return Boolean(all.find((d) => d.domain === "google_assistant_sdk")?.services?.send_text_command);
+  } catch {
+    return false;
+  }
+}
+
+export async function assistantCommand(command: string) {
+  await call("google_assistant_sdk", "send_text_command", { command });
+}
