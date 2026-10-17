@@ -110,7 +110,7 @@ export const EMPTY_HOME_CONFIG: HomeConfig = { hidden: [], rooms: {}, names: {},
 export type HomeAction =
   | { type: "toggle" | "on" | "off" | "activate" | "play" | "pause" | "next" | "previous" }
   | { type: "brightness" | "volume" | "colorTemp" | "speed"; value: number }
-  | { type: "color"; h: number; s: number };
+  | { type: "color"; h: number; s: number; /** optional brightness 1-100 sent in the same command */ brightness?: number };
 
 export interface HomeProvider {
   name: HomeSnapshot["provider"];

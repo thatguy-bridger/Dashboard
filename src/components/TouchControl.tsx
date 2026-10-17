@@ -21,13 +21,15 @@ const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, 
 /** What the album-art lights ask of one light (see /api/home/colors). */
 interface ThemeItem {
   id: string;
-  mode: "color" | "white" | "onoff";
+  mode: "color" | "white" | "onoff" | "dim";
   h?: number;
   s?: number;
   kelvin?: number;
   brightness?: number;
   on?: boolean;
   from?: { h: number; s: number };
+  ramp?: { from: number; to: number };
+  instant?: boolean;
 }
 
 const W = 1440;
@@ -197,6 +199,7 @@ function useHome(pin: string | null, ready = true, nonce = 0) {
         const it = items.find((i) => i.id === e.id);
         if (!it) return e;
         const to: HomeEntity = it.mode === "color" && it.h != null && it.s != null ? applyLocal(e, { type: "color", h: it.h, s: it.s })
+          : it.mode === "dim" ? { ...e, brightness: it.ramp?.to ?? it.brightness ?? e.brightness }
           : it.mode === "white" && it.on === false ? { ...e, on: false }
           : it.mode === "white" ? { ...e, on: true, hs: undefined, colorTemp: it.kelvin ?? e.colorTemp }
           : { ...e, on: it.on !== false };
@@ -1492,22 +1495,26 @@ export function TouchControl() {
     if (!targets.length) return;
     const base: [number, number][] = palette.map(hexToHs); // only the colours that are really in the artwork
     const songChanged = lastTrack.current !== np.track.id;
+    const firstApply = lastTrack.current === null;
+    // A new song switches colours instantly; unless this is the first time, the lights start dim (the end-of-song dip) and
+    // brighten over about five seconds, so a track change reads as a breath rather than a jump.
+    const lift = songChanged && !firstApply ? { ramp: { from: 25, to: 100 } } : {};
     const items: ThemeItem[] = [];
     let colourIndex = 0;
     for (const l of targets) {
       const mode = modeOf(l);
       if (mode === "color" && l.supportsColor && !mono && base.length) {
         const [h0, s0] = base[(colourIndex++ + rot) % base.length];
-        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100 }); continue; } // a washed-out colour is really a white
-        items.push({ id: l.id, mode: "color", h: calibrateHue(models[l.id], h0), s: s0, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined });
+        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100, ...lift }); continue; } // a washed-out colour is really a white
+        items.push({ id: l.id, mode: "color", h: calibrateHue(models[l.id], h0), s: s0, brightness: l.brightness ?? 100, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined, ...(songChanged ? { instant: true, ...lift } : {}) });
       } else if (!songChanged) {
         continue; // whites and offs only change when the song does
       } else if (mode === "off") {
         items.push({ id: l.id, mode: l.supportsColor || l.supportsColorTemp ? "white" : "onoff", on: false });
       } else if (l.supportsColorTemp) {
-        items.push({ id: l.id, mode: "white", on: true, kelvin: 4000, brightness: 100 }); // "on" is the same neutral white for every song
+        items.push({ id: l.id, mode: "white", on: true, kelvin: 4000, brightness: 100, ...lift }); // "on" is the same neutral white for every song
       } else if (l.supportsColor) {
-        items.push({ id: l.id, mode: "color", h: 0, s: 0, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined }); // a colour-only bulb: white means no colour
+        items.push({ id: l.id, mode: "color", h: 0, s: 0, instant: true, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined, ...lift }); // a colour-only bulb: white means no colour
       } else {
         items.push({ id: l.id, mode: "onoff", on: true });
       }
@@ -1518,10 +1525,29 @@ export function TouchControl() {
     if (appliedKey.current === key) return;
     appliedKey.current = key;
     lastTrack.current = np.track.id;
-    // slower between songs, slower still inside a song
-    colorMany(items, songChanged ? 5 : 12);
+    // between songs: instant colours with a five-second brighten; inside a song: a slow twelve-second glide
+    colorMany(items, songChanged ? (firstApply ? 0 : 5) : 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours, the rotation or a light's state change
   }, [guest, ml.enabled, ml.modes, ml.ids, playing, palette, mono, models, rot, np?.track?.id, colorMany]);
+  // Dim into the end of each song: about five seconds before it finishes the lit lights ease down to a quarter, then the
+  // next song's colours arrive at that dim level and brighten (see the effect above). Rescheduled whenever Spotify's
+  // position is refreshed, so skips and seeks stay in step.
+  useEffect(() => {
+    if (guest || !ml.enabled || !playing || !np?.track) return;
+    const track = np.track;
+    const msLeft = track.durationMs - (track.progressMs + (Date.now() - (np.fetchedAt ?? Date.now())));
+    const delay = msLeft - 5500;
+    if (delay < 0 || delay > 20 * 60_000) return;
+    const id = setTimeout(() => {
+      const dim: ThemeItem[] = colorLights
+        .filter((l) => l.available && l.on && modeOf(l) !== "off")
+        .map((l) => ({ id: l.id, mode: "dim" as const, brightness: 25, ramp: { from: l.brightness ?? 100, to: 25 } }));
+      if (dim.length) colorMany(dim, 5);
+    }, delay);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reschedules when the song or Spotify's position changes
+  }, [guest, ml.enabled, playing, np?.track?.id, np?.fetchedAt, colorMany]);
+
   /** Plain white at full brightness (neutral 4000K where a bulb has a white temperature, otherwise colour with no saturation). */
   const resetToWhite = (targets: HomeEntity[]) => {
     const ls = targets.filter((l) => l.kind === "light");
