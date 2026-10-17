@@ -1245,7 +1245,7 @@ export function TouchControl() {
                       className="w-full flex items-center justify-center gap-4 mt-4 font-bold"
                       style={{ height: 110, borderRadius: 40, fontSize: 28, color: away ? "#000" : "#fff", background: away ? color : "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: away ? `0 0 40px -8px ${color}` : undefined }}
                     >
-                      {away ? "Welcome back — turn lights on" : "I’m leaving — lights off, back on when I return"}
+                      I’m leaving — lights off, back on when I return
                     </Press>
                   )}
                   {devices.length > 0 && <div className="text-white/30 font-semibold text-center mt-6" style={{ fontSize: 15 }}>Scroll for individual lights ↓</div>}
@@ -1315,9 +1315,20 @@ export function TouchControl() {
       </div>
       <TopBar />
       <ActivityPills includeMusic={false} hide={["game"]} />
+      {/* away: the whole screen is one "Welcome back" button, ahead of anything else */}
+      {away && !gate && (
+        <button
+          onClick={() => setAway("return")}
+          className="absolute inset-0 z-[45] flex flex-col items-center justify-center gap-6 touch-manipulation select-none"
+          style={{ background: `radial-gradient(90% 70% at 50% 40%, ${color}55, #000 75%)`, border: "none" }}
+        >
+          <span className="text-white font-bold" style={{ fontSize: 96, lineHeight: 1 }}>Welcome back</span>
+          <span className="text-white/65 font-semibold" style={{ fontSize: 30 }}>Tap anywhere to turn your lights on and resume your music</span>
+        </button>
+      )}
       {/* fully dim when untouched: pure black (off on OLED), a faint clock, touch to wake */}
       <div
-        onPointerDown={wake}
+        onPointerDown={() => { if (away) setAway("return"); wake(); }}
         className="absolute inset-0 z-50 bg-black flex items-center justify-center"
         style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: idle ? "opacity 1.2s ease" : "opacity 0.12s ease-out" }}
       >

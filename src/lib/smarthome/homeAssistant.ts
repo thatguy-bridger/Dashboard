@@ -342,12 +342,14 @@ export async function motionState(fresh = false): Promise<{ sensors: number; act
 export async function installMotionWake(service: string, awake: number) {
   const body = {
     alias: "Home Base: wake tablet on motion",
-    description: "Turns the tablet screen on and restores its brightness when the camera motion sensor fires.",
+    description: "Turns the tablet screen on and restores its brightness when the camera motion sensor fires; if you are away, also brings the lights back.",
     mode: "single",
     triggers: [{ trigger: "state", entity_id: "binary_sensor.tablet_camera_motion", to: "on" }],
     actions: [{ parallel: [
       { action: `notify.${service}`, data: { message: "command_screen_on" } },
       { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
+      // Away and it's been a minute (so you walking out the door doesn't count): you're back, lights return.
+      { if: [{ condition: "template", value_template: `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 and (now() - s[0].last_updated).total_seconds() > 60 }}` }], then: [{ action: "script.turn_on", target: { entity_id: "script.home_base_returning" } }] },
     ] }],
   };
   const res = await fetch(`${URL_()}/api/config/automation/config/home_base_wake_on_motion`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
