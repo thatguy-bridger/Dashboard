@@ -33,6 +33,8 @@ export interface HomeSnapshot {
   entities: HomeEntity[];
   /** "I'm leaving" was run and the lights haven't been restored yet */
   away?: boolean;
+  /** entity ids flagged to stay on when "All lights" is turned off */
+  keepOn?: string[];
   /** Home Assistant people (phones) and whether each is home, when it has any */
   people?: { name: string; home: boolean }[];
 }
@@ -60,9 +62,11 @@ export interface HomeConfig {
   /** entity id -> display name */
   names: Record<string, string>;
   scenes: SavedScene[];
+  /** lights/switches that the big "All lights" off leaves alone (and "I'm leaving" keeps on) */
+  keepOn: string[];
 }
 
-export const EMPTY_HOME_CONFIG: HomeConfig = { hidden: [], rooms: {}, names: {}, scenes: [] };
+export const EMPTY_HOME_CONFIG: HomeConfig = { hidden: [], rooms: {}, names: {}, scenes: [], keepOn: [] };
 
 export type HomeAction =
   | { type: "toggle" | "on" | "off" | "activate" | "play" | "pause" | "next" | "previous" }
@@ -76,7 +80,7 @@ export interface HomeProvider {
   /** Same action on several devices; providers may batch it into fewer calls. */
   actMany?(ids: string[], action: HomeAction): Promise<void>;
   /** Save what is on, turn everything off, and remember it so `returnHome` can bring it back. */
-  leaveHome?(): Promise<void>;
+  leaveHome?(keepOn?: string[]): Promise<void>;
   returnHome?(): Promise<void>;
   /** Fresh state for just these devices (cheap: used to confirm a change landed). */
   peek(ids: string[]): Promise<HomeEntity[]>;

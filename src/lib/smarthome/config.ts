@@ -22,6 +22,7 @@ export function parseHomeConfig(raw: unknown): HomeConfig {
     rooms: strMap(r.rooms),
     names: strMap(r.names),
     scenes,
+    keepOn: Array.isArray(r.keepOn) ? (r.keepOn as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 300) : [],
   };
 }
 

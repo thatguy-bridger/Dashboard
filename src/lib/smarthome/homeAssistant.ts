@@ -123,12 +123,12 @@ export const homeAssistantProvider: HomeProvider = {
     });
     return { provider: "homeassistant", entities, away, ...(people.length ? { people } : {}) };
   },
-  async leaveHome() {
+  async leaveHome(keepOn: string[] = []) {
     const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
     const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
     const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
     const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
-    const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id));
+    const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
     // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
     if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
     const offLights = lights.filter((id) => !stayOn.has(id)), offSwitches = switches.filter((id) => !stayOn.has(id));
@@ -242,10 +242,10 @@ export async function playMedia(entityId: string, mediaId: string, mediaType: st
 /** Creates two Home Assistant scripts that do what the dashboard's "I'm leaving" / "I'm back" buttons do,
  *  so a Google Home routine ("hey google, I'm leaving") can run them (expose them to Google Assistant in
  *  Nabu Casa). Re-run after adding lights so the list stays current. */
-export async function installAwayScripts(): Promise<string[]> {
+export async function installAwayScripts(keepOn: string[] = []): Promise<string[]> {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
   const ids = (d: string) => raw.filter((s) => s.entity_id.startsWith(`${d}.`)).map((s) => s.entity_id);
-  const keep = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id));
+  const keep = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
   const lights = ids("light"), switches = ids("switch");
   const offLights = lights.filter((i) => !keep.has(i)), offSwitches = switches.filter((i) => !keep.has(i));
   const ledOn = [...keep].filter((i) => i.startsWith("switch.") || i.startsWith("light."));

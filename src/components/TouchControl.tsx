@@ -149,6 +149,14 @@ function useHome(pin: string | null) {
     [load]
   );
 
+  /** Flag a light so the big "All lights" off leaves it alone. */
+  const setKeep = useCallback(async (id: string, keep: boolean) => {
+    setSnap((s) => (s ? { ...s, keepOn: keep ? [...new Set([...(s.keepOn ?? []), id])] : (s.keepOn ?? []).filter((x) => x !== id) } : s));
+    try {
+      await fetch("/api/home/keep", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ id, keep }) });
+    } catch { /* the next refresh shows the truth */ }
+  }, []);
+
   /** "I'm leaving" / "I'm back": the server remembers what was on and restores it. */
   const setAway = useCallback(
     async (mode: "leave" | "return") => {
@@ -167,7 +175,7 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing, setAway };
+  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -494,7 +502,7 @@ const HUES: { name: string; h: number; s: number }[] = [
 type Act = (target: string | string[], a: HomeAction) => void;
 
 /** Details for one light, a room, or every light: a glowing bulb split per light, then every control. */
-function LightsSheet({ title, lights, act, accent, onClose, extras }: { title: string; lights: HomeEntity[]; act: Act; accent: string; onClose: () => void; extras?: React.ReactNode }) {
+function LightsSheet({ title, lights, act, accent, onClose, extras, keepOn = [], onKeep }: { title: string; lights: HomeEntity[]; act: Act; accent: string; onClose: () => void; extras?: React.ReactNode; keepOn?: string[]; onKeep?: (id: string, keep: boolean) => void }) {
   const [sel, setSel] = useState<string | null>(lights.length === 1 ? lights[0].id : null);
   const [bri, setBri] = useState<number | null>(null);
   const [warm, setWarm] = useState<number | null>(null);
@@ -535,6 +543,15 @@ function LightsSheet({ title, lights, act, accent, onClose, extras }: { title: s
         <div className="text-white font-bold" style={{ fontSize: 22 }}>{sel ? targets[0]?.name : lights.length > 1 ? "All lights here" : targets[0]?.name} · {anyOn ? `${onOnes.length} on` : "off"}</div>
         <Toggle on={anyOn} onChange={(v) => act(ids, { type: v ? "on" : "off" })} />
       </div>
+      {onKeep && lights.length === 1 && (
+        <Press onClick={() => onKeep(lights[0].id, !keepOn.includes(lights[0].id))} className="flex items-center justify-between glass-card text-left" style={{ borderRadius: 30, padding: "16px 24px" }}>
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: 20 }}>Stays on with “All lights” off</div>
+            <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>Only the top-right “Turn off all” button turns this one off.</div>
+          </div>
+          <Toggle on={keepOn.includes(lights[0].id)} onChange={(v) => onKeep(lights[0].id, v)} />
+        </Press>
+      )}
 
       {dim.length > 0 && (
         <div>
@@ -581,6 +598,11 @@ function LightsSheet({ title, lights, act, accent, onClose, extras }: { title: s
                   <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>{l.on ? (l.dimmable ? `On · ${l.brightness ?? 100}%` : "On") : "Off"}</div>
                 </div>
               </Press>
+              {onKeep && (
+                <Press onClick={() => onKeep(l.id, !keepOn.includes(l.id))} className="px-4 py-2 font-semibold shrink-0" style={{ borderRadius: 20, fontSize: 14, background: keepOn.includes(l.id) ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: keepOn.includes(l.id) ? "#000" : "#fff" }}>
+                  {keepOn.includes(l.id) ? "Stays on ✓" : "Stays on"}
+                </Press>
+              )}
               <Toggle on={Boolean(l.on)} onChange={(v) => act(l.id, { type: v ? "on" : "off" })} size={0.85} />
             </div>
           ))}
@@ -1018,7 +1040,7 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, saveScene, syncing, setAway } = useHome(pin);
+  const { snap, gate, error, act, saveScene, syncing, setAway, setKeep } = useHome(pin);
   useAutoUpdate();
   const { idle, wake, sleep } = useIdle(2 * 60_000);
 
@@ -1117,7 +1139,12 @@ export function TouchControl() {
   const rightW = Math.min(600, Math.max(460, Math.round(cw * 0.36)));
   const leftW = cw - rightW - 50 - 40 - 50;
   const time = now ? now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
-  const anyOn = devices.some((d) => d.on);
+  const keepOn = snap?.keepOn ?? [];
+  // "All lights" leaves flagged lights alone; the top-right button turns everything off.
+  const included = devices.filter((d) => !keepOn.includes(d.id));
+  const allTargets = included.length ? included : devices;
+  const anyOn = allTargets.some((d) => d.on);
+  const anythingOn = devices.some((d) => d.on);
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
@@ -1140,22 +1167,31 @@ export function TouchControl() {
               {error && !snap && <div className="glass-card px-6 py-4 text-white/70 font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>{error}</div>}
 
               {devices.length > 0 && (
+                <div className="relative shrink-0" style={{ height: 400, marginBottom: 18 }}>
                 <ToggleButton
                   on={anyOn}
-                  glow={groupGlow(devices)}
-                  onTap={() => act(devices.map((d) => d.id), { type: anyOn ? "off" : "on" })}
+                  glow={groupGlow(allTargets)}
+                  onTap={() => act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" })}
                   onLong={() => setSheet({ type: "all" })}
-                  style={{ width: "100%", height: 400, padding: "0 64px", borderRadius: 64, marginBottom: 18, flexShrink: 0 }}
+                  style={{ width: "100%", height: "100%", padding: "0 64px", borderRadius: 64 }}
                 >
                   <div className="flex items-center gap-14">
                     <SegmentBulb lights={lights.length ? lights : devices} size={230} />
                     <div>
                       <div className="text-white font-bold" style={{ fontSize: 88, lineHeight: 1.02 }}>All lights</div>
-                      <div className="text-white/65 font-semibold mt-2" style={{ fontSize: 30 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}</div>
+                      <div className="text-white/65 font-semibold mt-2" style={{ fontSize: 30 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}{keepOn.length > 0 ? ` · ${keepOn.length} stay${keepOn.length === 1 ? "s" : ""} on` : ""}</div>
                       <div className="text-white/35 font-semibold mt-1" style={{ fontSize: 19 }}>Hold for color &amp; scenes</div>
                     </div>
                   </div>
                 </ToggleButton>
+                  <Press
+                    onClick={() => act(devices.map((d) => d.id), { type: "off" })}
+                    className="absolute font-bold"
+                    style={{ top: 22, right: 26, padding: "14px 26px", borderRadius: 26, fontSize: 19, background: anythingOn ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)", color: anythingOn ? "#fff" : "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.22)" }}
+                  >
+                    Turn off all
+                  </Press>
+                </div>
               )}
 
               <div className="flex-1 min-h-0 overflow-y-auto pr-2" style={{ scrollbarWidth: "none" }}>
@@ -1219,9 +1255,9 @@ export function TouchControl() {
         )}
         {sheet?.type === "light" && snap && (() => {
           const e = snap.entities.find((x) => x.id === sheet.id);
-          return e ? <LightsSheet title={e.name} lights={[e]} act={act} accent={color} onClose={() => setSheet(null)} /> : null;
+          return e ? <LightsSheet title={e.name} lights={[e]} act={act} accent={color} onClose={() => setSheet(null)} keepOn={keepOn} onKeep={setKeep} /> : null;
         })()}
-        {sheet?.type === "room" && <LightsSheet title={sheet.room} lights={devices.filter((d) => d.room === sheet.room)} act={act} accent={color} onClose={() => setSheet(null)} />}
+        {sheet?.type === "room" && <LightsSheet title={sheet.room} lights={devices.filter((d) => d.room === sheet.room)} act={act} accent={color} onClose={() => setSheet(null)} keepOn={keepOn} onKeep={setKeep} />}
         {sheet?.type === "all" && (
           <LightsSheet
             title="All lights"
@@ -1229,6 +1265,8 @@ export function TouchControl() {
             act={act}
             accent={color}
             onClose={() => setSheet(null)}
+            keepOn={keepOn}
+            onKeep={setKeep}
             extras={
               <div className="flex flex-col gap-3">
                 <div className="caps-label" style={{ fontSize: 13 }}>Scenes</div>
