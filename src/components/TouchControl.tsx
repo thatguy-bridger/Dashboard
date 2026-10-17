@@ -334,10 +334,10 @@ function Toggle({ on, onChange, size = 1 }: { on: boolean; onChange: (next: bool
 /** A modal that scrolls when it has more to show. */
 function Sheet({ title, onClose, children, width = 720, glow }: { title: string; onClose: () => void; children: React.ReactNode; width?: number; glow?: string }) {
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55" onClick={onClose}>
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/75" onClick={onClose}>
       <div
         className="glass-card flex flex-col overflow-hidden"
-        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${glow}55, transparent 70%), ` : ""}var(--sheet-bg, rgba(24,24,28,0.95))` }}
+        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${glow}55, transparent 70%), ` : ""}rgba(14,14,18,0.97)` }}
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="flex items-center justify-between shrink-0" style={{ padding: "28px 36px 16px" }}>
@@ -458,36 +458,69 @@ function LightsSheet({ title, lights, act, accent, onClose, extras }: { title: s
   );
 }
 
+/** One big button: tap toggles, press and hold opens the details. */
+function ToggleButton({ on, onTap, onLong, children, style, glow }: { on: boolean; onTap: () => void; onLong?: () => void; children: React.ReactNode; style?: React.CSSProperties; glow?: string }) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const fired = useRef(false);
+  const clear = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; start.current = null; };
+  return (
+    <button
+      onPointerDown={(e) => {
+        fired.current = false;
+        start.current = { x: e.clientX, y: e.clientY };
+        if (onLong) timer.current = setTimeout(() => { fired.current = true; start.current = null; onLong(); }, 480);
+      }}
+      onPointerMove={(e) => { if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 12) clear(); }}
+      onPointerUp={() => { const wasLong = fired.current; const armed = start.current; clear(); if (!wasLong && armed) onTap(); }}
+      onPointerCancel={clear}
+      onContextMenu={(e) => e.preventDefault()}
+      className="touch-manipulation select-none text-left active:scale-[0.97] transition-transform duration-150"
+      style={{
+        borderRadius: 40,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: on
+          ? `radial-gradient(120% 140% at 15% 0%, ${glow ?? "rgba(255,200,110,0.55)"}, rgba(255,255,255,0.10) 75%)`
+          : "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))",
+        boxShadow: on && glow ? `0 0 40px -10px ${glow}` : undefined,
+        WebkitTouchCallout: "none",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+const groupGlow = (ls: HomeEntity[]) => { const l = ls.find((x) => x.on); return l ? lightColor(l) : undefined; };
+
 function LightTile({ e, act, onOpen, syncing }: { e: HomeEntity; act: Act; onOpen: () => void; syncing?: boolean }) {
   const on = Boolean(e.on);
   return (
-    <div
-      role="button"
-      onClick={onOpen}
-      className="glass-card flex items-center gap-4 touch-manipulation active:scale-[0.98] transition-transform"
-      style={{ width: 300, height: 100, borderRadius: 34, padding: "0 22px", opacity: e.available ? 1 : 0.4, boxShadow: syncing ? "0 0 0 2px rgba(255,255,255,0.35)" : undefined }}
-    >
-      <span className={syncing ? "animate-pulse" : ""}><SegmentBulb lights={[e]} size={46} /></span>
-      <div className="min-w-0 flex-1">
-        <FitText className="text-white font-bold" style={{ fontSize: 21 }}>{e.name}</FitText>
-        <div className="num-rounded font-semibold text-white/55" style={{ fontSize: 15 }}>{on ? (e.dimmable ? `${e.brightness ?? 100}%` : "On") : "Off"}</div>
+    <ToggleButton on={on} glow={on ? lightColor(e) : undefined} onTap={() => act(e.id, { type: on ? "off" : "on" })} onLong={onOpen} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4, outline: syncing ? "2px solid rgba(255,255,255,0.3)" : undefined }}>
+      <div className="flex items-center gap-4">
+        <span className={syncing ? "animate-pulse" : ""}><SegmentBulb lights={[e]} size={52} /></span>
+        <div className="min-w-0 flex-1">
+          <FitText className="text-white font-bold" style={{ fontSize: 22 }}>{e.name}</FitText>
+          <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? (e.dimmable ? `${e.brightness ?? 100}%` : "On") : "Off"}</div>
+        </div>
       </div>
-      <Toggle on={on} onChange={(v) => act(e.id, { type: v ? "on" : "off" })} size={0.9} />
-    </div>
+    </ToggleButton>
   );
 }
 
 function SwitchTile({ e, act }: { e: HomeEntity; act: Act }) {
   const on = Boolean(e.on);
   return (
-    <div className="glass-card flex items-center gap-4" style={{ width: 300, height: 100, borderRadius: 34, padding: "0 22px", opacity: e.available ? 1 : 0.4 }}>
-      <SegmentBulb lights={[e]} size={46} />
-      <div className="min-w-0 flex-1">
-        <FitText className="text-white font-bold" style={{ fontSize: 21 }}>{e.name}</FitText>
-        <div className="font-semibold text-white/55" style={{ fontSize: 15 }}>{on ? "On" : "Off"}</div>
+    <ToggleButton on={on} onTap={() => act(e.id, { type: on ? "off" : "on" })} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4 }}>
+      <div className="flex items-center gap-4">
+        <SegmentBulb lights={[e]} size={52} />
+        <div className="min-w-0 flex-1">
+          <FitText className="text-white font-bold" style={{ fontSize: 22 }}>{e.name}</FitText>
+          <div className="font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? "On" : "Off"}</div>
+        </div>
       </div>
-      <Toggle on={on} onChange={(v) => act(e.id, { type: v ? "on" : "off" })} size={0.9} />
-    </div>
+    </ToggleButton>
   );
 }
 
@@ -535,8 +568,8 @@ const playError = (code: string | null) =>
   code === "no_default" ? "Pick a default playlist first." :
   code ? "Couldn't start it. Try again." : null;
 
-/** The front-screen music control: kept tiny. Tap anywhere on it for everything else. */
-function MusicController({ accent, music, onOpen, setMessage }: { accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void }) {
+/** The front-screen music control: big, with a play/pause you can hit without looking. Tap the art or title for the rest. */
+function MusicController({ accent, music, onOpen, setMessage, height }: { accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void; height: number }) {
   const np = useNowPlaying();
   const track = np?.track ?? null;
   const [starting, setStarting] = useState(false);
@@ -550,34 +583,41 @@ function MusicController({ accent, music, onOpen, setMessage }: { accent: string
   };
 
   if (!np?.connected) {
-    return <div className="glass-card flex items-center justify-center text-center px-8" style={{ height: 160, borderRadius: 44 }}><div className="text-white/45 font-semibold" style={{ fontSize: 20 }}>Spotify isn&apos;t connected</div></div>;
+    return <div className="glass-card flex items-center justify-center text-center px-8" style={{ height, borderRadius: 52 }}><div className="text-white/45 font-semibold" style={{ fontSize: 22 }}>Spotify isn&apos;t connected</div></div>;
   }
   if (!track) {
     return (
-      <div role="button" onClick={onOpen} className="glass-card flex items-center gap-6 touch-manipulation" style={{ borderRadius: 48, padding: 28 }}>
-        <Press onClick={start} className="flex items-center justify-center shrink-0 text-black" style={{ width: 132, height: 132, borderRadius: 66, background: accent, boxShadow: `0 10px 40px ${accent}80` }}>
-          {starting ? <span className="animate-pulse font-bold" style={{ fontSize: 20 }}>Starting…</span> : <Icon d={PLAY} size={68} />}
+      <div className="glass-card flex flex-col items-center justify-center gap-8 text-center" style={{ height, borderRadius: 52, padding: 32 }}>
+        <Press onClick={start} className="flex items-center justify-center text-black" style={{ width: 280, height: 280, borderRadius: 140, background: accent, boxShadow: `0 16px 60px ${accent}80` }}>
+          {starting ? <span className="animate-pulse font-bold" style={{ fontSize: 28 }}>Starting…</span> : <Icon d={PLAY} size={140} />}
         </Press>
-        <div className="min-w-0 flex-1">
-          <div className="text-white font-bold" style={{ fontSize: 28 }}>Start music</div>
-          <div className="text-white/55 font-semibold truncate" style={{ fontSize: 17 }}>{music.lib?.defaults.name ?? "Tap to choose a playlist"}</div>
+        <div className="min-w-0 max-w-full">
+          <div className="text-white font-bold" style={{ fontSize: 34 }}>Start music</div>
+          <div className="text-white/55 font-semibold truncate" style={{ fontSize: 19 }}>{music.lib?.defaults.name ?? "No default playlist yet"}</div>
         </div>
+        <Press onClick={onOpen} className="glass-card px-8 py-4 text-white font-semibold" style={{ borderRadius: 28, fontSize: 20 }}>Choose a playlist</Press>
       </div>
     );
   }
   return (
-    <div role="button" onClick={onOpen} className="glass-card flex items-center gap-5 touch-manipulation" style={{ borderRadius: 44, padding: 22 }}>
-      {track.albumArtUrl && (
-        // eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image
-        <img src={track.albumArtUrl} alt="" className="object-cover shrink-0" style={{ width: 110, height: 110, borderRadius: 30, boxShadow: `0 10px 30px ${accent}70` }} />
-      )}
-      <div className="min-w-0 flex-1">
-        <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 26 }}>{track.name}</FitText>
-        <FitText className="text-white/60 font-medium" style={{ fontSize: 18 }}>{track.artists}</FitText>
-      </div>
-      <Press onClick={() => controlSpotify(np.isPlaying ? "pause" : "play")} className="glass-card flex items-center justify-center text-white shrink-0" style={{ width: 84, height: 84, borderRadius: 42 }}>
-        <Icon d={np.isPlaying ? PAUSE : PLAY} size={40} />
+    <div className="glass-card flex flex-col items-center gap-5" style={{ height, borderRadius: 52, padding: 28 }}>
+      <Press onClick={onOpen} className="flex flex-col items-center gap-4 w-full min-h-0 flex-1">
+        {track.albumArtUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image
+          <img src={track.albumArtUrl} alt="" className="object-cover min-h-0" style={{ width: "min(100%, 340px)", aspectRatio: "1", borderRadius: 40, boxShadow: `0 14px 50px ${accent}70` }} />
+        )}
+        <div className="w-full min-w-0 text-center">
+          <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 32 }}>{track.name}</FitText>
+          <FitText className="text-white/60 font-medium" style={{ fontSize: 20 }}>{track.artists}</FitText>
+        </div>
       </Press>
+      <div className="flex items-center justify-center gap-6 shrink-0 text-white">
+        <Press onClick={() => controlSpotify("previous")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={PREV} size={52} /></Press>
+        <Press onClick={() => controlSpotify(np.isPlaying ? "pause" : "play")} className="flex items-center justify-center text-black" style={{ width: 150, height: 150, borderRadius: 75, background: "#fff", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
+          <Icon d={np.isPlaying ? PAUSE : PLAY} size={74} />
+        </Press>
+        <Press onClick={() => controlSpotify("next")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={NEXT} size={52} /></Press>
+      </div>
     </div>
   );
 }
@@ -726,8 +766,8 @@ function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, m
 function SaveSceneSheet({ onSave, onClose }: { onSave: (name: string) => void; onClose: () => void }) {
   const [name, setName] = useState("");
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55" onClick={onClose}>
-      <div className="glass-card w-[560px] flex flex-col gap-5" style={{ borderRadius: 44, padding: 34, background: "rgba(24,24,28,0.92)" }} onClick={(ev) => ev.stopPropagation()}>
+    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/75" onClick={onClose}>
+      <div className="glass-card w-[560px] flex flex-col gap-5" style={{ borderRadius: 44, padding: 34, background: "rgba(14,14,18,0.97)" }} onClick={(ev) => ev.stopPropagation()}>
         <div className="text-white font-bold" style={{ fontSize: 26 }}>Save the lights as a scene</div>
         <div className="text-white/55 font-semibold" style={{ fontSize: 16 }}>Brightness, warmth and color are remembered exactly as they are now.</div>
         <input
@@ -829,7 +869,7 @@ export function TouchControl() {
   // The main volume slider drives every speaker (not TVs) so it actually moves the sound.
   const speakers = media.filter((m) => m.volume != null && m.available && !/\b(tv|uhd|crystal)\b/i.test(m.name));
   const setVolume = (v: number) => (speakers.length ? act(speakers.map((s) => s.id), { type: "volume", value: v }) : controlSpotify("volume", v));
-  const rightW = Math.min(520, Math.max(420, Math.round(cw * 0.3)));
+  const rightW = Math.min(600, Math.max(460, Math.round(cw * 0.36)));
   const leftW = cw - rightW - 50 - 40 - 50;
   const time = now ? now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
   const anyOn = devices.some((d) => d.on);
@@ -842,9 +882,9 @@ export function TouchControl() {
           <div className="absolute inset-0 flex items-center justify-center"><PinPad gate={gate} onSubmit={submitPin} /></div>
         ) : (
           <>
-            {/* left: lights */}
+            {/* left: all lights, rooms, then (scroll) individual lights */}
             <div className="absolute flex flex-col" style={{ left: 50, top: 84, width: leftW, height: 790 }}>
-              <div className="flex items-end justify-between mb-6">
+              <div className="flex items-end justify-between mb-5 shrink-0">
                 <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 76, lineHeight: 1 }}>{time}</div>
                 {snap?.provider === "demo" && (
                   <div className="glass-card px-5 py-2 text-white/60 font-semibold" style={{ borderRadius: 24, fontSize: 14 }}>
@@ -855,43 +895,61 @@ export function TouchControl() {
               {error && !snap && <div className="glass-card px-6 py-4 text-white/70 font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>{error}</div>}
 
               {devices.length > 0 && (
-                <div role="button" onClick={() => setSheet({ type: "all" })} className="glass-card flex items-center gap-6 mb-6 touch-manipulation shrink-0" style={{ borderRadius: 44, padding: "20px 32px" }}>
-                  <SegmentBulb lights={lights.length ? lights : devices} size={72} />
-                  <div className="flex-1">
-                    <div className="text-white font-bold" style={{ fontSize: 30 }}>All lights</div>
-                    <div className="text-white/55 font-semibold" style={{ fontSize: 17 }}>{devices.filter((d) => d.on).length} of {devices.length} on</div>
+                <ToggleButton
+                  on={anyOn}
+                  glow={groupGlow(devices)}
+                  onTap={() => act(devices.map((d) => d.id), { type: anyOn ? "off" : "on" })}
+                  onLong={() => setSheet({ type: "all" })}
+                  style={{ width: "100%", height: 250, padding: "0 56px", borderRadius: 56, marginBottom: 20, flexShrink: 0 }}
+                >
+                  <div className="flex items-center gap-10">
+                    <SegmentBulb lights={lights.length ? lights : devices} size={150} />
+                    <div>
+                      <div className="text-white font-bold" style={{ fontSize: 64, lineHeight: 1.05 }}>All lights</div>
+                      <div className="text-white/65 font-semibold" style={{ fontSize: 26 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}</div>
+                      <div className="text-white/35 font-semibold" style={{ fontSize: 17 }}>Hold for color &amp; scenes</div>
+                    </div>
                   </div>
-                  <Toggle on={anyOn} onChange={(v) => act(devices.map((d) => d.id), { type: v ? "on" : "off" })} size={1.3} />
-                </div>
+                </ToggleButton>
               )}
 
-              <div className="flex-1 min-h-0 overflow-y-auto pr-2" style={{ scrollbarWidth: "none", maskImage: "linear-gradient(180deg, #000 92%, transparent)" }}>
-                <div className="flex flex-wrap items-start gap-x-10 gap-y-6">
-                  {rooms.map((room) => {
-                    const inRoom = devices.filter((d) => d.room === room);
-                    return (
-                      <div key={room}>
-                        <div className="flex items-center gap-3 mb-3">
-                          <Press onClick={() => setSheet({ type: "room", room })} className="flex items-center gap-3">
-                            <SegmentBulb lights={inRoom} size={34} />
-                            <span className="caps-label" style={{ fontSize: 14 }}>{room}</span>
-                          </Press>
-                        </div>
-                        <div className="flex flex-wrap gap-3">
-                          {inRoom.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
-                        </div>
-                      </div>
-                    );
-                  })}
+              <div className="flex-1 min-h-0 overflow-y-auto pr-2" style={{ scrollbarWidth: "none" }}>
+                <div style={{ minHeight: "100%" }}>
+                  <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+                    {rooms.map((room) => {
+                      const inRoom = devices.filter((d) => d.room === room);
+                      const roomOn = inRoom.some((d) => d.on);
+                      return (
+                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={() => setSheet({ type: "room", room })} style={{ height: 150, padding: "0 28px" }}>
+                          <div className="flex items-center gap-4">
+                            <SegmentBulb lights={inRoom} size={64} />
+                            <div className="min-w-0 flex-1">
+                              <FitText className="text-white font-bold" style={{ fontSize: 28 }}>{room}</FitText>
+                              <div className="text-white/60 font-semibold" style={{ fontSize: 17 }}>{inRoom.filter((d) => d.on).length} of {inRoom.length} on</div>
+                            </div>
+                          </div>
+                        </ToggleButton>
+                      );
+                    })}
+                  </div>
+                  {devices.length > 0 && <div className="text-white/30 font-semibold text-center mt-6" style={{ fontSize: 15 }}>Scroll for individual lights ↓</div>}
                 </div>
+                {devices.length > 0 && (
+                  <div className="pb-10">
+                    <div className="caps-label mb-3" style={{ fontSize: 13 }}>Individual lights</div>
+                    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+                      {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
+                    </div>
+                  </div>
+                )}
                 {snap && devices.length === 0 && <div className="text-white/45 font-semibold" style={{ fontSize: 20 }}>No lights or switches found.</div>}
               </div>
             </div>
 
-            {/* right: music */}
-            <div className="absolute flex flex-col gap-4" style={{ left: cw - rightW - 50, top: 96, width: rightW }}>
-              <MusicController accent={color} music={music} onOpen={() => setSheet({ type: "music" })} setMessage={setMessage} />
-              {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "14px 20px", fontSize: 16 }}>{message}</div>}
+            {/* right: music, as tall as the screen allows */}
+            <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 90, width: rightW }}>
+              <MusicController accent={color} music={music} onOpen={() => setSheet({ type: "music" })} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
+              {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>
         )}
