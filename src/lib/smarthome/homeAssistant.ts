@@ -417,3 +417,11 @@ export async function startDeviceTimer(id: string, minutes: number, action: "on"
 export async function cancelDeviceTimer(id: string) {
   await call("script", "turn_off", { entity_id: `script.${timerScript(id)}` });
 }
+
+/** Who's home, from Home Assistant's person entities (each person's phone location). */
+export async function peopleHome(): Promise<{ name: string; home: boolean }[]> {
+  const template = "{% for p in states.person %}{{ p.name }}|{{ p.state }}\n{% endfor %}";
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
+  return (await res.text()).split("\n").filter(Boolean).map((l) => { const [name, state] = l.split("|"); return { name: unescapeName(name.trim()), home: state?.trim() === "home" }; });
+}

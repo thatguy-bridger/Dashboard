@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
 import { getHomeConfig } from "@/lib/smarthome/config";
+import { bustGuest } from "@/lib/smarthome/guest";
 import { resumeMusic } from "@/lib/spotifyPlay";
 import { getValidSpotifyToken } from "@/lib/spotify";
 import { installAwayScripts } from "@/lib/smarthome/homeAssistant";
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
     }
     await provider.returnHome?.();
     // Picking the music back up takes a few Spotify calls: do that after answering, so the lights aren't kept waiting.
+    bustGuest(); // the owner is home: guest mode must not block the resume
     after(async () => { await resumeMusic().catch(() => {}); });
     return NextResponse.json({ ok: true });
   } catch (err) {

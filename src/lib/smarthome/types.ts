@@ -38,6 +38,8 @@ export interface HomeSnapshot {
   away?: boolean;
   /** timers still running (entity id -> end time and action) */
   timers?: Record<string, DeviceTimer>;
+  /** guest mode: in force while the owner is away (unless unlocked with the PIN) */
+  guest?: { active: boolean; mode: "auto" | "on" | "off"; ownerAway: boolean; overrideUntil: number };
   /** entity ids flagged to stay on when "All lights" is turned off */
   keepOn?: string[];
   /** Home Assistant people (phones) and whether each is home, when it has any */

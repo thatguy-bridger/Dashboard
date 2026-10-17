@@ -753,7 +753,7 @@ function ToggleButton({ on, onTap, onLong, children, style, glow }: { on: boolea
 
 const groupGlow = (ls: HomeEntity[]) => { const l = ls.find((x) => x.on); return l ? lightColor(l) : undefined; };
 
-function LightTile({ e, act, onOpen, syncing }: { e: HomeEntity; act: Act; onOpen: () => void; syncing?: boolean }) {
+function LightTile({ e, act, onOpen, syncing }: { e: HomeEntity; act: Act; onOpen?: () => void; syncing?: boolean }) {
   const on = Boolean(e.on);
   return (
     <ToggleButton on={on} glow={on ? lightColor(e) : undefined} onTap={() => act(e.id, { type: on ? "off" : "on" })} onLong={onOpen} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4, outline: syncing ? "2px solid rgba(255,255,255,0.3)" : undefined }}>
@@ -841,7 +841,7 @@ function TimerRow({ e, compact = false }: { e: HomeEntity; compact?: boolean }) 
 
 /** A fan: one tap on a speed number sets it, Off turns it off. */
 function FanCard({ e, act }: { e: HomeEntity; act: Act }) {
-  const steps = Math.max(1, Math.min(8, e.speedSteps ?? 3));
+  const steps = !e.speedSteps || e.speedSteps > 8 ? 6 : e.speedSteps; // a 1-100 fan still gets six buttons, like the voice routines
   const speed = e.on ? (e.speed ?? 0) : 0;
   const current = speed <= 0 ? 0 : Math.max(1, Math.round((speed / 100) * steps));
   return (
@@ -925,7 +925,7 @@ const playError = (code: string | null) =>
   code ? "Couldn't start it. Try again." : null;
 
 /** The front-screen music control: big, with a play/pause you can hit without looking. Tap the art or title for the rest. */
-function MusicController({ accent, music, onOpen, setMessage, height, pin }: { accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void; height: number; pin: string | null }) {
+function MusicController({ guest, accent, music, onOpen, setMessage, height, pin }: { guest: boolean; accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void; height: number; pin: string | null }) {
   const np = useNowPlaying();
   const track = np?.track ?? null;
   const upNext = useUpNext(pin, track?.id);
@@ -942,6 +942,14 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
 
   if (!np?.connected) {
     return <div className="glass-card flex items-center justify-center text-center px-8" style={{ height, borderRadius: 52 }}><div className="text-white/45 font-semibold" style={{ fontSize: 22 }}>Spotify isn&apos;t connected</div></div>;
+  }
+  if (!track && guest) {
+    return (
+      <div className="glass-card flex flex-col items-center justify-center gap-4 text-center" style={{ height, borderRadius: 52, padding: 32 }}>
+        <div className="text-white/80 font-bold" style={{ fontSize: 30 }}>Guest mode</div>
+        <div className="text-white/50 font-semibold" style={{ fontSize: 19 }}>Music can’t be started while the house is in guest mode.</div>
+      </div>
+    );
   }
   if (!track) {
     return (
@@ -990,11 +998,11 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
         </div>
       )}
       <div className="flex items-center justify-center gap-6 shrink-0 text-white">
-        <Press onClick={() => controlSpotify("previous")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={PREV} size={52} /></Press>
-        <Press onClick={() => controlSpotify(np.isPlaying ? "pause" : "play")} className="flex items-center justify-center text-black" style={{ width: 150, height: 150, borderRadius: 75, background: "#fff", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
+        {!guest && <Press onClick={() => controlSpotify("previous")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={PREV} size={52} /></Press>}
+        <Press onClick={() => controlSpotify(np.isPlaying ? "pause" : guest ? "pause" : "play")} className="flex items-center justify-center text-black" style={{ width: 150, height: 150, borderRadius: 75, background: "#fff", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
           <Icon d={np.isPlaying ? PAUSE : PLAY} size={74} />
         </Press>
-        <Press onClick={() => controlSpotify("next")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={NEXT} size={52} /></Press>
+        {!guest && <Press onClick={() => controlSpotify("next")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={NEXT} size={52} /></Press>}
       </div>
     </div>
   );
@@ -1213,6 +1221,32 @@ function SaveSceneSheet({ onSave, onClose }: { onSave: (name: string) => void; o
   );
 }
 
+/** Owner unlock: the PIN is asked for again, because the tablet itself remembers it for normal use. */
+function UnlockSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [bad, setBad] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="absolute inset-0 z-[48] flex items-center justify-center bg-black/80" onClick={onClose}>
+      <div onClick={(ev) => ev.stopPropagation()} className="flex flex-col items-center gap-4">
+        <div className="text-white font-bold" style={{ fontSize: 30 }}>Owner unlock</div>
+        <PinPad
+          gate={bad ? "bad_pin" : null}
+          onSubmit={async (pin) => {
+            if (busy) return;
+            setBusy(true);
+            try {
+              const res = await fetch("/api/home/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, action: "unlock" }) });
+              if (res.ok) { onDone(); onClose(); } else setBad(true);
+            } catch { setBad(true); }
+            setBusy(false);
+          }}
+        />
+        <Press onClick={onClose} className="glass-card px-8 py-3 text-white/80 font-semibold" style={{ borderRadius: 24, fontSize: 18 }}>Cancel</Press>
+      </div>
+    </div>
+  );
+}
+
 function PinPad({ gate, onSubmit }: { gate: Gate; onSubmit: (pin: string) => void }) {
   const [pin, setPin] = useState("");
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"];
@@ -1265,6 +1299,7 @@ export function TouchControl() {
   }, []);
   const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin);
   useAutoUpdate();
+  const guest = Boolean(snap?.guest?.active);
   const presence = useRef(false);
   const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
   const wake = activity;
@@ -1304,7 +1339,7 @@ export function TouchControl() {
   // At night with every light off, movement in the room must not light the tablet up again.
   const nightQuiet = isNight() && !(snap?.entities ?? []).some((e) => (e.kind === "light" || e.kind === "switch") && e.on);
   const onApproach = () => {
-    if (away && Date.now() - awaySince.current > 60_000) setAway("return");
+    if (away && !guest && Date.now() - awaySince.current > 60_000) setAway("return");
     if (!nightQuiet) activity(); // someone's there: back to full brightness and restart the dim timer
   };
   const motionSensors = useHaMotion(pin, wakeCam, onApproach);
@@ -1356,6 +1391,7 @@ export function TouchControl() {
     if (away && cameHome) setAway("return");
   }, [snap, away, setAway]);
   const [sheet, setSheet] = useState<SheetState>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const music = useLibrary(pin);
@@ -1366,7 +1402,7 @@ export function TouchControl() {
   const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name)));
   const appliedKey = useRef("");
   useEffect(() => {
-    if (!ml.enabled || !playing || !palette.length || !np?.track) return;
+    if (guest || !ml.enabled || !playing || !palette.length || !np?.track) return;
     const key = `${np.track.id}|${palette.join(",")}`;
     if (appliedKey.current === key) return;
     const targets = mlTargets(ml.ids).filter((l) => l.available);
@@ -1374,7 +1410,7 @@ export function TouchControl() {
     appliedKey.current = key;
     colorMany(targets.map((l, i) => { const [h, s] = hexToHs(palette[i % palette.length]); return { id: l.id, h, s }; }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies only when the song or its palette changes
-  }, [ml.enabled, ml.ids, playing, palette, np?.track?.id, colorMany]);
+  }, [guest, ml.enabled, ml.ids, playing, palette, np?.track?.id, colorMany]);
   /** Switch the album-art lights on (remembering how those lights were) or off (putting them back). */
   const setMusicLights = (on: boolean) => {
     if (on) {
@@ -1462,7 +1498,7 @@ export function TouchControl() {
                   on={anyOn}
                   glow={groupGlow(allTargets)}
                   onTap={() => { act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" }); if (anyOn) nightOff(); }}
-                  onLong={() => setSheet({ type: "all" })}
+                  onLong={guest ? undefined : () => setSheet({ type: "all" })}
                   style={{ width: "100%", height: "100%", padding: `0 ${Math.round(64 * fit)}px`, borderRadius: 64 }}
                 >
                   <div className="flex items-center" style={{ gap: Math.round(56 * fit) }}>
@@ -1491,7 +1527,7 @@ export function TouchControl() {
                       const inRoom = devices.filter((d) => d.room === room);
                       const roomOn = inRoom.some((d) => d.on);
                       return (
-                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={() => setSheet({ type: "room", room })} style={{ height: 88, padding: "0 22px", borderRadius: 30 }}>
+                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={guest ? undefined : () => setSheet({ type: "room", room })} style={{ height: 88, padding: "0 22px", borderRadius: 30 }}>
                           <div className="flex items-center gap-3">
                             <SegmentBulb lights={inRoom} size={40} />
                             <div className="min-w-0 flex-1">
@@ -1509,7 +1545,7 @@ export function TouchControl() {
                       {fans.map((f) => <FanCard key={f.id} e={f} act={act} />)}
                     </div>
                   )}
-                  {devices.length > 0 && (night && !away ? (
+                  {devices.length > 0 && !guest && (night && !away ? (
                     /* after 9pm "I'm leaving" becomes "It's the night", and grows the later it gets */
                     <Press
                       onClick={() => { goNight(speakers.map((m) => m.id)); nightOff(); }}
@@ -1534,11 +1570,27 @@ export function TouchControl() {
                   <div className="pb-10">
                     <div className="caps-label mb-3" style={{ fontSize: 13 }}>Individual lights</div>
                     <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
-                      {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} />))}
+                      {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={guest ? undefined : () => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} onOpen={guest ? undefined : () => setSheet({ type: "light", id: d.id })} />))}
                     </div>
                   </div>
                 )}
-                {snap && (
+                {snap && !guest && (
+                  <div className="pb-4 flex items-center gap-4 flex-wrap">
+                    <Press
+                      onClick={() => {
+                        const order = ["auto", "on", "off"] as const;
+                        const cur = snap.guest?.mode ?? "auto";
+                        const next = order[(order.indexOf(cur) + 1) % 3];
+                        fetch("/api/home/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, action: "mode", mode: next }) }).then(() => load()).catch(() => {});
+                      }}
+                      className="glass-card px-6 py-4 text-white font-semibold"
+                      style={{ borderRadius: 28, fontSize: 18 }}
+                    >
+                      Guest mode: {snap.guest?.mode === "on" ? "Always on" : snap.guest?.mode === "off" ? "Off" : "Auto (when I’m away)"}
+                    </Press>
+                  </div>
+                )}
+                {snap && !guest && (
                   <div className="pb-10 flex items-center gap-4">
                     <Press onClick={toggleWakeCam} className="glass-card px-6 py-4 text-white font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>
                       Wake on approach: {wakeCam ? "On" : "Off"}
@@ -1554,7 +1606,7 @@ export function TouchControl() {
 
             {/* right: music, as tall as the screen allows */}
             <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 90, width: rightW }}>
-              <MusicController accent={color} music={music} pin={pin} onOpen={() => setSheet({ type: "music" })} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
+              <MusicController guest={guest} accent={color} music={music} pin={pin} onOpen={() => { if (!guest) setSheet({ type: "music" }); }} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
               {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>
@@ -1595,8 +1647,15 @@ export function TouchControl() {
       </div>
       <TopBar showTime selfBattery pin={pin} />
       <ActivityPills includeMusic={false} hide={["game"]} />
+      {guest && !gate && (
+        <div className="absolute bottom-5 left-1/2 z-[44] flex items-center gap-3" style={{ transform: "translateX(-50%)" }}>
+          <div className="glass-card px-6 py-3 text-white/80 font-semibold" style={{ borderRadius: 26, fontSize: 17 }}>Guest mode · lights on/off only · no music</div>
+          <Press onClick={() => setUnlocking(true)} className="glass-card px-6 py-3 text-white font-semibold" style={{ borderRadius: 26, fontSize: 17 }}>🔒 Owner unlock</Press>
+        </div>
+      )}
+      {unlocking && <UnlockSheet onClose={() => setUnlocking(false)} onDone={() => load()} />}
       {/* away: the whole screen is one "Welcome back" button, ahead of anything else */}
-      {away && !gate && (
+      {away && !gate && !guest && (
         <button
           onClick={() => setAway("return")}
           className="absolute inset-0 z-[45] flex flex-col items-center justify-center gap-6 touch-manipulation select-none"
@@ -1608,7 +1667,7 @@ export function TouchControl() {
       )}
       {/* fully dim when untouched: pure black (off on OLED), a faint clock, touch to wake */}
       <div
-        onPointerDown={() => { if (away) setAway("return"); wake(); }}
+        onPointerDown={() => { if (away && !guest) setAway("return"); wake(); }}
         className="absolute inset-0 z-50 bg-black flex items-center justify-center"
         style={{ opacity: dimLevel, pointerEvents: idle ? "auto" : "none", transition: dimLevel === 0 ? "opacity 0.12s ease-out" : "opacity 0.3s linear" }}
       >

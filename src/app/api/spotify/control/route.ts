@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidSpotifyToken } from "@/lib/spotify";
 import { npState } from "@/lib/nowPlayingCache";
+import { getGuestState } from "@/lib/smarthome/guest";
 
 const ACTIONS: Record<string, { method: string; path: string }> = {
   play: { method: "PUT", path: "play" },
@@ -13,6 +14,8 @@ const ACTIONS: Record<string, { method: string; path: string }> = {
  *  scope (reconnect Spotify once after this ships) and a Premium account. */
 export async function POST(req: NextRequest) {
   const { action, value } = await req.json();
+  // guests can pause the music but not start it or change it
+  if (action !== "pause" && (await getGuestState()).active) return NextResponse.json({ error: "guest_mode" }, { status: 403 });
   const token = await getValidSpotifyToken();
   if (!token) return NextResponse.json({ error: "not connected" }, { status: 401 });
 

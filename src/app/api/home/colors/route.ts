@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPin, getProvider } from "@/lib/smarthome";
+import { getGuestState } from "@/lib/smarthome/guest";
 
 /** Body: { colors: [{ id, h, s }] }. Different colours on different lights, all sent at once (album-art lights). */
 export async function POST(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return NextResponse.json({ error: gate }, { status: gate === "pin_not_configured" ? 403 : 401 });
+  if ((await getGuestState()).active) return NextResponse.json({ error: "guest_mode" }, { status: 403 });
   const { colors } = await req.json().catch(() => ({}));
   if (!Array.isArray(colors)) return NextResponse.json({ error: "bad request" }, { status: 400 });
   const items = (colors as { id?: unknown; h?: unknown; s?: unknown }[])

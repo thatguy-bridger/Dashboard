@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { d1Query } from "@/lib/d1";
 import { getValidSpotifyToken } from "@/lib/spotify";
 import { checkPin } from "@/lib/smarthome";
+import { getGuestState } from "@/lib/smarthome/guest";
 import { resolveDevice } from "@/lib/spotifyPlay";
 
 /** Body: { uri?, deviceId? }. No uri = the saved default playlist. Plays on the given device, else
@@ -9,6 +10,7 @@ import { resolveDevice } from "@/lib/spotifyPlay";
 export async function POST(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return NextResponse.json({ error: gate }, { status: gate === "pin_not_configured" ? 403 : 401 });
+  if ((await getGuestState()).active) return NextResponse.json({ error: "guest_mode" }, { status: 403 });
   const token = await getValidSpotifyToken();
   if (!token) return NextResponse.json({ error: "not_connected" }, { status: 401 });
   const b = await req.json().catch(() => ({}));

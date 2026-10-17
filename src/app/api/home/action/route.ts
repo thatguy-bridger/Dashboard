@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPin, getProvider, runScene, type HomeAction } from "@/lib/smarthome";
 import { getHomeConfig } from "@/lib/smarthome/config";
+import { getGuestState, guestBlocksAction } from "@/lib/smarthome/guest";
 
 const SIMPLE = new Set(["toggle", "on", "off", "activate", "play", "pause", "next", "previous"]);
 const VALUED = new Set(["brightness", "volume", "colorTemp", "speed"]);
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
   else if (a && VALUED.has(a.type) && typeof a.value === "number") action = { type: a.type, value: a.value };
   else if (a && a.type === "color" && typeof a.h === "number" && typeof a.s === "number") action = { type: "color", h: a.h, s: a.s };
   if (ids.length === 0 || !action) return NextResponse.json({ error: "bad request" }, { status: 400 });
+  if (guestBlocksAction(action, ids) && (await getGuestState()).active) return NextResponse.json({ error: "guest_mode" }, { status: 403 });
 
   try {
     const provider = getProvider();
