@@ -518,3 +518,19 @@ export async function nightMode(volume: number, speakerIds: string[]) {
     ...(speakers.length ? [call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 })] : []),
   ]);
 }
+
+/** Is the owner's phone close by? Their person entity must be home and, when the phone's Home Assistant app reports which
+ *  Wi-Fi it is on (a sensor with "ssid" in its name), it must be connected to one (not just somewhere inside the home zone). */
+export async function ownerNearby(): Promise<{ nearby: boolean; home: boolean; ssid: string }> {
+  const template = "{% set ns = namespace(any=false, home=false, ssid='') %}"
+    + "{% for p in states.person %}{% set ns.any = true %}{% if 'bridger' in p.name | lower and p.state == 'home' %}{% set ns.home = true %}{% endif %}{% endfor %}"
+    + "{% if states.person | selectattr('name','search','(?i)bridger') | list | count == 0 %}{% set ns.home = states.person | selectattr('state','eq','home') | list | count > 0 %}{% endif %}"
+    + "{% for s in states.sensor if 'ssid' in s.entity_id and ('iphone' in s.entity_id or 'bridger' in s.entity_id) %}{% set ns.ssid = s.state %}{% endfor %}"
+    + "{{ ns.home }}|{{ ns.ssid }}";
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
+  const [home, ssid] = (await res.text()).trim().split("|");
+  const isHome = home === "True";
+  const wifiBad = ["not connected", "unknown", "unavailable", "none"].includes((ssid ?? "").trim().toLowerCase());
+  return { nearby: isHome && !((ssid ?? "").trim() !== "" && wifiBad), home: isHome, ssid: (ssid ?? "").trim() };
+}

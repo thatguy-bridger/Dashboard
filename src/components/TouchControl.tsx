@@ -1268,22 +1268,39 @@ function MusicLightsScene({ api, accent }: { api: MusicLightsApi; accent: string
 function UnlockSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [bad, setBad] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(true);
+  // First, look for the owner's phone: if Home Assistant says it's home (and on Wi-Fi), unlock without a PIN.
+  useEffect(() => {
+    let off = false;
+    fetch("/api/home/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "unlock", proximity: true }) })
+      .then((res) => { if (off) return; if (res.ok) { onDone(); onClose(); } else setChecking(false); })
+      .catch(() => { if (!off) setChecking(false); });
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one check when the sheet opens
+  }, []);
   return (
     <div className="absolute inset-0 z-[48] flex items-center justify-center bg-black/80" onClick={onClose}>
       <div onClick={(ev) => ev.stopPropagation()} className="flex flex-col items-center gap-4">
         <div className="text-white font-bold" style={{ fontSize: 30 }}>Owner unlock</div>
-        <PinPad
-          gate={bad ? "bad_pin" : null}
-          onSubmit={async (pin) => {
-            if (busy) return;
-            setBusy(true);
-            try {
-              const res = await fetch("/api/home/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, action: "unlock" }) });
-              if (res.ok) { onDone(); onClose(); } else setBad(true);
-            } catch { setBad(true); }
-            setBusy(false);
-          }}
-        />
+        {checking ? (
+          <div className="text-white/70 font-semibold animate-pulse" style={{ fontSize: 20 }}>Looking for your phone…</div>
+        ) : (
+          <>
+            <div className="text-white/55 font-semibold" style={{ fontSize: 16 }}>Your phone isn’t nearby — enter the PIN</div>
+            <PinPad
+              gate={bad ? "bad_pin" : null}
+              onSubmit={async (pin) => {
+                if (busy) return;
+                setBusy(true);
+                try {
+                  const res = await fetch("/api/home/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, action: "unlock" }) });
+                  if (res.ok) { onDone(); onClose(); } else setBad(true);
+                } catch { setBad(true); }
+                setBusy(false);
+              }}
+            />
+          </>
+        )}
         <Press onClick={onClose} className="glass-card px-8 py-3 text-white/80 font-semibold" style={{ borderRadius: 24, fontSize: 18 }}>Cancel</Press>
       </div>
     </div>
