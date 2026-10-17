@@ -19,6 +19,9 @@ interface HaState {
   };
 }
 
+/** Devices that stay ON when you leave (Wyze LED plugs). */
+const KEEP_ON = /\bled\b/i;
+
 const AWAY_ID = "home_base_before_leaving";
 const AWAY_SCENE = `scene.${AWAY_ID}`;
 
@@ -125,10 +128,15 @@ export const homeAssistantProvider: HomeProvider = {
     const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
     const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
     const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
+    const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id));
     // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
     if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
-    if (lights.length) await call("light", "turn_off", { entity_id: lights });
-    if (switches.length) await call("switch", "turn_off", { entity_id: switches });
+    const offLights = lights.filter((id) => !stayOn.has(id)), offSwitches = switches.filter((id) => !stayOn.has(id));
+    if (offLights.length) await call("light", "turn_off", { entity_id: offLights });
+    if (offSwitches.length) await call("switch", "turn_off", { entity_id: offSwitches });
+    // the LED plugs are meant to be on while you're out
+    const led = [...stayOn].filter((id) => id.startsWith("switch.") || id.startsWith("light."));
+    if (led.length) { const byDomain = (d: string) => led.filter((id) => id.startsWith(`${d}.`)); for (const d of ["switch", "light"]) if (byDomain(d).length) await call(d, "turn_on", { entity_id: byDomain(d) }); }
     const playing = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.state === "playing").map((s) => s.entity_id);
     if (playing.length) await call("media_player", "media_pause", { entity_id: playing });
   },
@@ -237,7 +245,10 @@ export async function playMedia(entityId: string, mediaId: string, mediaType: st
 export async function installAwayScripts(): Promise<string[]> {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
   const ids = (d: string) => raw.filter((s) => s.entity_id.startsWith(`${d}.`)).map((s) => s.entity_id);
+  const keep = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id));
   const lights = ids("light"), switches = ids("switch");
+  const offLights = lights.filter((i) => !keep.has(i)), offSwitches = switches.filter((i) => !keep.has(i));
+  const ledOn = [...keep].filter((i) => i.startsWith("switch.") || i.startsWith("light."));
   const notArmed = `{{ states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list | count == 0 }}`;
   const scripts: Record<string, unknown> = {
     home_base_leaving: {
@@ -246,8 +257,9 @@ export async function installAwayScripts(): Promise<string[]> {
       mode: "single",
       sequence: [
         { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
-        ...(lights.length ? [{ action: "light.turn_off", target: { entity_id: lights } }] : []),
-        ...(switches.length ? [{ action: "switch.turn_off", target: { entity_id: switches } }] : []),
+        ...(offLights.length ? [{ action: "light.turn_off", target: { entity_id: offLights } }] : []),
+        ...(offSwitches.length ? [{ action: "switch.turn_off", target: { entity_id: offSwitches } }] : []),
+        ...(ledOn.length ? [{ action: "homeassistant.turn_on", target: { entity_id: ledOn } }] : []),
         { action: "media_player.media_pause", target: { entity_id: "all" }, continue_on_error: true },
       ],
     },
