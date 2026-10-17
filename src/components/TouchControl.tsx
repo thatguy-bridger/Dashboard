@@ -149,6 +149,16 @@ function useHome(pin: string | null) {
     [load]
   );
 
+  /** "It's the night": everything off with no exemptions and speakers to the night volume (the server does it all at once). */
+  const goNight = useCallback(async (speakerIds: string[]) => {
+    setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (e.kind === "light" || e.kind === "switch" ? { ...e, on: false } : e)) } : s));
+    try {
+      await fetch("/api/home/night", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ run: true, speakers: speakerIds }) });
+    } catch { /* the reload shows the truth */ }
+    setTimeout(load, 1500);
+    setTimeout(load, 5000);
+  }, [load]);
+
   /** Flag a light so the big "All lights" off leaves it alone. */
   const setKeep = useCallback(async (id: string, keep: boolean) => {
     setSnap((s) => (s ? { ...s, keepOn: keep ? [...new Set([...(s.keepOn ?? []), id])] : (s.keepOn ?? []).filter((x) => x !== id) } : s));
@@ -175,7 +185,7 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep };
+  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -449,6 +459,21 @@ function lightColor(e: HomeEntity): string {
 const fmtTime = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 /** After 9pm and before 5am (the tablet's local time). */
 const isNight = () => { const h = new Date().getHours(); return h >= 21 || h < 5; };
+/** How far into the night it is, 0 at 9pm growing to 1 by 1am (the "It's the night" button grows with it). */
+const nightDepth = (d: Date) => { const m = ((d.getHours() * 60 + d.getMinutes()) - 21 * 60 + 1440) % 1440; return m > 8 * 60 ? 0 : Math.min(1, m / 240); };
+
+function useNightVolume(pin: string | null) {
+  const [volume, setVolume] = useState(20);
+  useEffect(() => {
+    if (!pin) return;
+    fetch("/api/home/night", { cache: "no-store", headers: { "x-control-pin": pin } }).then((r) => (r.ok ? r.json() : null)).then((j) => { if (j && typeof j.volume === "number") setVolume(j.volume); }).catch(() => {});
+  }, [pin]);
+  const save = (v: number) => {
+    setVolume(v);
+    fetch("/api/home/night", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin ?? "" }, body: JSON.stringify({ volume: v }) }).catch(() => {});
+  };
+  return { volume, save };
+}
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
@@ -857,8 +882,8 @@ function MediaRow({ e, act, accent }: { e: HomeEntity; act: Act; accent: string 
   );
 }
 
-function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
-  accent: string; music: MusicApi; media: HomeEntity[]; speakers: HomeEntity[]; setVolume: (v: number) => void; act: Act; onClose: () => void; message: string | null; setMessage: (m: string | null) => void;
+function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
+  nightVolume: { volume: number; save: (v: number) => void }; accent: string; music: MusicApi; media: HomeEntity[]; speakers: HomeEntity[]; setVolume: (v: number) => void; act: Act; onClose: () => void; message: string | null; setMessage: (m: string | null) => void;
 }) {
   const np = useNowPlaying();
   const track = np?.track ?? null;
@@ -869,6 +894,7 @@ function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, m
   const { lib, error } = music;
   const [busy, setBusy] = useState<string | null>(null);
   const [network, setNetwork] = useState(false);
+  const [nvLive, setNvLive] = useState<number | null>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playIt = async (uri: string) => {
     setBusy(uri);
@@ -909,6 +935,11 @@ function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, m
       <div>
         <div className="caps-label mb-2" style={{ fontSize: 13 }}>Volume · {speakers.length > 1 ? `all ${speakers.length} speakers` : speakers[0]?.name ?? "Spotify"} · {shown}%</div>
         <Slider value={shown} onChange={setVol} onCommit={(v) => { setVolume(v); setTimeout(() => setVol(null), 1500); }} accent={accent} height={56} />
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Night volume · speakers go to {nightVolume.volume}% on “It’s the night”</div>
+        <Slider value={nvLive ?? nightVolume.volume} onChange={setNvLive} onCommit={(v) => { nightVolume.save(v); setNvLive(null); }} accent={accent} height={44} />
       </div>
 
       <div>
@@ -1068,7 +1099,7 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep } = useHome(pin);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight } = useHome(pin);
   useAutoUpdate();
   const presence = useRef(false);
   const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
@@ -1187,6 +1218,9 @@ export function TouchControl() {
   const rooms = [...new Set(devices.map((d) => d.room))].sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
   // The main volume slider drives every speaker (not TVs) so it actually moves the sound.
   const speakers = media.filter((m) => m.volume != null && m.available && !/\b(tv|uhd|crystal)\b/i.test(m.name));
+  const nightVol = useNightVolume(pin);
+  const night = isNight();
+  const depth = now ? nightDepth(now) : 0;
   const setVolume = (v: number) => (speakers.length ? act(speakers.map((s) => s.id), { type: "volume", value: v }) : controlSpotify("volume", v));
   const rightW = Math.min(600, Math.max(460, Math.round(cw * 0.36)));
   const leftW = cw - rightW - 50 - 40 - 50;
@@ -1265,7 +1299,17 @@ export function TouchControl() {
                       );
                     })}
                   </div>
-                  {devices.length > 0 && (
+                  {devices.length > 0 && (night && !away ? (
+                    /* after 9pm "I'm leaving" becomes "It's the night", and grows the later it gets */
+                    <Press
+                      onClick={() => { goNight(speakers.map((m) => m.id)); nightOff(); }}
+                      className="w-full flex flex-col items-center justify-center gap-1 mt-4 font-bold"
+                      style={{ height: Math.round(110 + 190 * depth), borderRadius: Math.round(40 + 24 * depth), fontSize: Math.round(30 + 34 * depth), color: "#fff", background: `linear-gradient(135deg, rgba(60,70,160,${0.45 + 0.35 * depth}), rgba(20,20,60,${0.7 + 0.25 * depth}))`, border: "1px solid rgba(160,170,255,0.35)", boxShadow: `0 0 ${Math.round(20 + 50 * depth)}px -8px rgba(120,130,255,0.8)` }}
+                    >
+                      <span>It’s the night</span>
+                      <span className="text-white/60 font-semibold" style={{ fontSize: Math.round(15 + 7 * depth) }}>Every light off · speakers to {nightVol.volume}%</span>
+                    </Press>
+                  ) : (
                     <Press
                       onClick={() => { if (away) setAway("return"); else { setAway("leave"); setTimeout(sleep, 2500); } }}
                       className="w-full flex items-center justify-center gap-4 mt-4 font-bold"
@@ -1273,7 +1317,7 @@ export function TouchControl() {
                     >
                       I’m leaving — lights off, back on when I return
                     </Press>
-                  )}
+                  ))}
                   {devices.length > 0 && <div className="text-white/30 font-semibold text-center mt-6" style={{ fontSize: 15 }}>Scroll for individual lights ↓</div>}
                 </div>
                 {devices.length > 0 && (
@@ -1335,7 +1379,7 @@ export function TouchControl() {
           />
         )}
         {sheet?.type === "music" && (
-          <MusicSheet accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
+          <MusicSheet nightVolume={nightVol} accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
         )}
         {saving && <SaveSceneSheet onSave={saveScene} onClose={() => setSaving(false)} />}
       </div>

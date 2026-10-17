@@ -362,3 +362,13 @@ export async function installMotionWake(service: string, awake: number) {
   const res = await fetch(`${URL_()}/api/config/automation/config/home_base_wake_on_motion`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
   if (!res.ok) throw new Error(`couldn't create the automation (${res.status})`);
 }
+
+/** "It's the night": every light and switch off (no exemptions), speakers to the night volume, all in one go. */
+export async function nightMode(volume: number, speakerIds: string[]) {
+  const speakers = speakerIds.filter((id) => id.startsWith("media_player."));
+  await Promise.all([
+    call("light", "turn_off", { entity_id: "all" }),
+    call("switch", "turn_off", { entity_id: "all" }),
+    ...(speakers.length ? [call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 })] : []),
+  ]);
+}
