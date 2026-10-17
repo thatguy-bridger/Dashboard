@@ -27,7 +27,7 @@ export function checkPin(pin: string | null): "ok" | "needs_pin" | "bad_pin" | "
 /** The provider's devices with the dashboard's names, rooms, hidden list and saved scenes applied. */
 export async function homeSnapshot(): Promise<HomeSnapshot> {
   const [snap, config] = await Promise.all([getProvider().snapshot(), getHomeConfig()]);
-  return { provider: snap.provider, entities: applyHomeConfig(snap.entities, config) };
+  return { ...snap, entities: applyHomeConfig(snap.entities, config) };
 }
 
 /** Capture what every light is doing right now, for a saved scene. */

@@ -1,25 +1,27 @@
 import { NextResponse } from "next/server";
-import { cacheHeaders } from "@/lib/http";
 import { getValidSpotifyToken } from "@/lib/spotify";
+import { npState } from "@/lib/nowPlayingCache";
 
 // Per-instance cache + 429 backoff: many screens/tabs poll this, and Spotify
 // locks the whole app out for up to an hour once it starts returning 429.
-let cache: { at: number; body: unknown } | null = null;
-let blockedUntil = 0;
-const CACHE_MS = 4000;
+const CACHE_MS = 1500;
+// Never edge-cache this: a CDN window made pause take ~15s to show. The 1.5s in-memory cache below
+// still shields Spotify when several screens poll.
+const NO_STORE = { headers: { "Cache-Control": "no-store" } };
+
 
 export async function GET() {
-  if (Date.now() < blockedUntil) {
+  if (Date.now() < npState.blockedUntil) {
     return NextResponse.json(
-      cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" },
-      cacheHeaders(15)
+      npState.cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" },
+      NO_STORE
     );
   }
-  if (cache && Date.now() - cache.at < CACHE_MS) return NextResponse.json(cache.body, cacheHeaders(5));
+  if (npState.cache && Date.now() - npState.cache.at < CACHE_MS) return NextResponse.json(npState.cache.body, NO_STORE);
 
   const body = await fetchNowPlaying();
-  cache = { at: Date.now(), body };
-  return NextResponse.json(body, cacheHeaders(5));
+  npState.cache = { at: Date.now(), body };
+  return NextResponse.json(body, NO_STORE);
 }
 
 async function fetchNowPlaying(): Promise<Record<string, unknown>> {
@@ -39,7 +41,7 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
   }
   if (res.status === 429) {
     const retry = Number(res.headers.get("retry-after")) || 60;
-    blockedUntil = Date.now() + retry * 1000;
+    npState.blockedUntil = Date.now() + retry * 1000;
   }
   if (!res.ok) {
     return ({ connected: true, isPlaying: false, track: null, error: "spotify request failed" });

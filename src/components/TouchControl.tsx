@@ -149,7 +149,25 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing };
+  /** "I'm leaving" / "I'm back": the server remembers what was on and restores it. */
+  const setAway = useCallback(
+    async (mode: "leave" | "return") => {
+      setSnap((s) => {
+        if (!s) return s;
+        const entities = mode === "leave" ? s.entities.map((e) => (e.kind === "light" || e.kind === "switch" ? { ...e, on: false } : e)) : s.entities;
+        return { ...s, entities, away: mode === "leave" };
+      });
+      // hold the optimistic state; the reload below replaces it with the truth
+      try {
+        await fetch("/api/home/away", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ mode }) });
+      } catch { /* the reload shows the truth */ }
+      setTimeout(load, 1500);
+      setTimeout(load, 5000);
+    },
+    [load]
+  );
+
+  return { snap, gate, error, act, load, saveScene, syncing, setAway };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -180,20 +198,69 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
 /** True after `ms` with no touch. The first touch while asleep only wakes the screen. */
 function useIdle(ms: number) {
   const [idle, setIdle] = useState(false);
+  const api = useRef<{ wake: () => void; sleep: () => void }>({ wake() {}, sleep() {} });
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
-    const arm = () => { clearTimeout(t); t = setTimeout(() => setIdle(true), ms); };
-    const poke = () => { if (!idleRef.current) arm(); };
-    const idleRef = { current: false };
-    const sync = (v: boolean) => { idleRef.current = v; setIdle(v); };
-    t = setTimeout(() => sync(true), ms);
-    const down = () => { if (idleRef.current) return; clearTimeout(t); t = setTimeout(() => sync(true), ms); };
-    window.addEventListener("pointerdown", down, true);
-    window.addEventListener("pointermove", poke, true);
-    (window as unknown as { __wake?: () => void }).__wake = () => { sync(false); arm(); setTimeout(() => { idleRef.current = false; }, 0); };
-    return () => { clearTimeout(t); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", poke, true); };
+    let asleep = false;
+    const set = (v: boolean) => { asleep = v; setIdle(v); };
+    const arm = () => { clearTimeout(t); t = setTimeout(() => set(true), ms); };
+    const touch = () => { if (!asleep) arm(); };
+    arm();
+    api.current = { wake() { set(false); arm(); }, sleep() { clearTimeout(t); set(true); } };
+    window.addEventListener("pointerdown", touch, true);
+    window.addEventListener("pointermove", touch, true);
+    return () => { clearTimeout(t); window.removeEventListener("pointerdown", touch, true); window.removeEventListener("pointermove", touch, true); };
   }, [ms]);
-  return { idle, wake: () => (window as unknown as { __wake?: () => void }).__wake?.() };
+  return { idle, wake: () => api.current.wake(), sleep: () => api.current.sleep() };
+}
+
+const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
+const MP_VERSION = "1.1.1";
+
+/** Watches the front camera for a face (on this device only, nothing is uploaded) and calls
+ *  onFace when someone stands there. The camera is only on while `enabled`. */
+function useApproach(enabled: boolean, onFace: () => void): "off" | "on" | "denied" | "error" {
+  const [status, setStatus] = useState<"on" | "denied" | "error">("on");
+  const cb = useRef(onFace);
+  useEffect(() => { cb.current = onFace; });
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+    let stream: MediaStream | null = null;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false });
+      } catch {
+        if (!stopped) setStatus("denied");
+        return;
+      }
+      try {
+        const { FaceDetector, FilesetResolver } = await import("@mediapipe/tasks-vision");
+        const fileset = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`);
+        const detector = await FaceDetector.createFromOptions(fileset, { baseOptions: { modelAssetPath: FACE_MODEL }, runningMode: "VIDEO", minDetectionConfidence: 0.6 });
+        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = stream;
+        await video.play();
+        setStatus("on");
+        let hits = 0;
+        timer = setInterval(() => {
+          if (video.readyState < 2) return;
+          const seen = detector.detectForVideo(video, performance.now()).detections.length > 0;
+          hits = seen ? hits + 1 : 0;
+          if (hits >= 2) { hits = 0; cb.current(); }
+        }, 500);
+      } catch {
+        stream.getTracks().forEach((t) => t.stop());
+        if (!stopped) setStatus("error");
+      }
+    })();
+    return () => { stopped = true; if (timer) clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); };
+  }, [enabled]);
+  return enabled ? status : "off";
 }
 
 function useScale() {
@@ -856,9 +923,35 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, saveScene, syncing } = useHome(pin);
+  const { snap, gate, error, act, saveScene, syncing, setAway } = useHome(pin);
   useAutoUpdate();
-  const { idle, wake } = useIdle(2 * 60_000);
+  const { idle, wake, sleep } = useIdle(2 * 60_000);
+
+  // Wake on approach: a per-tablet switch, because it needs this tablet's camera permission.
+  const [wakeCam, setWakeCam] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem("hb-wake-camera") === "1"; } catch { return false; }
+  });
+  const toggleWakeCam = () => {
+    const next = !wakeCam;
+    setWakeCam(next);
+    try { localStorage.setItem("hb-wake-camera", next ? "1" : "0"); } catch { /* ignore */ }
+  };
+  const away = Boolean(snap?.away);
+  // Away from home: lights are off, waiting for you. Give the departure a minute before a face counts as "back".
+  const awaySince = useRef(0);
+  useEffect(() => { if (away) awaySince.current = Date.now(); }, [away]);
+  const camStatus = useApproach(wakeCam && (idle || away), () => {
+    if (away && Date.now() - awaySince.current > 60_000) setAway("return");
+    if (idle) wake();
+  });
+  // Or: a phone (Home Assistant person) that was away shows up home while we're waiting.
+  const wasHome = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    const ppl = snap?.people ?? [];
+    const cameHome = ppl.some((p) => p.home && wasHome.current[p.name] === false);
+    wasHome.current = Object.fromEntries(ppl.map((p) => [p.name, p.home]));
+    if (away && cameHome) setAway("return");
+  }, [snap, away, setAway]);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -952,6 +1045,15 @@ export function TouchControl() {
                       );
                     })}
                   </div>
+                  {devices.length > 0 && (
+                    <Press
+                      onClick={() => { if (away) setAway("return"); else { setAway("leave"); setTimeout(sleep, 2500); } }}
+                      className="w-full flex items-center justify-center gap-4 mt-4 font-bold"
+                      style={{ height: 110, borderRadius: 40, fontSize: 28, color: away ? "#000" : "#fff", background: away ? color : "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.14)", boxShadow: away ? `0 0 40px -8px ${color}` : undefined }}
+                    >
+                      {away ? "Welcome back — turn lights on" : "I’m leaving — lights off, back on when I return"}
+                    </Press>
+                  )}
                   {devices.length > 0 && <div className="text-white/30 font-semibold text-center mt-6" style={{ fontSize: 15 }}>Scroll for individual lights ↓</div>}
                 </div>
                 {devices.length > 0 && (
@@ -959,6 +1061,16 @@ export function TouchControl() {
                     <div className="caps-label mb-3" style={{ fontSize: 13 }}>Individual lights</div>
                     <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
                       {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
+                    </div>
+                  </div>
+                )}
+                {snap && (
+                  <div className="pb-10 flex items-center gap-4">
+                    <Press onClick={toggleWakeCam} className="glass-card px-6 py-4 text-white font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>
+                      Wake on approach: {wakeCam ? "On" : "Off"}
+                    </Press>
+                    <div className="text-white/45 font-semibold" style={{ fontSize: 15 }}>
+                      {camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
                     </div>
                   </div>
                 )}
@@ -1014,6 +1126,12 @@ export function TouchControl() {
         style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: "opacity 1.2s ease" }}
       >
         <div className="num-rounded font-semibold" style={{ fontSize: 120, color: "rgba(255,255,255,0.12)" }}>{time}</div>
+        {(away || camStatus === "on") && (
+          <div className="absolute bottom-10 flex items-center gap-3 font-semibold" style={{ fontSize: 16, color: "rgba(255,255,255,0.22)" }}>
+            {camStatus === "on" && <span className="rounded-full" style={{ width: 10, height: 10, background: "#ff5a4f" }} />}
+            {away ? "Away · lights return when you do" : "Camera on · wake on approach"}
+          </div>
+        )}
       </div>
     </div>
   );

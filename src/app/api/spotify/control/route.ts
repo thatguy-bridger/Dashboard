@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidSpotifyToken } from "@/lib/spotify";
+import { npState } from "@/lib/nowPlayingCache";
 
 const ACTIONS: Record<string, { method: string; path: string }> = {
   play: { method: "PUT", path: "play" },
@@ -26,9 +27,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "bad action" }, { status: 400 });
   }
 
+  npState.cache = null;
   const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
   if (!res.ok && res.status !== 204) {
     return NextResponse.json({ error: "spotify refused", status: res.status }, { status: res.status });
   }
+  npState.cache = null;
   return NextResponse.json({ ok: true });
 }

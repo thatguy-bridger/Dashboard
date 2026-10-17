@@ -29,8 +29,10 @@ export interface LyricLine {
 // from it instead of each hitting the API (Spotify rate-limits hard).
 // Adaptive: 30s while playing (plus a poll right as the track ends), 60s when idle — the
 // progress bar is interpolated locally, so frequent polling buys nothing.
-const PLAYING_MS = 30_000;
-const IDLE_MS = 60_000;
+const PLAYING_MS = 4_000;
+const IDLE_MS = 15_000;
+/** After a tap, ignore polls that still show the old play/pause state (Spotify takes a moment to report it). */
+let hold: { isPlaying: boolean; until: number } | null = null;
 let latest: NowPlaying | null = null;
 const listeners = new Set<(d: NowPlaying) => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -41,7 +43,9 @@ export async function pollOnce() {
   try {
     const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
     if (!res.ok) return;
-    latest = await res.json();
+    const next = (await res.json()) as NowPlaying;
+    if (hold && Date.now() < hold.until && next.isPlaying !== hold.isPlaying) return;
+    latest = next;
     listeners.forEach((fn) => fn(latest!));
   } catch {
     // keep last known value on a transient failure
@@ -143,8 +147,21 @@ export function useLyrics(track: SpotifyTrack | null) {
   return lines;
 }
 
-/** Fire-and-forget playback command, then re-poll so the UI catches up. */
+/** Playback command: the screen reacts immediately (play/pause flips, progress freezes), then confirms with quick polls. */
 export async function controlSpotify(action: "play" | "pause" | "next" | "previous" | "volume", value?: number) {
+  if (latest && (action === "play" || action === "pause")) {
+    const playing = action === "play";
+    const t = latest.track;
+    const elapsed = latest.isPlaying ? Date.now() - (latest.fetchedAt ?? Date.now()) : 0;
+    latest = {
+      ...latest,
+      isPlaying: playing,
+      fetchedAt: Date.now(),
+      track: t ? { ...t, progressMs: Math.min(t.durationMs, t.progressMs + elapsed) } : t,
+    };
+    hold = { isPlaying: playing, until: Date.now() + 3500 };
+    listeners.forEach((fn) => fn(latest!));
+  }
   try {
     await fetch("/api/spotify/control", {
       method: "POST",
@@ -154,7 +171,7 @@ export async function controlSpotify(action: "play" | "pause" | "next" | "previo
   } catch {
     // ignore: controls are best-effort
   }
-  setTimeout(pollOnce, 600);
+  for (const ms of [350, 1000, 2200, 4000]) setTimeout(pollOnce, ms);
 }
 
 /** Spotify briefly reports "nothing playing" between songs (and during ads). Reading that straight

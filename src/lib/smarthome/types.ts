@@ -31,6 +31,10 @@ export interface HomeEntity {
 export interface HomeSnapshot {
   provider: "homeassistant" | "demo";
   entities: HomeEntity[];
+  /** "I'm leaving" was run and the lights haven't been restored yet */
+  away?: boolean;
+  /** Home Assistant people (phones) and whether each is home, when it has any */
+  people?: { name: string; home: boolean }[];
 }
 
 /** What a saved scene sets on one light. */
@@ -71,6 +75,9 @@ export interface HomeProvider {
   act(id: string, action: HomeAction): Promise<void>;
   /** Same action on several devices; providers may batch it into fewer calls. */
   actMany?(ids: string[], action: HomeAction): Promise<void>;
+  /** Save what is on, turn everything off, and remember it so `returnHome` can bring it back. */
+  leaveHome?(): Promise<void>;
+  returnHome?(): Promise<void>;
   /** Fresh state for just these devices (cheap: used to confirm a change landed). */
   peek(ids: string[]): Promise<HomeEntity[]>;
 }

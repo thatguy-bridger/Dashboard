@@ -19,6 +19,9 @@ interface HaState {
   };
 }
 
+const AWAY_ID = "home_base_before_leaving";
+const AWAY_SCENE = `scene.${AWAY_ID}`;
+
 const DOMAINS: Record<string, HomeKind> = { light: "light", switch: "switch", scene: "scene", media_player: "media" };
 
 /** Home Assistant doesn't put the room (area) in /api/states; one template call looks them all up. */
@@ -105,13 +108,33 @@ export const homeAssistantProvider: HomeProvider = {
   async snapshot(): Promise<HomeSnapshot> {
     const res = await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" });
     if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
-    const all = ((await res.json()) as HaState[]).filter((s) => DOMAINS[s.entity_id.split(".")[0]]);
+    const raw = (await res.json()) as HaState[];
+    const away = raw.some((s) => s.entity_id === AWAY_SCENE);
+    const people = raw.filter((s) => s.entity_id.startsWith("person.")).map((s) => ({ name: unescapeName(s.attributes.friendly_name ?? s.entity_id), home: s.state === "home" }));
+    // the saved "before I left" scene is bookkeeping, not a button
+    const all = raw.filter((s) => DOMAINS[s.entity_id.split(".")[0]] && s.entity_id !== AWAY_SCENE);
     const rooms = await areas(all.map((s) => s.entity_id));
     const entities = all.map((s) => {
       const kind = DOMAINS[s.entity_id.split(".")[0]];
       return toEntity(s, kind === "scene" ? "Scenes" : kind === "media" ? "Speakers" : rooms.get(s.entity_id) ?? "Other");
     });
-    return { provider: "homeassistant", entities };
+    return { provider: "homeassistant", entities, away, ...(people.length ? { people } : {}) };
+  },
+  async leaveHome() {
+    const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+    const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
+    const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
+    const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
+    // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
+    if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
+    if (lights.length) await call("light", "turn_off", { entity_id: lights });
+    if (switches.length) await call("switch", "turn_off", { entity_id: switches });
+    const playing = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.state === "playing").map((s) => s.entity_id);
+    if (playing.length) await call("media_player", "media_pause", { entity_id: playing });
+  },
+  async returnHome() {
+    await call("scene", "turn_on", { entity_id: AWAY_SCENE });
+    try { await call("scene", "delete", { entity_id: AWAY_SCENE }); } catch { /* an older Home Assistant keeps it; harmless but it would read as still away */ }
   },
   async peek(ids: string[]) {
     const out = await Promise.all(
@@ -206,4 +229,41 @@ export async function browseMedia(entityId: string, mediaId?: string, mediaType?
 
 export async function playMedia(entityId: string, mediaId: string, mediaType: string) {
   await call("media_player", "play_media", { entity_id: entityId, media_content_id: mediaId, media_content_type: mediaType });
+}
+
+/** Creates two Home Assistant scripts that do what the dashboard's "I'm leaving" / "I'm back" buttons do,
+ *  so a Google Home routine ("hey google, I'm leaving") can run them (expose them to Google Assistant in
+ *  Nabu Casa). Re-run after adding lights so the list stays current. */
+export async function installAwayScripts(): Promise<string[]> {
+  const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+  const ids = (d: string) => raw.filter((s) => s.entity_id.startsWith(`${d}.`)).map((s) => s.entity_id);
+  const lights = ids("light"), switches = ids("switch");
+  const notArmed = `{{ states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list | count == 0 }}`;
+  const scripts: Record<string, unknown> = {
+    home_base_leaving: {
+      alias: "Home Base: I'm leaving",
+      description: "Remembers which lights are on, turns everything off, pauses music. Home Base restores it when you return.",
+      mode: "single",
+      sequence: [
+        { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
+        ...(lights.length ? [{ action: "light.turn_off", target: { entity_id: lights } }] : []),
+        ...(switches.length ? [{ action: "switch.turn_off", target: { entity_id: switches } }] : []),
+        { action: "media_player.media_pause", target: { entity_id: "all" }, continue_on_error: true },
+      ],
+    },
+    home_base_returning: {
+      alias: "Home Base: I'm back",
+      description: "Puts the lights back the way they were before 'I'm leaving'.",
+      mode: "single",
+      sequence: [
+        { action: "scene.turn_on", target: { entity_id: AWAY_SCENE }, continue_on_error: true },
+        { action: "scene.delete", target: { entity_id: AWAY_SCENE }, continue_on_error: true },
+      ],
+    },
+  };
+  for (const [id, body] of Object.entries(scripts)) {
+    const res = await fetch(`${URL_()}/api/config/script/config/${id}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+    if (!res.ok) throw new Error(`couldn't create script ${id} (${res.status})`);
+  }
+  return Object.keys(scripts).map((k) => `script.${k}`);
 }
