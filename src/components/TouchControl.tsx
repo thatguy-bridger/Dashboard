@@ -152,6 +152,29 @@ function useHome(pin: string | null) {
     [load]
   );
 
+  /** Different colours on several lights at once (the album-art lights). */
+  const colorMany = useCallback((items: { id: string; h: number; s: number }[]) => {
+    const ids = items.map((i) => i.id);
+    setSnap((s) => {
+      if (!s) return s;
+      return { ...s, entities: s.entities.map((e) => {
+        const it = items.find((i) => i.id === e.id);
+        if (!it) return e;
+        const to = applyLocal(e, { type: "color", h: it.h, s: it.s });
+        pending.current.set(e.id, { until: Date.now() + 9000, to });
+        return to;
+      }) };
+    });
+    markSyncing();
+    queue.current = queue.current.then(async () => {
+      try {
+        await fetch("/api/home/colors", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ colors: items }) });
+      } catch { /* the confirm loop shows the truth */ }
+    });
+    queue.current.then(() => confirm(ids));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- confirm is declared below and only uses refs/stable setters
+  }, []);
+
   /** "It's the night": everything off with no exemptions and speakers to the night volume (the server does it all at once). */
   const goNight = useCallback(async (speakerIds: string[]) => {
     setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (e.kind === "light" || e.kind === "switch" ? { ...e, on: false } : e)) } : s));
@@ -188,7 +211,7 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight };
+  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -477,6 +500,22 @@ function useNightVolume(pin: string | null) {
   };
   return { volume, save };
 }
+const hexToHs = (hex: string): [number, number] => {
+  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 0) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [Math.round((h * 60 + 360) % 360), Math.round(max === 0 ? 0 : (d / max) * 100)];
+};
+
+/** Which lights follow the music, saved on this tablet. */
+interface MusicLightsCfg { enabled: boolean; ids: string[]; restore: Record<string, { on: boolean; brightness?: number; colorTemp?: number; hs?: [number, number] }> }
+const ML_KEY = "hb-music-lights";
+const readMusicLights = (): MusicLightsCfg => {
+  try { const v = JSON.parse(localStorage.getItem(ML_KEY) ?? "null"); if (v) return { enabled: Boolean(v.enabled), ids: Array.isArray(v.ids) ? v.ids : [], restore: v.restore ?? {} }; } catch { /* none saved */ }
+  return { enabled: false, ids: [], restore: {} };
+};
+
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
@@ -885,7 +924,8 @@ function MediaRow({ e, act, accent }: { e: HomeEntity; act: Act; accent: string 
   );
 }
 
-function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
+function MusicSheet({ musicLights, nightVolume, accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
+  musicLights: { cfg: MusicLightsCfg; set: (on: boolean) => void; pick: (id: string) => void; lights: HomeEntity[]; active: string[]; palette: string[] };
   nightVolume: { volume: number; save: (v: number) => void }; accent: string; music: MusicApi; media: HomeEntity[]; speakers: HomeEntity[]; setVolume: (v: number) => void; act: Act; onClose: () => void; message: string | null; setMessage: (m: string | null) => void;
 }) {
   const np = useNowPlaying();
@@ -939,6 +979,29 @@ function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, ac
         <div className="caps-label mb-2" style={{ fontSize: 13 }}>Volume · {speakers.length > 1 ? `all ${speakers.length} speakers` : speakers[0]?.name ?? "Spotify"} · {shown}%</div>
         <Slider value={shown} onChange={setVol} onCommit={(v) => { setVolume(v); setTimeout(() => setVol(null), 1500); }} accent={accent} height={56} />
       </div>
+
+      {musicLights.lights.length > 0 && (
+        <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 30, padding: "18px 24px" }}>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-white font-bold" style={{ fontSize: 22 }}>Music lights</div>
+              <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>The lights below take colors from each song’s album art, and change with every song.</div>
+            </div>
+            <Toggle on={musicLights.cfg.enabled} onChange={musicLights.set} />
+          </div>
+          {musicLights.palette.length > 0 && (
+            <div className="flex gap-2">{musicLights.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 28, height: 28, background: c, boxShadow: `0 0 14px ${withAlpha(c, 70)}` }} />)}</div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {musicLights.lights.map((l) => {
+              const on = musicLights.active.includes(l.id);
+              return (
+                <Press key={l.id} onClick={() => musicLights.pick(l.id)} className="px-4 py-2 font-semibold" style={{ borderRadius: 20, fontSize: 15, background: on ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: on ? "#000" : "#fff" }}>{l.name}</Press>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="caps-label mb-2" style={{ fontSize: 13 }}>Night volume · speakers go to {nightVolume.volume}% on “It’s the night”</div>
@@ -1095,14 +1158,14 @@ export function TouchControl() {
   const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent } = useArtTheme(artUrl);
+  const { backdrop, accent, palette } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight } = useHome(pin);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany } = useHome(pin);
   useAutoUpdate();
   const presence = useRef(false);
   const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
@@ -1198,6 +1261,41 @@ export function TouchControl() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const music = useLibrary(pin);
+  // Album-art lights: each new song recolours the chosen lights (default: the Light Bars) from the artwork.
+  const [ml, setMl] = useState<MusicLightsCfg>(() => (typeof window === "undefined" ? { enabled: false, ids: [], restore: {} } : readMusicLights()));
+  const saveMl = (next: MusicLightsCfg) => { setMl(next); try { localStorage.setItem(ML_KEY, JSON.stringify(next)); } catch { /* ignore */ } };
+  const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light" && e.supportsColor);
+  const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name)));
+  const appliedKey = useRef("");
+  useEffect(() => {
+    if (!ml.enabled || !playing || !palette.length || !np?.track) return;
+    const key = `${np.track.id}|${palette.join(",")}`;
+    if (appliedKey.current === key) return;
+    const targets = mlTargets(ml.ids).filter((l) => l.available);
+    if (!targets.length) return;
+    appliedKey.current = key;
+    colorMany(targets.map((l, i) => { const [h, s] = hexToHs(palette[i % palette.length]); return { id: l.id, h, s }; }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies only when the song or its palette changes
+  }, [ml.enabled, ml.ids, playing, palette, np?.track?.id, colorMany]);
+  /** Switch the album-art lights on (remembering how those lights were) or off (putting them back). */
+  const setMusicLights = (on: boolean) => {
+    if (on) {
+      const targets = mlTargets(ml.ids);
+      const restore: MusicLightsCfg["restore"] = {};
+      for (const l of targets) restore[l.id] = { on: Boolean(l.on), brightness: l.brightness, colorTemp: l.colorTemp, hs: l.hs };
+      appliedKey.current = "";
+      saveMl({ ...ml, enabled: true, restore });
+    } else {
+      for (const [id, r] of Object.entries(ml.restore)) {
+        if (!r.on) act(id, { type: "off" });
+        else if (r.hs) act(id, { type: "color", h: r.hs[0], s: r.hs[1] });
+        else if (r.colorTemp) act(id, { type: "colorTemp", value: r.colorTemp });
+        else act(id, { type: "on" });
+        if (r.on && r.brightness != null) act(id, { type: "brightness", value: r.brightness });
+      }
+      saveMl({ ...ml, enabled: false, restore: {} });
+    }
+  };
   const loadLibrary = music.load;
   useEffect(() => { if (!gate) loadLibrary(); }, [gate, loadLibrary]);
   useEffect(() => { if (sheet?.type === "music") loadLibrary(); }, [sheet?.type, loadLibrary]);
@@ -1385,7 +1483,7 @@ export function TouchControl() {
           />
         )}
         {sheet?.type === "music" && (
-          <MusicSheet nightVolume={nightVol} accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
+          <MusicSheet musicLights={{ cfg: ml, set: setMusicLights, pick: (id: string) => { const cur = ml.ids.length ? ml.ids : mlTargets([]).map((l) => l.id); saveMl({ ...ml, ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }); appliedKey.current = ""; }, lights: colorLights, active: mlTargets(ml.ids).map((l) => l.id), palette }} nightVolume={nightVol} accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
         )}
         {saving && <SaveSceneSheet onSave={saveScene} onClose={() => setSaving(false)} />}
       </div>
