@@ -1618,9 +1618,11 @@ export function TouchControl() {
       const restore: MusicLightsCfg["restore"] = {};
       for (const l of targets) restore[l.id] = { on: Boolean(l.on), brightness: l.brightness, colorTemp: l.colorTemp, hs: l.hs };
       appliedKey.current = "";
+      lastTrack.current = null; // a fresh start: apply every light (colours, whites and offs), instantly
       saveMl({ ...ml, enabled: true, restore });
     } else {
       resetToWhite(colorLights);
+      lastTrack.current = null;
       saveMl({ ...ml, enabled: false, restore: {} });
     }
   };
