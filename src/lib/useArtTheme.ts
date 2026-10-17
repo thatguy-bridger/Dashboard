@@ -9,6 +9,8 @@ export interface ArtTheme {
   accent: string;
   /** Up to three distinct, vivid colours from the artwork (hex), most dominant first: for lights. */
   palette: string[];
+  /** the artwork was analysed and has no real colour (black and white): lights should go white */
+  mono: boolean;
 }
 
 export const NEUTRAL_ACCENT = "#f0b38a";
@@ -39,7 +41,8 @@ function analyse(img: HTMLImageElement): ArtTheme {
   const { data } = sctx.getImageData(0, 0, 160, 160);
 
   const buckets = new Array(12).fill(0);
-  const sums = Array.from({ length: 12 }, () => [0, 0, 0, 0]); // weighted r,g,b and weight, per hue bucket
+  const fine = new Array(24).fill(0);
+  const sums = Array.from({ length: 24 }, () => [0, 0, 0, 0]); // weighted r,g,b and weight, per 15-degree hue bucket
   let colourful = 0;
   for (let i = 0; i < data.length; i += 16) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
@@ -48,8 +51,9 @@ function analyse(img: HTMLImageElement): ArtTheme {
     let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
     h = (h * 60 + 360) % 360;
     const w = (d / max) * max;
-    const bi = Math.floor(h / 30) % 12;
-    buckets[bi] += w;
+    const bi = Math.floor(h / 15) % 24;
+    fine[bi] += w;
+    buckets[Math.floor(h / 30) % 12] += w;
     sums[bi][0] += r * w; sums[bi][1] += g * w; sums[bi][2] += b * w; sums[bi][3] += w;
     colourful += w;
   }
@@ -62,15 +66,15 @@ function analyse(img: HTMLImageElement): ArtTheme {
     accent = `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
   }
 
-  // Palette for lights: the strongest hue buckets that are at least 60 degrees apart, each the weighted average colour of
-  // its pixels pushed to full vividness (bulbs wash out pale colours).
+  // Palette for lights: up to six colours. Take the strongest 15-degree hue buckets that are at least 30 degrees apart,
+  // each the weighted average colour of its pixels pushed to full vividness (bulbs wash out pale colours).
   const palette: string[] = [];
   if (colourful > 20) {
-    const order = buckets.map((w, i) => [w, i]).sort((a, b) => b[0] - a[0]);
+    const order = fine.map((w, i) => [w, i]).sort((a, b) => b[0] - a[0]);
     const picked: number[] = [];
     for (const [w, i] of order) {
-      if (picked.length >= 3 || w < order[0][0] * 0.12) break;
-      const far = picked.every((p) => Math.min(Math.abs(p - i), 12 - Math.abs(p - i)) >= 2);
+      if (picked.length >= 6 || w < order[0][0] * 0.04 || sums[i][3] === 0) break;
+      const far = picked.every((p) => Math.min(Math.abs(p - i), 24 - Math.abs(p - i)) >= 2);
       if (!far) continue;
       picked.push(i);
       const [sr, sg, sb, sw] = sums[i];
@@ -86,17 +90,17 @@ function analyse(img: HTMLImageElement): ArtTheme {
   const bctx = blur.getContext("2d")!;
   bctx.filter = "blur(13px) saturate(1.5)";
   bctx.drawImage(img, -16, -16, 272, 272);
-  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette };
+  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono: palette.length === 0 };
 }
 
 export function useArtTheme(url: string | null | undefined): ArtTheme {
   const [theme, setTheme] = useState<ArtTheme>(
-    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [] }
+    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false }
   );
 
   useEffect(() => {
     if (!url) {
-      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [] });
+      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false });
       return;
     }
     const hit = cache.get(url);

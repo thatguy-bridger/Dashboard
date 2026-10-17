@@ -1015,8 +1015,7 @@ function MediaRow({ e, act, accent }: { e: HomeEntity; act: Act; accent: string 
   );
 }
 
-function MusicSheet({ musicLights, nightVolume, accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
-  musicLights: { cfg: MusicLightsCfg; set: (on: boolean) => void; pick: (id: string) => void; lights: HomeEntity[]; active: string[]; palette: string[] };
+function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, act, onClose, message, setMessage }: {
   nightVolume: { volume: number; save: (v: number) => void }; accent: string; music: MusicApi; media: HomeEntity[]; speakers: HomeEntity[]; setVolume: (v: number) => void; act: Act; onClose: () => void; message: string | null; setMessage: (m: string | null) => void;
 }) {
   const np = useNowPlaying();
@@ -1070,29 +1069,6 @@ function MusicSheet({ musicLights, nightVolume, accent, music, media, speakers, 
         <div className="caps-label mb-2" style={{ fontSize: 13 }}>Volume · {speakers.length > 1 ? `all ${speakers.length} speakers` : speakers[0]?.name ?? "Spotify"} · {shown}%</div>
         <Slider value={shown} onChange={setVol} onCommit={(v) => { setVolume(v); setTimeout(() => setVol(null), 1500); }} accent={accent} height={56} />
       </div>
-
-      {musicLights.lights.length > 0 && (
-        <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 30, padding: "18px 24px" }}>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-white font-bold" style={{ fontSize: 22 }}>Music lights</div>
-              <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>The lights below take colors from each song’s album art, and change with every song.</div>
-            </div>
-            <Toggle on={musicLights.cfg.enabled} onChange={musicLights.set} />
-          </div>
-          {musicLights.palette.length > 0 && (
-            <div className="flex gap-2">{musicLights.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 28, height: 28, background: c, boxShadow: `0 0 14px ${withAlpha(c, 70)}` }} />)}</div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {musicLights.lights.map((l) => {
-              const on = musicLights.active.includes(l.id);
-              return (
-                <Press key={l.id} onClick={() => musicLights.pick(l.id)} className="px-4 py-2 font-semibold" style={{ borderRadius: 20, fontSize: 15, background: on ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: on ? "#000" : "#fff" }}>{l.name}</Press>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       <div>
         <div className="caps-label mb-2" style={{ fontSize: 13 }}>Night volume · speakers go to {nightVolume.volume}% on “It’s the night”</div>
@@ -1333,6 +1309,44 @@ function MorningBrief() {
   );
 }
 
+interface MusicLightsApi { cfg: MusicLightsCfg; set: (on: boolean) => void; pick: (id: string) => void; lights: HomeEntity[]; active: string[]; palette: string[]; mono: boolean }
+
+/** "Music lights" as a scene: a button next to the other scenes. On, the chosen lights take colours from every song's
+ *  album art (white for black-and-white art); off, they go back to how they were. */
+function MusicLightsScene({ api, accent }: { api: MusicLightsApi; accent: string }) {
+  if (api.lights.length === 0) return null;
+  const on = api.cfg.enabled;
+  return (
+    <div className={`flex flex-col gap-3 ${on ? "w-full" : ""}`}>
+      <Press
+        onClick={() => api.set(!on)}
+        className="glass-card flex items-center gap-4 px-6 shrink-0 text-left"
+        style={{ height: 92, minWidth: 210, borderRadius: 30, boxShadow: on ? `0 0 0 2px ${accent}, 0 0 30px ${withAlpha(accent, 40)}` : undefined, transition: "box-shadow 0.4s" }}
+      >
+        <Sparkle />
+        <div>
+          <div className="text-white font-bold" style={{ fontSize: 22 }}>Music lights</div>
+          <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>{on ? "On · colours follow each song" : "Lights take their colours from the album art"}</div>
+        </div>
+      </Press>
+      {on && (
+        <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 30, padding: "16px 22px" }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {api.mono ? <span className="text-white/60 font-semibold" style={{ fontSize: 14 }}>Black-and-white art: lights go white</span> : api.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 26, height: 26, background: c, boxShadow: `0 0 12px ${withAlpha(c, 70)}` }} />)}
+          </div>
+          <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Lights in the scene</div>
+          <div className="flex flex-wrap gap-2">
+            {api.lights.map((l) => {
+              const sel = api.active.includes(l.id);
+              return <Press key={l.id} onClick={() => api.pick(l.id)} className="px-4 py-2 font-semibold" style={{ borderRadius: 20, fontSize: 15, background: sel ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: sel ? "#000" : "#fff" }}>{l.name}</Press>;
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Owner unlock: the PIN is asked for again, because the tablet itself remembers it for normal use. */
 function UnlockSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [bad, setBad] = useState(false);
@@ -1402,7 +1416,7 @@ export function TouchControl() {
   const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent, palette } = useArtTheme(artUrl);
+  const { backdrop, accent, palette, mono } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
@@ -1513,16 +1527,32 @@ export function TouchControl() {
   const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light" && e.supportsColor);
   const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name)));
   const appliedKey = useRef("");
+  // While a song plays, the colours slowly rotate around the lights (every 15s) so the room keeps moving.
+  const [rot, setRot] = useState(0);
   useEffect(() => {
-    if (guest || !ml.enabled || !playing || !palette.length || !np?.track) return;
-    const key = `${np.track.id}|${palette.join(",")}`;
-    if (appliedKey.current === key) return;
+    if (!ml.enabled || !playing || guest) return;
+    const id = setInterval(() => setRot((r) => r + 1), 15_000);
+    return () => clearInterval(id);
+  }, [ml.enabled, playing, guest]);
+  useEffect(() => {
+    if (guest || !ml.enabled || !playing || !np?.track) return;
+    if (!mono && !palette.length) return; // art not analysed yet
     const targets = mlTargets(ml.ids).filter((l) => l.available);
     if (!targets.length) return;
+    // Colour list: the artwork's colours, topped up with neighbouring hues when it has fewer colours than there are lights.
+    // Black-and-white artwork: plain white.
+    const base: [number, number][] = mono ? [[0, 0]] : palette.map(hexToHs);
+    const colors = [...base];
+    for (let i = 0; !mono && colors.length < Math.min(targets.length, 4) && i < 6; i++) {
+      const [h, s] = base[i % base.length];
+      colors.push([(h + (i % 2 ? -1 : 1) * (28 + 14 * Math.floor(i / 2)) + 360) % 360, s]);
+    }
+    const key = `${np.track.id}|${mono ? "mono" : palette.join(",")}|${colors.length > 1 ? rot % colors.length : 0}|${targets.map((l) => l.id).join(",")}`;
+    if (appliedKey.current === key) return;
     appliedKey.current = key;
-    colorMany(targets.map((l, i) => { const [h, s] = hexToHs(palette[i % palette.length]); return { id: l.id, h, s }; }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies only when the song or its palette changes
-  }, [guest, ml.enabled, ml.ids, playing, palette, np?.track?.id, colorMany]);
+    colorMany(targets.map((l, i) => { const [h, s] = colors[(i + rot) % colors.length]; return { id: l.id, h, s }; }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours or the rotation change
+  }, [guest, ml.enabled, ml.ids, playing, palette, mono, rot, np?.track?.id, colorMany]);
   /** Switch the album-art lights on (remembering how those lights were) or off (putting them back). */
   const setMusicLights = (on: boolean) => {
     if (on) {
@@ -1758,6 +1788,7 @@ export function TouchControl() {
                 <div className="caps-label" style={{ fontSize: 13 }}>Scenes</div>
                 <div className="flex flex-wrap gap-3">
                   {scenes.map((s) => <SceneButton key={s.id} e={s} act={act} accent={color} />)}
+                  <MusicLightsScene accent={color} api={{ cfg: ml, set: setMusicLights, pick: (id: string) => { const cur = ml.ids.length ? ml.ids : mlTargets([]).map((l) => l.id); saveMl({ ...ml, ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }); appliedKey.current = ""; }, lights: colorLights, active: mlTargets(ml.ids).map((l) => l.id), palette, mono }} />
                   {lights.length > 0 && (
                     <Press onClick={() => { setSheet(null); setSaving(true); }} className="flex items-center gap-3 px-6 shrink-0 text-white/70 font-semibold" style={{ height: 92, borderRadius: 30, border: "2px dashed rgba(255,255,255,0.25)", fontSize: 20 }}>
                       + Save scene
@@ -1769,7 +1800,7 @@ export function TouchControl() {
           />
         )}
         {sheet?.type === "music" && (
-          <MusicSheet musicLights={{ cfg: ml, set: setMusicLights, pick: (id: string) => { const cur = ml.ids.length ? ml.ids : mlTargets([]).map((l) => l.id); saveMl({ ...ml, ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }); appliedKey.current = ""; }, lights: colorLights, active: mlTargets(ml.ids).map((l) => l.id), palette }} nightVolume={nightVol} accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
+          <MusicSheet nightVolume={nightVol} accent={color} music={music} media={media} speakers={speakers} setVolume={setVolume} act={act} onClose={() => setSheet(null)} message={message} setMessage={setMessage} />
         )}
         {saving && <SaveSceneSheet onSave={saveScene} onClose={() => setSaving(false)} />}
       </div>
