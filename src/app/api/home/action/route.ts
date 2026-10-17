@@ -28,7 +28,12 @@ export async function POST(req: NextRequest) {
         await runScene(scene.lights);
       }
     }
-    await Promise.all(ids.filter((id) => !id.startsWith("custom:")).map((id) => provider.act(id, action!)));
+    const direct = ids.filter((id) => !id.startsWith("custom:"));
+    if (direct.length === 1) await provider.act(direct[0], action);
+    else if (direct.length > 1) {
+      if (provider.actMany) await provider.actMany(direct, action);
+      else await Promise.all(direct.map((id) => provider.act(id, action!)));
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ error: "action_failed", detail: String(err) }, { status: 502 });

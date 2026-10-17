@@ -82,6 +82,24 @@ async function call(domain: string, service: string, data: Record<string, unknow
   if (!res.ok) throw new Error(`Home Assistant ${domain}.${service} failed (${res.status})`);
 }
 
+/** The Home Assistant service (and data) for one action on a given domain. */
+function serviceFor(domain: string, action: HomeAction): { domain: string; service: string; data: Record<string, unknown> } | null {
+  switch (action.type) {
+    case "activate": return { domain: "scene", service: "turn_on", data: {} };
+    case "toggle": return { domain, service: "toggle", data: {} };
+    case "on": return { domain, service: "turn_on", data: {} };
+    case "off": return { domain, service: "turn_off", data: {} };
+    case "brightness": return { domain: "light", service: "turn_on", data: { brightness_pct: Math.max(1, Math.min(100, Math.round(action.value))) } };
+    case "colorTemp": return { domain: "light", service: "turn_on", data: { color_temp_kelvin: Math.round(action.value) } };
+    case "color": return { domain: "light", service: "turn_on", data: { hs_color: [Math.max(0, Math.min(360, action.h)), Math.max(0, Math.min(100, action.s))] } };
+    case "volume": return { domain: "media_player", service: "volume_set", data: { volume_level: Math.max(0, Math.min(100, action.value)) / 100 } };
+    case "play": return { domain: "media_player", service: "media_play", data: {} };
+    case "pause": return { domain: "media_player", service: "media_pause", data: {} };
+    case "next": return { domain: "media_player", service: "media_next_track", data: {} };
+    case "previous": return { domain: "media_player", service: "media_previous_track", data: {} };
+  }
+}
+
 export const homeAssistantProvider: HomeProvider = {
   name: "homeassistant",
   async snapshot(): Promise<HomeSnapshot> {
@@ -94,6 +112,21 @@ export const homeAssistantProvider: HomeProvider = {
       return toEntity(s, kind === "scene" ? "Scenes" : kind === "media" ? "Speakers" : rooms.get(s.entity_id) ?? "Other");
     });
     return { provider: "homeassistant", entities };
+  },
+  /** One service call per domain with every entity in it (what Home Assistant's own UI does),
+   *  instead of one request per device, which cloud bulbs (Tuya) handle badly. */
+  async actMany(ids: string[], action: HomeAction) {
+    const byDomain = new Map<string, string[]>();
+    for (const id of ids) {
+      const d = id.split(".")[0];
+      if (!DOMAINS[d]) throw new Error("unsupported device");
+      byDomain.set(d, [...(byDomain.get(d) ?? []), id]);
+    }
+    for (const [domain, list] of byDomain) {
+      const svc = serviceFor(domain, action);
+      if (!svc) continue;
+      await call(svc.domain, svc.service, { entity_id: list, ...svc.data });
+    }
   },
   async act(id: string, action: HomeAction) {
     const domain = id.split(".")[0];

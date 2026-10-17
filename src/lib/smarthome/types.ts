@@ -69,4 +69,6 @@ export interface HomeProvider {
   name: HomeSnapshot["provider"];
   snapshot(): Promise<HomeSnapshot>;
   act(id: string, action: HomeAction): Promise<void>;
+  /** Same action on several devices; providers may batch it into fewer calls. */
+  actMany?(ids: string[], action: HomeAction): Promise<void>;
 }

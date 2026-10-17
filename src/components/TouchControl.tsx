@@ -24,13 +24,27 @@ function useHome(pin: string | null) {
   const [error, setError] = useState<string | null>(null);
   const pinRef = useRef(pin);
   pinRef.current = pin;
+  /** Entities with a change in flight: keep the tapped state on screen until the device reports it
+   *  (cloud bulbs take a few seconds), instead of snapping back to the stale value and inviting a second tap. */
+  const pending = useRef(new Map<string, { until: number; to: HomeEntity }>());
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/home", { cache: "no-store", headers: { "x-control-pin": pinRef.current ?? "" } });
       const j = await res.json();
       if (res.ok) {
-        setSnap(j);
+        const now = Date.now();
+        const merged = (j as HomeSnapshot).entities.map((e) => {
+          const p = pending.current.get(e.id);
+          if (!p) return e;
+          if (now > p.until || matches(e, p.to)) {
+            pending.current.delete(e.id);
+            return e;
+          }
+          return p.to; // device hasn't caught up yet
+        });
+        setSnap({ ...(j as HomeSnapshot), entities: merged });
         setGate(null);
         setError(null);
       } else if (j.error === "needs_pin" || j.error === "bad_pin" || j.error === "pin_not_configured") {
@@ -50,19 +64,34 @@ function useHome(pin: string | null) {
 
   /** Apply the change locally first (feels instant on a touch screen), send it, then re-sync. */
   const act = useCallback(
-    async (target: string | string[], action: HomeAction) => {
+    (target: string | string[], action: HomeAction) => {
       const ids = Array.isArray(target) ? target : [target];
-      setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (ids.includes(e.id) ? applyLocal(e, action) : e)) } : s));
-      try {
-        await fetch("/api/home/action", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" },
-          body: JSON.stringify({ ids, action }),
+      setSnap((s) => {
+        if (!s) return s;
+        const entities = s.entities.map((e) => {
+          if (!ids.includes(e.id)) return e;
+          const to = applyLocal(e, action);
+          if (action.type !== "activate") pending.current.set(e.id, { until: Date.now() + 9000, to });
+          return to;
         });
-      } catch {
-        // re-sync below shows the truth
-      }
-      setTimeout(load, 900);
+        return { ...s, entities };
+      });
+      // Commands go out one at a time, in the order they were tapped.
+      queue.current = queue.current.then(async () => {
+        try {
+          await fetch("/api/home/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" },
+            body: JSON.stringify({ ids, action }),
+          });
+        } catch {
+          // the re-syncs below show the truth
+        }
+      });
+      // Re-check as the device catches up (slow cloud bulbs can take several seconds).
+      setTimeout(load, 1800);
+      setTimeout(load, 4500);
+      setTimeout(load, 9500);
     },
     [load]
   );
@@ -81,6 +110,16 @@ function useHome(pin: string | null) {
   );
 
   return { snap, gate, error, act, load, saveScene };
+}
+
+/** Has the device caught up with what we asked for? */
+function matches(server: HomeEntity, want: HomeEntity): boolean {
+  if (Boolean(server.on) !== Boolean(want.on) && want.kind !== "media") return false;
+  if (want.brightness != null && server.brightness != null && Math.abs(server.brightness - want.brightness) > 4) return false;
+  if (want.colorTemp && server.colorTemp && Math.abs(server.colorTemp - want.colorTemp) > 150) return false;
+  if (want.volume != null && server.volume != null && Math.abs(server.volume - want.volume) > 3) return false;
+  if (want.kind === "media" && Boolean(server.playing) !== Boolean(want.playing)) return false;
+  return true;
 }
 
 function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
@@ -198,7 +237,7 @@ function LightTile({ e, act, accent, onMore }: { e: HomeEntity; act: (target: st
           : undefined,
       }}
     >
-      <Press onClick={() => act(e.id, { type: "toggle" })} className="text-left flex-1 flex flex-col justify-between">
+      <Press onClick={() => act(e.id, { type: on ? "off" : "on" })} className="text-left flex-1 flex flex-col justify-between">
         <div className="flex items-start justify-between">
           <Bulb on={on} />
           {(e.supportsColor || e.supportsColorTemp) && (
@@ -231,7 +270,7 @@ function SwitchTile({ e, act }: { e: HomeEntity; act: (target: string | string[]
   const on = Boolean(e.on);
   return (
     <Press
-      onClick={() => act(e.id, { type: "toggle" })}
+      onClick={() => act(e.id, { type: on ? "off" : "on" })}
       className="glass-card flex flex-col justify-between text-left"
       style={{ width: 200, height: 168, borderRadius: 34, padding: 18, opacity: e.available ? 1 : 0.4 }}
     >
