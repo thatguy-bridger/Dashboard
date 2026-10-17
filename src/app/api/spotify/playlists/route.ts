@@ -4,6 +4,7 @@ import { spotifyFetch } from "@/lib/music/spotifyApi";
 import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
 
 const KEY = "musicDefaults";
+const CACHE_KEY = "playlistsCache";
 export interface MusicDefaults { uri: string | null; name: string | null; deviceId: string | null; deviceName: string | null; entityId: string | null }
 export const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -23,17 +24,31 @@ const deny = (gate: string) => NextResponse.json({ error: gate }, { status: gate
 export async function GET(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return deny(gate);
-  const playlists: { uri: string; name: string; image: string | null; tracks: number }[] = [];
-  let url: string | null = "me/playlists?limit=50";
-  for (let i = 0; url && i < 4; i++) {
-    const res: Response = await spotifyFetch(url);
-    if (res.status === 401) return NextResponse.json({ error: "not_connected" }, { status: 401 });
-    if (res.status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
-    if (res.status === 403) return NextResponse.json({ error: "reconnect" }, { status: 403 });
-    if (!res.ok) return NextResponse.json({ error: "spotify_failed", status: res.status }, { status: 502 });
-    const j = await res.json();
-    for (const p of j.items ?? []) if (p) playlists.push({ uri: p.uri, name: p.name, image: p.images?.[0]?.url ?? null, tracks: p.tracks?.total ?? p.items?.total ?? 0 });
-    url = j.next ? String(j.next).replace("https://api.spotify.com/v1/", "") : null;
+  type Playlist = { uri: string; name: string; image: string | null; tracks: number };
+  // Your playlists change rarely: keep a copy (10 minutes counts as fresh) so opening the picker costs Spotify nothing, and so the
+  // list still shows while Spotify has the app locked out.
+  let playlists: Playlist[] = [];
+  const cached = await d1Query<{ value: string | null }>("SELECT value FROM settings WHERE key = ?", [CACHE_KEY]).then((r) => (r[0]?.value ? (JSON.parse(r[0].value) as { at: number; playlists: Playlist[] }) : null)).catch(() => null);
+  if (cached && Date.now() - cached.at < 10 * 60_000) playlists = cached.playlists;
+  else {
+    let url: string | null = "me/playlists?limit=50";
+    const fetched: Playlist[] = [];
+    let failed: Response | null = null;
+    for (let i = 0; url && i < 4; i++) {
+      const res: Response = await spotifyFetch(url);
+      if (!res.ok) { failed = res; break; }
+      const j = await res.json();
+      for (const p of j.items ?? []) if (p) fetched.push({ uri: p.uri, name: p.name, image: p.images?.[0]?.url ?? null, tracks: p.tracks?.total ?? p.items?.total ?? 0 });
+      url = j.next ? String(j.next).replace("https://api.spotify.com/v1/", "") : null;
+    }
+    if (!failed) {
+      playlists = fetched;
+      await d1Query(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [CACHE_KEY, JSON.stringify({ at: Date.now(), playlists })]).catch(() => {});
+    } else if (cached) playlists = cached.playlists; // locked out or down: the last list is better than none
+    else if (failed.status === 401) return NextResponse.json({ error: "not_connected" }, { status: 401 });
+    else if (failed.status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+    else if (failed.status === 403) return NextResponse.json({ error: "reconnect" }, { status: 403 });
+    else return NextResponse.json({ error: "spotify_failed", status: failed.status }, { status: 502 });
   }
   let devices: { id: string; name: string; active: boolean }[] = [];
   try {
