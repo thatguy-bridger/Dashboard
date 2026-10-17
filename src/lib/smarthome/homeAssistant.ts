@@ -157,3 +157,53 @@ export const homeAssistantProvider: HomeProvider = {
     }
   },
 };
+
+export interface BrowseItem {
+  title: string;
+  mediaId: string;
+  mediaType: string;
+  canPlay: boolean;
+  canExpand: boolean;
+  thumbnail?: string;
+}
+
+/** Media browsing only exists on Home Assistant's websocket API, so open one for a single request. */
+function wsRequest<T>(message: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`${URL_().replace(/^http/, "ws")}/api/websocket`);
+    const timer = setTimeout(() => { ws.close(); reject(new Error("Home Assistant websocket timed out")); }, 12000);
+    const done = (fn: () => void) => { clearTimeout(timer); ws.close(); fn(); };
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(String(ev.data));
+      if (m.type === "auth_required") ws.send(JSON.stringify({ type: "auth", access_token: process.env.HOME_ASSISTANT_TOKEN }));
+      else if (m.type === "auth_ok") ws.send(JSON.stringify({ id: 1, ...message }));
+      else if (m.type === "auth_invalid") done(() => reject(new Error("Home Assistant rejected the token")));
+      else if (m.type === "result" && m.id === 1) done(() => (m.success ? resolve(m.result as T) : reject(new Error(m.error?.message ?? "browse failed"))));
+    };
+    ws.onerror = () => done(() => reject(new Error("Home Assistant websocket error")));
+  });
+}
+
+/** Children of a media-browser node on a player (no id = its top level). */
+export async function browseMedia(entityId: string, mediaId?: string, mediaType?: string): Promise<{ title: string; children: BrowseItem[] }> {
+  const r = await wsRequest<{ title?: string; children?: Record<string, unknown>[] }>({
+    type: "media_player/browse_media",
+    entity_id: entityId,
+    ...(mediaId ? { media_content_id: mediaId, media_content_type: mediaType } : {}),
+  });
+  return {
+    title: unescapeName(r.title ?? ""),
+    children: (r.children ?? []).map((c) => ({
+      title: unescapeName(String(c.title ?? "")),
+      mediaId: String(c.media_content_id ?? ""),
+      mediaType: String(c.media_content_type ?? ""),
+      canPlay: Boolean(c.can_play),
+      canExpand: Boolean(c.can_expand),
+      thumbnail: typeof c.thumbnail === "string" ? c.thumbnail : undefined,
+    })),
+  };
+}
+
+export async function playMedia(entityId: string, mediaId: string, mediaType: string) {
+  await call("media_player", "play_media", { entity_id: entityId, media_content_id: mediaId, media_content_type: mediaType });
+}
