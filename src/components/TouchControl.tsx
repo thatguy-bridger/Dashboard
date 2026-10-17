@@ -214,6 +214,16 @@ function useIdle(ms: number) {
   return { idle, wake: () => api.current.wake(), sleep: () => api.current.sleep() };
 }
 
+/** Fully Kiosk Browser's JavaScript interface (Fire/Android kiosk tablets). Needs "JavaScript Interface (PLUS)" on. */
+interface FullyApi {
+  bind?: (event: string, js: string) => void;
+  startMotionDetection?: () => void;
+  stopMotionDetection?: () => void;
+  setScreenBrightness?: (v: number) => void;
+  getScreenBrightness?: () => number;
+}
+const getFully = (): FullyApi | null => (typeof window !== "undefined" ? ((window as unknown as { fully?: FullyApi }).fully ?? null) : null);
+
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 const MP_VERSION = "1.1.1";
 
@@ -225,6 +235,14 @@ function useApproach(enabled: boolean, onFace: () => void): "off" | "on" | "deni
   useEffect(() => { cb.current = onFace; });
   useEffect(() => {
     if (!enabled) return;
+    // Inside Fully Kiosk the browser can't prompt for the camera; use Fully's own motion detection instead.
+    const fully = getFully();
+    if (fully?.startMotionDetection && fully.bind) {
+      (window as unknown as { __hbMotion?: () => void }).__hbMotion = () => cb.current();
+      fully.bind("onMotion", "window.__hbMotion && window.__hbMotion();");
+      fully.startMotionDetection();
+      return () => { fully.stopMotionDetection?.(); (window as unknown as { __hbMotion?: () => void }).__hbMotion = undefined; };
+    }
     let stopped = false;
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -958,7 +976,7 @@ export function TouchControl() {
     setCamAsk(null);
     try { localStorage.setItem("hb-wake-camera", next ? "1" : "0"); } catch { /* ignore */ }
     // Ask for the camera right now, from this tap, so the permission prompt shows while you're looking at the screen.
-    if (next) {
+    if (next && !getFully()) {
       const why = !window.isSecureContext ? "this page isn't secure (needs https)"
         : window.self !== window.top ? "this page is inside another page (an iframe), which blocks the camera"
         : !navigator.mediaDevices ? "this browser has no camera access"
@@ -975,6 +993,21 @@ export function TouchControl() {
     if (away && Date.now() - awaySince.current > 60_000) setAway("return");
     if (idle) wake();
   });
+  // On Fully Kiosk, really dim the backlight while idle (the black overlay can't turn an LCD off), and put it back on wake.
+  useEffect(() => {
+    const fully = getFully();
+    if (!fully?.setScreenBrightness) return;
+    try {
+      if (idle) {
+        const cur = fully.getScreenBrightness?.();
+        if (typeof cur === "number" && cur > 5) localStorage.setItem("hb-prev-brightness", String(cur));
+        fully.setScreenBrightness(1);
+      } else {
+        const prev = Number(localStorage.getItem("hb-prev-brightness"));
+        fully.setScreenBrightness(prev > 5 ? prev : 160);
+      }
+    } catch { /* not in Fully, or storage blocked */ }
+  }, [idle]);
   // Or: a phone (Home Assistant person) that was away shows up home while we're waiting.
   const wasHome = useRef<Record<string, boolean>>({});
   useEffect(() => {
@@ -1101,7 +1134,7 @@ export function TouchControl() {
                       Wake on approach: {wakeCam ? "On" : "Off"}
                     </Press>
                     <div className="text-white/45 font-semibold" style={{ fontSize: 15 }}>
-                      {camAsk ? `Camera unavailable: ${camAsk}` : camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
+                      {camAsk ? `Camera unavailable: ${camAsk}` : camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : getFully() ? "Uses Fully Kiosk’s motion detection while dimmed or away, and dims the backlight when idle." : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
                     </div>
                   </div>
                 )}
