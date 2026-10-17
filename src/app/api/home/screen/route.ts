@@ -44,6 +44,11 @@ export async function POST(req: NextRequest) {
     try { await installMotionWake(cfg.service, cfg.awake); return NextResponse.json({ ok: true }); }
     catch (err) { return NextResponse.json({ ok: false, error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
+  if (b.mode === "off") {
+    if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
+    try { await tabletCommand(cfg.service, "command_screen_off"); return NextResponse.json({ ok: true }); }
+    catch (err) { return NextResponse.json({ ok: false, error: "command_failed", detail: String(err) }, { status: 502 }); }
+  }
   if (b.mode === "level" && typeof b.level === "number") {
     if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
     try {

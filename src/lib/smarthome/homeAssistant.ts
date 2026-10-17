@@ -346,10 +346,17 @@ export async function installMotionWake(service: string, awake: number) {
     mode: "single",
     triggers: [{ trigger: "state", entity_id: "binary_sensor.tablet_camera_motion", to: "on" }],
     actions: [{ parallel: [
-      { action: `notify.${service}`, data: { message: "command_screen_on" } },
-      { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
-      // Away and it's been a minute (so you walking out the door doesn't count): you're back, lights return.
-      { if: [{ condition: "template", value_template: `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 and (now() - s[0].last_updated).total_seconds() > 60 }}` }], then: [{ action: "script.turn_on", target: { entity_id: "script.home_base_returning" } }] },
+      // wake the screen, unless it's night and every light is off (then the room should stay dark)
+      { if: [{ condition: "template", value_template: "{{ not ((now().hour >= 21 or now().hour < 5) and (states.light | selectattr('state','eq','on') | list | count == 0)) }}" }], then: [
+        { action: `notify.${service}`, data: { message: "command_screen_on" } },
+        { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
+      ] },
+      // Away and it's been a minute (so you walking out the door doesn't count): you're back, lights return and the screen wakes.
+      { if: [{ condition: "template", value_template: `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 and (now() - s[0].last_updated).total_seconds() > 60 }}` }], then: [
+        { action: "script.turn_on", target: { entity_id: "script.home_base_returning" } },
+        { action: `notify.${service}`, data: { message: "command_screen_on" } },
+        { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
+      ] },
     ] }],
   };
   const res = await fetch(`${URL_()}/api/config/automation/config/home_base_wake_on_motion`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });

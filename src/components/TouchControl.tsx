@@ -447,6 +447,8 @@ function lightColor(e: HomeEntity): string {
 }
 
 const fmtTime = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+/** After 9pm and before 5am (the tablet's local time). */
+const isNight = () => { const h = new Date().getHours(); return h >= 21 || h < 5; };
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
@@ -1104,14 +1106,25 @@ export function TouchControl() {
   // Away from home: lights are off, waiting for you. Give the departure a minute before a face counts as "back".
   const awaySince = useRef(0);
   useEffect(() => { if (away) awaySince.current = Date.now(); }, [away]);
+  // At night with every light off, movement in the room must not light the tablet up again.
+  const nightQuiet = isNight() && !(snap?.entities ?? []).some((e) => (e.kind === "light" || e.kind === "switch") && e.on);
   const onApproach = () => {
     if (away && Date.now() - awaySince.current > 60_000) setAway("return");
-    activity(); // someone's there: back to full brightness and restart the dim timer
+    if (!nightQuiet) activity(); // someone's there: back to full brightness and restart the dim timer
   };
   const motionSensors = useHaMotion(pin, wakeCam, onApproach);
   useEffect(() => { presence.current = wakeCam && motionSensors > 0; });
   // With a Home Assistant motion sensor (or the tablet streaming its camera there) the browser doesn't need the camera.
   const camStatus = useApproach(wakeCam && (idle || away) && motionSensors === 0, onApproach);
+  // Lights all off after 9pm: the tablet goes fully dark too (screen off, no light at all). The power button or a touch wakes it.
+  const nightOff = () => {
+    if (!isNight() || !pin) return;
+    setTimeout(() => {
+      sleep();
+      fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: "off" }) }).catch(() => {});
+    }, 800);
+  };
+
   // Real backlight dimming through the Home Assistant app, stepping down with the on-screen fade and back up on any activity.
   const lastStep = useRef(0);
   useEffect(() => {
@@ -1210,7 +1223,7 @@ export function TouchControl() {
                 <ToggleButton
                   on={anyOn}
                   glow={groupGlow(allTargets)}
-                  onTap={() => act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" })}
+                  onTap={() => { act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" }); if (anyOn) nightOff(); }}
                   onLong={() => setSheet({ type: "all" })}
                   style={{ width: "100%", height: "100%", padding: "0 64px", borderRadius: 64 }}
                 >
@@ -1224,7 +1237,7 @@ export function TouchControl() {
                   </div>
                 </ToggleButton>
                   <Press
-                    onClick={() => act(devices.map((d) => d.id), { type: "off" })}
+                    onClick={() => { act(devices.map((d) => d.id), { type: "off" }); nightOff(); }}
                     className="absolute font-bold"
                     style={{ top: 22, right: 26, padding: "14px 26px", borderRadius: 26, fontSize: 19, background: anythingOn ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.25)", color: anythingOn ? "#fff" : "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.22)" }}
                   >
