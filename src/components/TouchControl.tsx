@@ -1148,14 +1148,15 @@ export function TouchControl() {
   // With a Home Assistant motion sensor (or the tablet streaming its camera there) the browser doesn't need the camera.
   const camStatus = useApproach(wakeCam && (idle || away) && motionSensors === 0, onApproach);
   // Lights all off after 9pm: the tablet goes fully dark too (screen off, no light at all). The power button or a touch wakes it.
+  const forcedOff = useRef(false);
   const nightOff = () => {
     if (!isNight() || !pin) return;
-    setTimeout(() => {
-      sleep();
-      fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: "off" }) }).catch(() => {});
-    }, 800);
+    forcedOff.current = true; // no brightness/wake commands from the dimmer until someone actually uses the tablet again
+    sleep();
+    const off = () => fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: "off" }) }).catch(() => {});
+    setTimeout(off, 400);
+    setTimeout(off, 4000); // again, in case something nudged the screen back on
   };
-
   // Real backlight dimming through the Home Assistant app, stepping down with the on-screen fade and back up on any activity.
   const lastStep = useRef(0);
   useEffect(() => {
@@ -1163,6 +1164,7 @@ export function TouchControl() {
     const step = dimLevel <= 0 ? 0 : Math.min(5, Math.ceil(dimLevel * 5));
     if (step === lastStep.current) return;
     lastStep.current = step;
+    if (forcedOff.current) { if (step === 0) forcedOff.current = false; else return; } // screen was powered off on purpose
     const levels = [0, 130, 95, 60, 30, 1];
     fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify(step === 0 ? { mode: "wake" } : { mode: "level", level: levels[step] }) }).catch(() => {});
   }, [dimLevel, pin]);
@@ -1307,7 +1309,7 @@ export function TouchControl() {
                       style={{ height: Math.round(110 + 190 * depth), borderRadius: Math.round(40 + 24 * depth), fontSize: Math.round(30 + 34 * depth), color: "#fff", background: `linear-gradient(135deg, rgba(60,70,160,${0.45 + 0.35 * depth}), rgba(20,20,60,${0.7 + 0.25 * depth}))`, border: "1px solid rgba(160,170,255,0.35)", boxShadow: `0 0 ${Math.round(20 + 50 * depth)}px -8px rgba(120,130,255,0.8)` }}
                     >
                       <span>It’s the night</span>
-                      <span className="text-white/60 font-semibold" style={{ fontSize: Math.round(15 + 7 * depth) }}>Every light off · speakers to {nightVol.volume}%</span>
+                      <span className="text-white/60 font-semibold" style={{ fontSize: Math.round(15 + 7 * depth) }}>Every light off · speakers to {nightVol.volume}% · tablet off</span>
                     </Press>
                   ) : (
                     <Press
