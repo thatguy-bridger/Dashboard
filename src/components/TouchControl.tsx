@@ -11,6 +11,9 @@ import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
 import type { HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
 
+/** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
+const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
+
 const W = 1440;
 const H = 900;
 const PIN_KEY = "hb-control-pin";
@@ -392,7 +395,7 @@ function Slider({ value, onChange, onCommit, accent, height = 44, disabled, trac
       {track ? (
         <div className="absolute top-1/2 rounded-full bg-white" style={{ left: `calc(${value}% - ${height * 0.4}px)`, width: height * 0.8, height: height * 0.8, transform: "translateY(-50%)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }} />
       ) : (
-        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${value}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+        <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${value}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
       )}
     </div>
   );
@@ -427,7 +430,7 @@ function SceneButton({ e, act, accent }: { e: HomeEntity; act: (target: string |
     <Press
       onClick={() => { act(e.id, { type: "activate" }); setFired(true); setTimeout(() => setFired(false), 900); }}
       className="glass-card flex items-center gap-4 px-6 shrink-0"
-      style={{ height: 92, minWidth: 210, borderRadius: 30, boxShadow: fired ? `0 0 0 2px ${accent}, 0 0 30px ${accent}66` : undefined, transition: "box-shadow 0.4s" }}
+      style={{ height: 92, minWidth: 210, borderRadius: 30, boxShadow: fired ? `0 0 0 2px ${accent}, 0 0 30px ${withAlpha(accent, 40)}` : undefined, transition: "box-shadow 0.4s" }}
     >
       <Sparkle />
       <span className="text-white font-bold" style={{ fontSize: 22 }}>{e.name}</span>
@@ -521,7 +524,7 @@ function Sheet({ title, onClose, children, width = 720, glow }: { title: string;
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/75" onClick={onClose}>
       <div
         className="glass-card flex flex-col overflow-hidden"
-        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${glow}55, transparent 70%), ` : ""}rgba(14,14,18,0.97)` }}
+        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${withAlpha(glow, 33)}, transparent 70%), ` : ""}rgba(14,14,18,0.97)` }}
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="flex items-center justify-between shrink-0" style={{ padding: "28px 36px 16px" }}>
@@ -807,7 +810,7 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
   if (!track) {
     return (
       <div className="glass-card flex flex-col items-center justify-center gap-8 text-center" style={{ height, borderRadius: 52, padding: 32 }}>
-        <Press onClick={start} className="flex items-center justify-center text-black" style={{ width: 280, height: 280, borderRadius: 140, background: accent, boxShadow: `0 16px 60px ${accent}80` }}>
+        <Press onClick={start} className="flex items-center justify-center text-black" style={{ width: 280, height: 280, borderRadius: 140, background: accent, boxShadow: `0 16px 60px ${withAlpha(accent, 50)}` }}>
           {starting ? <span className="animate-pulse font-bold" style={{ fontSize: 28 }}>Starting…</span> : <Icon d={PLAY} size={140} />}
         </Press>
         <div className="min-w-0 max-w-full">
@@ -823,7 +826,7 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
       <Press onClick={onOpen} className="flex flex-col items-center gap-4 w-full min-h-0 flex-1">
         {track.albumArtUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image
-          <img src={track.albumArtUrl} alt="" className="object-cover min-h-0" style={{ width: "min(100%, 340px)", aspectRatio: "1", borderRadius: 40, boxShadow: `0 14px 50px ${accent}70` }} />
+          <img src={track.albumArtUrl} alt="" className="object-cover min-h-0" style={{ width: "min(100%, 340px)", aspectRatio: "1", borderRadius: 40, boxShadow: `0 14px 50px ${withAlpha(accent, 44)}` }} />
         )}
         <div className="w-full min-w-0 text-center">
           <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 32 }}>{track.name}</FitText>
@@ -832,7 +835,7 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
       </Press>
       <div className="w-full shrink-0" style={{ padding: "0 8px" }}>
         <div className="rounded-full overflow-hidden" style={{ height: 8, background: "rgba(255,255,255,0.18)" }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
         </div>
         <div className="flex justify-between num-rounded font-semibold text-white/55 mt-1.5" style={{ fontSize: 16 }}>
           <span>{fmtTime(progress)}</span>
@@ -909,7 +912,7 @@ function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, ac
           <div className="flex gap-5 items-center">
             {track.albumArtUrl && (
               // eslint-disable-next-line @next/next/no-img-element -- external Spotify CDN image
-              <img src={track.albumArtUrl} alt="" className="object-cover shrink-0" style={{ width: 150, height: 150, borderRadius: 36, boxShadow: `0 10px 36px ${accent}70` }} />
+              <img src={track.albumArtUrl} alt="" className="object-cover shrink-0" style={{ width: 150, height: 150, borderRadius: 36, boxShadow: `0 10px 36px ${withAlpha(accent, 44)}` }} />
             )}
             <div className="min-w-0 flex-1">
               <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 30 }}>{track.name}</FitText>
@@ -918,7 +921,7 @@ function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, ac
           </div>
           <div>
             <div className="rounded-full overflow-hidden" style={{ height: 6, background: "rgba(255,255,255,0.18)" }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
             </div>
             <div className="flex justify-between num-rounded font-semibold text-white/45 mt-1.5" style={{ fontSize: 14 }}><span>{fmt(progress)}</span><span>{fmt(track.durationMs)}</span></div>
           </div>
@@ -1226,6 +1229,8 @@ export function TouchControl() {
   const setVolume = (v: number) => (speakers.length ? act(speakers.map((s) => s.id), { type: "volume", value: v }) : controlSpotify("volume", v));
   const rightW = Math.min(600, Math.max(460, Math.round(cw * 0.36)));
   const leftW = cw - rightW - 50 - 40 - 50;
+  // the big "All lights" card scales down on narrow screens instead of wrapping into the Turn off all button
+  const fit = Math.max(0.55, Math.min(1, leftW / 780));
   const time = now ? now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
   const keepOn = snap?.keepOn ?? [];
   // "All lights" leaves flagged lights alone; the top-right button turns everything off.
@@ -1245,7 +1250,7 @@ export function TouchControl() {
             {/* left: all lights, rooms, then (scroll) individual lights */}
             <div className="absolute flex flex-col" style={{ left: 50, top: 84, width: leftW, height: 790 }}>
               <div className="flex items-end justify-between mb-5 shrink-0">
-                <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 76, lineHeight: 1 }}>{time}</div>
+                <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 76, lineHeight: 1, whiteSpace: "nowrap" }}>{time}</div>
                 {snap?.provider === "demo" && (
                   <div className="glass-card px-5 py-2 text-white/60 font-semibold" style={{ borderRadius: 24, fontSize: 14 }}>
                     Demo devices — connect Home Assistant in Control
@@ -1255,20 +1260,20 @@ export function TouchControl() {
               {error && !snap && <div className="glass-card px-6 py-4 text-white/70 font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>{error}</div>}
 
               {devices.length > 0 && (
-                <div className="relative shrink-0" style={{ height: 400, marginBottom: 18 }}>
+                <div className="relative shrink-0" style={{ height: 400, marginBottom: 28 }}>
                 <ToggleButton
                   on={anyOn}
                   glow={groupGlow(allTargets)}
                   onTap={() => { act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" }); if (anyOn) nightOff(); }}
                   onLong={() => setSheet({ type: "all" })}
-                  style={{ width: "100%", height: "100%", padding: "0 64px", borderRadius: 64 }}
+                  style={{ width: "100%", height: "100%", padding: `0 ${Math.round(64 * fit)}px`, borderRadius: 64 }}
                 >
-                  <div className="flex items-center gap-14">
-                    <SegmentBulb lights={lights.length ? lights : devices} size={230} />
-                    <div>
-                      <div className="text-white font-bold" style={{ fontSize: 88, lineHeight: 1.02 }}>All lights</div>
-                      <div className="text-white/65 font-semibold mt-2" style={{ fontSize: 30 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}{keepOn.length > 0 ? ` · ${keepOn.length} stay${keepOn.length === 1 ? "s" : ""} on` : ""}</div>
-                      <div className="text-white/35 font-semibold mt-1" style={{ fontSize: 19 }}>Hold for color &amp; scenes</div>
+                  <div className="flex items-center" style={{ gap: Math.round(56 * fit) }}>
+                    <SegmentBulb lights={lights.length ? lights : devices} size={Math.round(230 * fit)} />
+                    <div className="min-w-0">
+                      <div className="text-white font-bold whitespace-nowrap" style={{ fontSize: Math.round(88 * fit), lineHeight: 1.02 }}>All lights</div>
+                      <div className="text-white/65 font-semibold mt-2" style={{ fontSize: Math.round(30 * fit) }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}{keepOn.length > 0 ? ` · ${keepOn.length} stay${keepOn.length === 1 ? "s" : ""} on` : ""}</div>
+                      <div className="text-white/35 font-semibold mt-1" style={{ fontSize: Math.round(19 * fit) }}>Hold for color &amp; scenes</div>
                     </div>
                   </div>
                 </ToggleButton>
@@ -1282,7 +1287,7 @@ export function TouchControl() {
                 </div>
               )}
 
-              <div className="flex-1 min-h-0 overflow-y-auto pr-2" style={{ scrollbarWidth: "none" }}>
+              <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none", margin: "-24px -40px -40px", padding: "24px 40px 40px" }}>
                 <div style={{ minHeight: "100%" }}>
                   <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
                     {rooms.map((room) => {
@@ -1392,7 +1397,7 @@ export function TouchControl() {
         <button
           onClick={() => setAway("return")}
           className="absolute inset-0 z-[45] flex flex-col items-center justify-center gap-6 touch-manipulation select-none"
-          style={{ backgroundColor: "#050507", backgroundImage: `radial-gradient(90% 70% at 50% 40%, ${color}66, transparent 75%)`, border: "none" }}
+          style={{ backgroundColor: "#050507", backgroundImage: `radial-gradient(90% 70% at 50% 40%, ${withAlpha(color, 40)}, transparent 75%)`, border: "none" }}
         >
           <span className="text-white font-bold" style={{ fontSize: 96, lineHeight: 1 }}>Welcome back</span>
           <span className="text-white/65 font-semibold" style={{ fontSize: 30 }}>Tap anywhere to turn your lights on and resume your music</span>
