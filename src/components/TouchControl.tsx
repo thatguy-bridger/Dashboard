@@ -433,11 +433,13 @@ const hexToHs = (hex: string): [number, number] => {
 };
 
 /** Which lights follow the music, saved on this tablet. */
-interface MusicLightsCfg { enabled: boolean; ids: string[]; restore: Record<string, { on: boolean; brightness?: number; colorTemp?: number; hs?: [number, number] }> }
+type LightMode = "color" | "on" | "off";
+/** Per light in the scene: "color" follows the album art (colour lights only), "on" is plain white, "off" is off. */
+interface MusicLightsCfg { enabled: boolean; ids: string[]; modes: Record<string, LightMode>; restore: Record<string, { on: boolean; brightness?: number; colorTemp?: number; hs?: [number, number] }> }
 const ML_KEY = "hb-music-lights";
 const readMusicLights = (): MusicLightsCfg => {
-  try { const v = JSON.parse(localStorage.getItem(ML_KEY) ?? "null"); if (v) return { enabled: Boolean(v.enabled), ids: Array.isArray(v.ids) ? v.ids : [], restore: v.restore ?? {} }; } catch { /* none saved */ }
-  return { enabled: false, ids: [], restore: {} };
+  try { const v = JSON.parse(localStorage.getItem(ML_KEY) ?? "null"); if (v) return { enabled: Boolean(v.enabled), ids: Array.isArray(v.ids) ? v.ids : [], modes: v.modes && typeof v.modes === "object" ? v.modes : {}, restore: v.restore ?? {} }; } catch { /* none saved */ }
+  return { enabled: false, ids: [], modes: {}, restore: {} };
 };
 
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1266,7 +1268,7 @@ function MorningBrief() {
   );
 }
 
-interface MusicLightsApi { cfg: MusicLightsCfg; set: (on: boolean) => void; pick: (id: string) => void; lights: HomeEntity[]; active: string[]; palette: string[]; mono: boolean }
+interface MusicLightsApi { cfg: MusicLightsCfg; set: (on: boolean) => void; cycle: (l: HomeEntity) => void; modeOf: (l: HomeEntity) => LightMode; lights: HomeEntity[]; palette: string[]; mono: boolean }
 
 /** "Music lights" as a scene: a button next to the other scenes. On, the chosen lights take colours from every song's
  *  album art (white for black-and-white art); off, they go back to how they were. */
@@ -1291,11 +1293,17 @@ function MusicLightsScene({ api, accent }: { api: MusicLightsApi; accent: string
           <div className="flex items-center gap-2 flex-wrap">
             {api.mono ? <span className="text-white/60 font-semibold" style={{ fontSize: 14 }}>Black-and-white art: lights go white</span> : api.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 26, height: 26, background: c, boxShadow: `0 0 12px ${withAlpha(c, 70)}` }} />)}
           </div>
-          <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Lights in the scene · colour lights show the colours, white-only lights go on or off</div>
+          <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Tap a light to change what it does: colour (follows the art) · on (white) · off. White-only lights are just on or off.</div>
           <div className="flex flex-wrap gap-2">
             {api.lights.map((l) => {
-              const sel = api.active.includes(l.id);
-              return <Press key={l.id} onClick={() => api.pick(l.id)} className="px-4 py-2 font-semibold" style={{ borderRadius: 20, fontSize: 15, background: sel ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: sel ? "#000" : "#fff" }}>{l.name}</Press>;
+              const m = api.modeOf(l);
+              const label = m === "color" ? "Colour" : m === "on" ? "On" : "Off";
+              return (
+                <Press key={l.id} onClick={() => api.cycle(l)} className="flex items-center gap-2 px-4 py-2 font-semibold" style={{ borderRadius: 20, fontSize: 15, background: m === "off" ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.9)", color: m === "off" ? "rgba(255,255,255,0.55)" : "#000" }}>
+                  <span className="rounded-full" style={{ width: 12, height: 12, background: m === "color" ? "conic-gradient(#f43f5e, #f59e0b, #22c55e, #38bdf8, #a855f7, #f43f5e)" : m === "on" ? "#ffd27a" : "#555" }} />
+                  {l.name} · {label}{!l.supportsColor && m !== "off" ? "" : ""}
+                </Press>
+              );
             })}
           </div>
         </div>
@@ -1390,7 +1398,7 @@ export function TouchControl() {
   const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent, palette, mono, lum } = useArtTheme(artUrl);
+  const { backdrop, accent, palette, mono } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
@@ -1434,9 +1442,23 @@ export function TouchControl() {
   const [message, setMessage] = useState<string | null>(null);
   const music = useLibrary(pin);
   // Album-art lights: each new song recolours the chosen lights (default: the Light Bars) from the artwork.
-  const [ml, setMl] = useState<MusicLightsCfg>(() => (typeof window === "undefined" ? { enabled: false, ids: [], restore: {} } : readMusicLights()));
+  const [ml, setMl] = useState<MusicLightsCfg>(() => (typeof window === "undefined" ? { enabled: false, ids: [], modes: {}, restore: {} } : readMusicLights()));
   const saveMl = (next: MusicLightsCfg) => { setMl(next); try { localStorage.setItem(ML_KEY, JSON.stringify(next)); } catch { /* ignore */ } };
   const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light");
+  /** A light's state in the scene: what was chosen, else the Light Bars follow the art and everything else is off. */
+  const modeOf = (l: HomeEntity): LightMode => {
+    const chosen = ml.modes[l.id];
+    if (chosen && (chosen !== "color" || l.supportsColor)) return chosen;
+    const inScene = ml.ids.length ? ml.ids.includes(l.id) : /light bar/i.test(l.name) && Boolean(l.supportsColor);
+    return inScene ? (l.supportsColor ? "color" : "on") : "off";
+  };
+  const cycleMode = (l: HomeEntity) => {
+    const order: LightMode[] = l.supportsColor ? ["color", "on", "off"] : ["on", "off"];
+    const next = order[(order.indexOf(modeOf(l)) + 1) % order.length];
+    saveMl({ ...ml, modes: { ...ml.modes, [l.id]: next } });
+    appliedKey.current = "";
+    lastTrack.current = null; // apply whites and offs again straight away
+  };
   const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name) && l.supportsColor));
   const appliedKey = useRef("");
   const lastTrack = useRef<string | null>(null);
@@ -1466,35 +1488,39 @@ export function TouchControl() {
   useEffect(() => {
     if (guest || !ml.enabled || !playing || !np?.track) return;
     if (!mono && !palette.length) return; // art not analysed yet
-    const targets = mlTargets(ml.ids).filter((l) => l.available);
+    const targets = colorLights.filter((l) => l.available);
     if (!targets.length) return;
     const base: [number, number][] = palette.map(hexToHs); // only the colours that are really in the artwork
-    const dark = lum < 0.2;
     const songChanged = lastTrack.current !== np.track.id;
+    const white = mono ? 4000 : kelvinForHue(base[0]?.[0] ?? 40);
     const items: ThemeItem[] = [];
-    targets.forEach((l, i) => {
-      if (l.supportsColor && !mono && base.length) {
-        const [h0, s0] = base[(i + rot) % base.length];
-        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100 }); return; } // a washed-out colour is really a white
+    let colourIndex = 0;
+    for (const l of targets) {
+      const mode = modeOf(l);
+      if (mode === "color" && l.supportsColor && !mono && base.length) {
+        const [h0, s0] = base[(colourIndex++ + rot) % base.length];
+        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100 }); continue; } // a washed-out colour is really a white
         items.push({ id: l.id, mode: "color", h: calibrateHue(models[l.id], h0), s: s0, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined });
       } else if (!songChanged) {
-        return; // white-only and plain lights only change when the song does
+        continue; // whites and offs only change when the song does
+      } else if (mode === "off") {
+        items.push({ id: l.id, mode: l.supportsColor || l.supportsColorTemp ? "white" : "onoff", on: false });
       } else if (l.supportsColor || l.supportsColorTemp) {
-        // a white (or a colour light on black-and-white art): on in a white that matches the cover's mood, off for a dark cover
-        items.push({ id: l.id, mode: "white", on: mono ? true : !dark, kelvin: mono ? 4000 : kelvinForHue(base[0]?.[0] ?? 40), brightness: 100 });
+        items.push({ id: l.id, mode: "white", on: true, kelvin: white, brightness: 100 }); // "on", or a colour light on black-and-white art
       } else {
-        items.push({ id: l.id, mode: "onoff", on: mono ? true : !dark });
+        items.push({ id: l.id, mode: "onoff", on: true });
       }
-    });
+    }
     if (!items.length) return;
-    const key = `${np.track.id}|${mono ? "mono" : palette.join(",")}|${base.length > 1 ? rot % base.length : 0}|${targets.map((l) => l.id).join(",")}`;
+    const modesKey = targets.map((l) => `${l.id}:${modeOf(l)}`).join(",");
+    const key = `${np.track.id}|${mono ? "mono" : palette.join(",")}|${base.length > 1 ? rot % base.length : 0}|${modesKey}`;
     if (appliedKey.current === key) return;
     appliedKey.current = key;
     lastTrack.current = np.track.id;
     // slower between songs, slower still inside a song
     colorMany(items, songChanged ? 5 : 12);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours or the rotation change
-  }, [guest, ml.enabled, ml.ids, playing, palette, mono, lum, models, rot, np?.track?.id, colorMany]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours, the rotation or a light's state change
+  }, [guest, ml.enabled, ml.modes, ml.ids, playing, palette, mono, models, rot, np?.track?.id, colorMany]);
   /** Plain white at full brightness (neutral 4000K where a bulb has a white temperature, otherwise colour with no saturation). */
   const resetToWhite = (targets: HomeEntity[]) => {
     const ls = targets.filter((l) => l.kind === "light");
@@ -1515,13 +1541,13 @@ export function TouchControl() {
   /** Switch the album-art lights on (remembering how those lights were) or off (back to plain white at 100%). */
   const setMusicLights = (on: boolean) => {
     if (on) {
-      const targets = mlTargets(ml.ids);
+      const targets = colorLights;
       const restore: MusicLightsCfg["restore"] = {};
       for (const l of targets) restore[l.id] = { on: Boolean(l.on), brightness: l.brightness, colorTemp: l.colorTemp, hs: l.hs };
       appliedKey.current = "";
       saveMl({ ...ml, enabled: true, restore });
     } else {
-      resetToWhite(mlTargets(ml.ids));
+      resetToWhite(colorLights);
       saveMl({ ...ml, enabled: false, restore: {} });
     }
   };
@@ -1759,7 +1785,7 @@ export function TouchControl() {
                 <div className="caps-label" style={{ fontSize: 13 }}>Scenes</div>
                 <div className="flex flex-wrap gap-3">
                   {scenes.map((s) => <SceneButton key={s.id} e={s} act={act} accent={color} />)}
-                  <MusicLightsScene accent={color} api={{ cfg: ml, set: setMusicLights, pick: (id: string) => { const cur = ml.ids.length ? ml.ids : mlTargets([]).map((l) => l.id); saveMl({ ...ml, ids: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }); appliedKey.current = ""; }, lights: colorLights, active: mlTargets(ml.ids).map((l) => l.id), palette, mono }} />
+                  <MusicLightsScene accent={color} api={{ cfg: ml, set: setMusicLights, cycle: cycleMode, modeOf, lights: colorLights, palette, mono }} />
                   {lights.length > 0 && (
                     <Press onClick={() => { setSheet(null); setSaving(true); }} className="flex items-center gap-3 px-6 shrink-0 text-white/70 font-semibold" style={{ height: 92, borderRadius: 30, border: "2px dashed rgba(255,255,255,0.25)", fontSize: 20 }}>
                       + Save scene
