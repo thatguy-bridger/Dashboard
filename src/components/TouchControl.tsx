@@ -224,6 +224,34 @@ interface FullyApi {
 }
 const getFully = (): FullyApi | null => (typeof window !== "undefined" ? ((window as unknown as { fully?: FullyApi }).fully ?? null) : null);
 
+/** Polls Home Assistant for motion sensors (e.g. this tablet's camera via the IP Webcam app) while `enabled`.
+ *  Calls onMotion on a fresh trigger. Returns how many motion sensors exist (0 = none set up). */
+function useHaMotion(pin: string | null, enabled: boolean, onMotion: () => void): number {
+  const [sensors, setSensors] = useState(0);
+  const cb = useRef(onMotion);
+  useEffect(() => { cb.current = onMotion; });
+  useEffect(() => {
+    if (!pin) return;
+    let seen = -1;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/home/motion", { cache: "no-store", headers: { "x-control-pin": pin } });
+        if (!res.ok || stopped) return;
+        const m = (await res.json()) as { sensors: number; active: boolean; since: number };
+        setSensors(m.sensors);
+        if (!enabled) return;
+        if (seen >= 0 && m.active && m.since > seen) cb.current();
+        seen = Math.max(seen, m.since);
+      } catch { /* try again next tick */ }
+    };
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => { stopped = true; clearInterval(id); };
+  }, [pin, enabled]);
+  return sensors;
+}
+
 const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 const MP_VERSION = "1.1.1";
 
@@ -989,10 +1017,13 @@ export function TouchControl() {
   // Away from home: lights are off, waiting for you. Give the departure a minute before a face counts as "back".
   const awaySince = useRef(0);
   useEffect(() => { if (away) awaySince.current = Date.now(); }, [away]);
-  const camStatus = useApproach(wakeCam && (idle || away), () => {
+  const onApproach = () => {
     if (away && Date.now() - awaySince.current > 60_000) setAway("return");
     if (idle) wake();
-  });
+  };
+  const motionSensors = useHaMotion(pin, wakeCam && (idle || away), onApproach);
+  // With a Home Assistant motion sensor (or the tablet streaming its camera there) the browser doesn't need the camera.
+  const camStatus = useApproach(wakeCam && (idle || away) && motionSensors === 0, onApproach);
   // Real dimming through the Home Assistant app on this tablet (needs "modify system settings" allowed for it).
   const dimmedOnce = useRef(false);
   useEffect(() => {
@@ -1142,7 +1173,7 @@ export function TouchControl() {
                       Wake on approach: {wakeCam ? "On" : "Off"}
                     </Press>
                     <div className="text-white/45 font-semibold" style={{ fontSize: 15 }}>
-                      {camAsk ? `Camera unavailable: ${camAsk}` : camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : getFully() ? "Uses Fully Kiosk’s motion detection while dimmed or away, and dims the backlight when idle." : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
+                      {motionSensors > 0 ? `Using ${motionSensors} Home Assistant motion sensor${motionSensors > 1 ? "s" : ""} — no camera needed in the browser.` : camAsk ? `Camera unavailable: ${camAsk}` : camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : getFully() ? "Uses Fully Kiosk’s motion detection while dimmed or away, and dims the backlight when idle." : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
                     </div>
                   </div>
                 )}
