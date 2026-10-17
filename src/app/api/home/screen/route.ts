@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { d1Query } from "@/lib/d1";
 import { checkPin, haConfigured } from "@/lib/smarthome";
-import { installMotionWake, mobileAppServices, tabletCommand } from "@/lib/smarthome/homeAssistant";
+import { installMotionWake, mobileAppServices, tabletBattery, tabletCommand } from "@/lib/smarthome/homeAssistant";
 
 const KEY = "tabletScreen";
 interface Cfg { service: string | null; awake: number }
@@ -23,6 +23,12 @@ const deny = (gate: string) => NextResponse.json({ error: gate }, { status: gate
 export async function GET(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return deny(gate);
+  // ?battery=1 -> this tablet's battery as Home Assistant's app reports it (for browsers without the Battery API)
+  if (req.nextUrl.searchParams.get("battery") === "1") {
+    const cfg = await load();
+    if (!haConfigured() || !cfg.service) return NextResponse.json({ level: null });
+    return NextResponse.json(await tabletBattery(cfg.service.replace(/^mobile_app_/, "")), { headers: { "Cache-Control": "no-store" } });
+  }
   if (!haConfigured()) return NextResponse.json({ services: [], config: await load() });
   return NextResponse.json({ services: await mobileAppServices(), config: await load() });
 }

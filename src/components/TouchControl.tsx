@@ -1248,9 +1248,8 @@ export function TouchControl() {
         ) : (
           <>
             {/* left: all lights, rooms, then (scroll) individual lights */}
-            <div className="absolute flex flex-col" style={{ left: 50, top: 84, width: leftW, height: 790 }}>
-              <div className="flex items-end justify-between mb-5 shrink-0">
-                <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 76, lineHeight: 1, whiteSpace: "nowrap" }}>{time}</div>
+            <div className="absolute flex flex-col" style={{ left: 50, top: 78, width: leftW, height: 796 }}>
+              <div className="flex items-end justify-end mb-3 shrink-0">
                 {snap?.provider === "demo" && (
                   <div className="glass-card px-5 py-2 text-white/60 font-semibold" style={{ borderRadius: 24, fontSize: 14 }}>
                     Demo devices — connect Home Assistant in Control
@@ -1390,7 +1389,7 @@ export function TouchControl() {
         )}
         {saving && <SaveSceneSheet onSave={saveScene} onClose={() => setSaving(false)} />}
       </div>
-      <TopBar />
+      <TopBar showTime selfBattery pin={pin} />
       <ActivityPills includeMusic={false} hide={["game"]} />
       {/* away: the whole screen is one "Welcome back" button, ahead of anything else */}
       {away && !gate && (

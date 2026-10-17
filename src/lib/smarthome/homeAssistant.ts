@@ -372,3 +372,14 @@ export async function nightMode(volume: number, speakerIds: string[]) {
     ...(speakers.length ? [call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 })] : []),
   ]);
 }
+
+/** The tablet's battery from the Home Assistant app's sensors (sensor.<device>_battery_level / _battery_state). */
+export async function tabletBattery(device: string): Promise<{ level: number | null; charging: boolean }> {
+  const get = async (id: string) => {
+    const res = await fetch(`${URL_()}/api/states/${id}`, { headers: headers(), cache: "no-store" });
+    return res.ok ? ((await res.json()) as HaState).state : null;
+  };
+  const [level, state] = await Promise.all([get(`sensor.${device}_battery_level`), get(`sensor.${device}_battery_state`)]);
+  const n = Number(level);
+  return { level: level != null && Number.isFinite(n) ? n : null, charging: state === "charging" || state === "full" };
+}

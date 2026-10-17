@@ -83,7 +83,43 @@ function Car() {
  *  what's next + batteries on the right. The island owns the middle. */
 export type TopBarHide = "weather" | "countdown" | "batteries";
 
-export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
+/** This tablet's own battery: the browser's Battery API when it has one, otherwise what the Home Assistant app reports. */
+function useSelfBattery(enabled: boolean, pin: string | null) {
+  const [b, setB] = useState<{ pct: number; charging: boolean } | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let off = false;
+    let cleanup = () => {};
+    const nav = navigator as Navigator & { getBattery?: () => Promise<{ level: number; charging: boolean; addEventListener: (e: string, f: () => void) => void; removeEventListener: (e: string, f: () => void) => void }> };
+    const fromHa = async () => {
+      if (!pin) return;
+      try {
+        const res = await fetch("/api/home/screen?battery=1", { cache: "no-store", headers: { "x-control-pin": pin } });
+        const j = await res.json();
+        if (!off && typeof j.level === "number") setB({ pct: Math.round(j.level), charging: Boolean(j.charging) });
+      } catch { /* keep last */ }
+    };
+    if (nav.getBattery) {
+      nav.getBattery().then((bat) => {
+        if (off) return;
+        const upd = () => setB({ pct: Math.round(bat.level * 100), charging: bat.charging });
+        upd();
+        bat.addEventListener("levelchange", upd);
+        bat.addEventListener("chargingchange", upd);
+        cleanup = () => { bat.removeEventListener("levelchange", upd); bat.removeEventListener("chargingchange", upd); };
+      }).catch(fromHa);
+    } else {
+      fromHa();
+      const id = setInterval(fromHa, 2 * 60_000);
+      cleanup = () => clearInterval(id);
+    }
+    return () => { off = true; cleanup(); };
+  }, [enabled, pin]);
+  return b;
+}
+
+export function TopBar({ hide = [], showTime = false, selfBattery = false, pin = null }: { hide?: TopBarHide[]; showTime?: boolean; selfBattery?: boolean; pin?: string | null }) {
+  const self = useSelfBattery(selfBattery, pin);
   const { weather, events, devices } = useFeeds();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -109,6 +145,11 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
       <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 290px)" }}>
+        {showTime && (
+          <div className={chip} style={chipStyle}>
+            <span className="num-rounded font-bold text-white whitespace-nowrap" style={{ fontSize: 22 }}>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+          </div>
+        )}
         {weather && !hide.includes("weather") && (
           <div className={chip} style={chipStyle}>
             <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-6 h-6 shrink-0" />
@@ -153,6 +194,16 @@ export function TopBar({ hide = [] }: { hide?: TopBarHide[] }) {
             </div>
           );
         })}
+        {self && (
+          <div className={chip} style={chipStyle} title="This tablet">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={self.pct <= 20 && !self.charging ? "#ff6b6b" : "rgba(255,255,255,0.8)"} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2.5" y="7" width="17" height="10" rx="2.5" />
+              <path d="M22 10.5v3" />
+              <rect x="4.5" y="9" width={Math.max(1, (self.pct / 100) * 13)} height="6" rx="1" fill={self.pct <= 20 && !self.charging ? "#ff6b6b" : "rgba(255,255,255,0.8)"} stroke="none" />
+            </svg>
+            <span className="num-rounded font-bold" style={{ fontSize: 18, color: self.pct <= 20 && !self.charging ? "#ff6b6b" : "#fff" }}>{self.pct}%{self.charging ? " ⚡" : ""}</span>
+          </div>
+        )}
       </div>
     </div>
   );
