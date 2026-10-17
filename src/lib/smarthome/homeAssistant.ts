@@ -497,7 +497,7 @@ export async function installMorning(m: MorningConfig, tablet: { service: string
 
 /** Run the morning routine right now (for the Test button). */
 export async function testMorning() {
-  await call("automation", "trigger", { entity_id: "automation.home_base_morning", skip_condition: true });
+  await call("automation", "trigger", { entity_id: "automation.home_base_morning_wake_up", skip_condition: true });
 }
 
 /** Speaker volume for everything that can play sound (not the TVs). */
