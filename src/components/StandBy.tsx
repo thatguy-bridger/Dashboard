@@ -317,7 +317,14 @@ export function Backdrop({ art, playing, accent, black }: { art: string | null; 
 
 // ---------- pieces ----------
 
-function Clock() {
+/** The clock's colours: a gradient through the album art's real colours (one colour fades from white into it). */
+function clockGradient(colors: string[]) {
+  if (colors.length === 0) return "linear-gradient(180deg, #fff, rgba(255,255,255,0.7))";
+  if (colors.length === 1) return `linear-gradient(115deg, #ffffff 0%, ${colors[0]} 100%)`;
+  return `linear-gradient(100deg, ${colors.join(", ")})`;
+}
+
+function Clock({ colors = [] }: { colors?: string[] }) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
@@ -330,8 +337,8 @@ function Clock() {
   return (
     <div style={reveal(0.7)}>
       <div className="flex items-baseline gap-3" style={{ lineHeight: 0.9 }}>
-        <span className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 210 }}>{parts?.[1]}</span>
-        {parts?.[2] && <span className="num-rounded font-semibold text-white/60" style={{ fontSize: 44 }}>{parts[2]}</span>}
+        <span className="num-rounded font-semibold" style={{ fontSize: 210, backgroundImage: clockGradient(colors), WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", transition: "opacity 1s" }}>{parts?.[1]}</span>
+        {parts?.[2] && <span className="num-rounded font-semibold" style={{ fontSize: 44, color: colors[colors.length - 1] ? `${colors[colors.length - 1]}b3` : "rgba(255,255,255,0.6)" }}>{parts[2]}</span>}
       </div>
       <div className="mt-5 font-semibold uppercase text-white/50" style={{ fontFamily: "var(--font-wide)", fontSize: 22, letterSpacing: "0.14em" }}>
         {date}
@@ -1089,7 +1096,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
   const { s: scale, extraW, extraH } = useViewport();
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent } = useArtTheme(artUrl);
+  const { backdrop, accent, palette } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
   useEffect(() => {
     installFlashLog(); // always on (cheap): ?debug=1 shows it
@@ -1133,7 +1140,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
 
   function body(it: StandByItem): React.ReactNode {
     switch (it.id) {
-      case "clock": return <Clock />;
+      case "clock": return <Clock colors={playing ? (palette.length ? palette : [accent]) : [NEUTRAL_ACCENT]} />;
       case "weather": return weather && <WeatherTile w={weather} />;
       case "weatherhero": return weather && <WeatherHero w={weather} />;
       case "forecast": return weather && <Forecast hours={weather.hourly} isDay={weather.isDay} width={it.w} />;
