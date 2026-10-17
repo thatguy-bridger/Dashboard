@@ -28,9 +28,13 @@ const AWAY_SCENE = `scene.${AWAY_ID}`;
 const DOMAINS: Record<string, HomeKind> = { light: "light", switch: "switch", scene: "scene", media_player: "media" };
 
 /** Home Assistant doesn't put the room (area) in /api/states; one template call looks them all up. */
+let areaCache: { at: number; key: string; map: Map<string, string> } | null = null;
 async function areas(ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (ids.length === 0) return out;
+  // rooms almost never change: reuse the last answer for 5 minutes while the device list is the same
+  const key = ids.join(",");
+  if (areaCache && areaCache.key === key && Date.now() - areaCache.at < 5 * 60_000) return areaCache.map;
   try {
     const template = `{% for e in ${JSON.stringify(ids)} %}{{ e }}|{{ area_name(e) or '' }}\n{% endfor %}`;
     const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
@@ -39,6 +43,7 @@ async function areas(ids: string[]): Promise<Map<string, string>> {
       const [id, area] = line.split("|");
       if (id && area) out.set(id.trim(), area.trim());
     }
+    areaCache = { at: Date.now(), key, map: out };
   } catch {
     // rooms are a nicety; fall back to "Other"
   }
@@ -316,11 +321,15 @@ export async function tabletCommand(service: string, message: string, data?: Rec
 
 /** Any Home Assistant motion / occupancy / presence sensor (a motion sensor, the IP Webcam app, mmWave...).
  *  `since` is when the most recent one turned on (ms), so the screen can wake on a fresh trigger only. */
+let motionCache: { at: number; value: { sensors: number; active: boolean; since: number } } | null = null;
 export async function motionState(): Promise<{ sensors: number; active: boolean; since: number }> {
-  const res = await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" });
+  if (motionCache && Date.now() - motionCache.at < 1500) return motionCache.value;
+  // A template returns only the few sensors we care about (a few bytes), instead of every entity in the house.
+  const template = `{% set ns = namespace(n=0, on=0, since=0) %}{% for s in states.binary_sensor if s.attributes.device_class in ['motion','occupancy','presence'] %}{% set ns.n = ns.n + 1 %}{% if s.state == 'on' %}{% set ns.on = ns.on + 1 %}{% set ns.since = [ns.since, as_timestamp(s.last_changed)] | max %}{% endif %}{% endfor %}{{ ns.n }}|{{ ns.on }}|{{ ns.since }}`;
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
   if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
-  const raw = (await res.json()) as (HaState & { last_changed?: string })[];
-  const sensors = raw.filter((s) => s.entity_id.startsWith("binary_sensor.") && ["motion", "occupancy", "presence"].includes(String(s.attributes.device_class ?? "")));
-  const on = sensors.filter((s) => s.state === "on");
-  return { sensors: sensors.length, active: on.length > 0, since: on.reduce((m, s) => Math.max(m, s.last_changed ? Date.parse(s.last_changed) : 0), 0) };
+  const [n, on, since] = (await res.text()).trim().split("|");
+  const value = { sensors: Number(n) || 0, active: Number(on) > 0, since: Math.round((Number(since) || 0) * 1000) };
+  motionCache = { at: Date.now(), value };
+  return value;
 }

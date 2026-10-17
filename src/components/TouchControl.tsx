@@ -5,7 +5,7 @@ import { Backdrop } from "@/components/StandBy";
 import { TopBar } from "@/components/TopBar";
 import { ActivityPills } from "@/components/ActivityPills";
 import { FitText } from "@/components/FitText";
-import { controlSpotify, pollOnce, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
+import { controlSpotify, pollOnce, setNowPlayingDimmed, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
@@ -254,7 +254,8 @@ function useHaMotion(pin: string | null, enabled: boolean, onMotion: () => void)
       } catch { /* try again next tick */ }
     };
     tick();
-    const id = setInterval(tick, 2000);
+    // fast only while something is waiting on it (dimmed or away); otherwise just a slow check that the sensor exists
+    const id = setInterval(tick, enabled ? 2000 : 60_000);
     return () => { stopped = true; clearInterval(id); };
   }, [pin, enabled]);
   return sensors;
@@ -1051,9 +1052,17 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, saveScene, syncing, setAway, setKeep } = useHome(pin);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep } = useHome(pin);
   useAutoUpdate();
   const { idle, wake, sleep } = useIdle(2 * 60_000);
+
+  // Dimmed screens poll Spotify rarely; on wake everything refreshes at once so the first glance is current.
+  const wasIdle = useRef(false);
+  useEffect(() => {
+    setNowPlayingDimmed(idle);
+    if (wasIdle.current && !idle) load();
+    wasIdle.current = idle;
+  }, [idle, load]);
 
   // Wake on approach: a per-tablet switch, because it needs this tablet's camera permission.
   const [wakeCam, setWakeCam] = useState(() => {

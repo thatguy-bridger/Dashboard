@@ -57,7 +57,15 @@ export async function pollOnce() {
   }
 }
 
+/** While the screen is dimmed nobody is watching the music card: check far less often. */
+let dimmed = false;
+export function setNowPlayingDimmed(v: boolean) {
+  dimmed = v;
+  if (!v) pollOnce(); // catch up the moment the screen wakes
+}
+
 function nextDelay(): number {
+  if (dimmed) return 20_000;
   const d = latest;
   if (!d?.connected || !d.isPlaying || !d.track) return IDLE_MS;
   const elapsed = Date.now() - (d.fetchedAt ?? Date.now());
