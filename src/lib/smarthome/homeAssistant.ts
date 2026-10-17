@@ -163,6 +163,8 @@ export const homeAssistantProvider: HomeProvider = {
     }
   },
   async startTimer(id: string, minutes: number, action: "on" | "off") { await startDeviceTimer(id, minutes, action); },
+  async fade(id: string, frames: Record<string, unknown>[], delaySeconds: number) { await runFade(id, frames, delaySeconds); },
+  async stopFade(id: string) { await stopFade(id); },
   async cancelTimer(id: string) { await cancelDeviceTimer(id); },
   async returnHome() {
     try {
@@ -596,4 +598,53 @@ export async function lightsInfo(): Promise<LightInfo[]> {
       effects: (features & 4) !== 0,
     };
   });
+}
+
+const fadeName = (id: string) => `hb_fade_${id.replace(/[^a-z0-9]/gi, "_").toLowerCase()}`;
+const fadeVerified = new Set<string>();
+
+/** One restartable Home Assistant script per light that plays a list of frames (each a light.turn_on) with a pause between.
+ *  Starting it again restarts it, so a new command always cancels the old fade: nothing can fight it, and the stepping runs
+ *  inside Home Assistant, not on the hosting plan. */
+export async function installFadeScripts(): Promise<string[]> {
+  const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+  const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
+  for (const id of lights) {
+    const body = {
+      alias: `Home Base fade: ${id}`,
+      mode: "restart",
+      sequence: [
+        { repeat: { for_each: "{{ frames }}", sequence: [
+          { action: "light.turn_on", target: { entity_id: id }, data: "{{ repeat.item }}" },
+          { delay: "{{ delay | default(0) | float(0) }}" },
+        ] } },
+      ],
+    };
+    const res = await fetch(`${URL_()}/api/config/script/config/${fadeName(id)}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+    if (!res.ok) throw new Error(`couldn't create the fade script for ${id} (${res.status})`);
+    fadeVerified.add(id);
+  }
+  return lights;
+}
+
+/** Make sure the fade scripts for these lights exist (checks once per light, then remembers). */
+async function ensureFade(ids: string[]) {
+  const unknown = ids.filter((id) => !fadeVerified.has(id));
+  if (unknown.length === 0) return;
+  const exists = await Promise.all(unknown.map(async (id) => (await fetch(`${URL_()}/api/states/script.${fadeName(id)}`, { headers: headers(), cache: "no-store" })).ok));
+  if (exists.some((ok) => !ok)) await installFadeScripts();
+  else unknown.forEach((id) => fadeVerified.add(id));
+}
+
+export type FadeFrame = Record<string, unknown>;
+
+/** Play frames on a light from Home Assistant's side, replacing any fade already running on it. */
+export async function runFade(id: string, frames: FadeFrame[], delaySeconds: number) {
+  await ensureFade([id]);
+  await call("script", "turn_on", { entity_id: `script.${fadeName(id)}`, variables: { frames, delay: delaySeconds } });
+}
+
+/** Cancel any fade running on a light (before an instant on/off). */
+export async function stopFade(id: string) {
+  try { await call("script", "turn_off", { entity_id: `script.${fadeName(id)}` }); } catch { /* no fade was running */ }
 }

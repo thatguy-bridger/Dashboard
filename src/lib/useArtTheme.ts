@@ -11,6 +11,8 @@ export interface ArtTheme {
   palette: string[];
   /** the artwork was analysed and has no real colour (black and white): lights should go white */
   mono: boolean;
+  /** the artwork this theme was made from (so a stale theme is never applied to another song) */
+  url: string | null;
   /** average brightness of the artwork, 0 (black) to 1 (white): dark covers turn white-only lights off */
   lum: number;
 }
@@ -109,17 +111,17 @@ function analyse(img: HTMLImageElement): ArtTheme {
   const bctx = blur.getContext("2d")!;
   bctx.filter = "blur(13px) saturate(1.5)";
   bctx.drawImage(img, -16, -16, 272, 272);
-  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono: palette.length === 0, lum: lumN ? lumSum / lumN : 0.5 };
+  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono: palette.length === 0, lum: lumN ? lumSum / lumN : 0.5, url: null };
 }
 
 export function useArtTheme(url: string | null | undefined): ArtTheme {
   const [theme, setTheme] = useState<ArtTheme>(
-    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5 }
+    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5, url: null }
   );
 
   useEffect(() => {
     if (!url) {
-      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5 });
+      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5, url: null });
       return;
     }
     const hit = cache.get(url);
@@ -132,7 +134,7 @@ export function useArtTheme(url: string | null | undefined): ArtTheme {
     img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
-        const t = analyse(img);
+        const t = { ...analyse(img), url };
         cache.set(url, t);
         if (!cancelled) setTheme(t);
       } catch {
@@ -147,3 +149,27 @@ export function useArtTheme(url: string | null | undefined): ArtTheme {
 
   return theme;
 }
+
+/** Analyse artwork ahead of time (the next song's cover) and remember it; resolves to null if the image can't be read. */
+export function loadTheme(url: string): Promise<ArtTheme | null> {
+  const hit = cache.get(url);
+  if (hit) return Promise.resolve(hit);
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const t = { ...analyse(img), url };
+        cache.set(url, t);
+        resolve(t);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/** Already analysed artwork, if any. */
+export const peekTheme = (url: string): ArtTheme | null => cache.get(url) ?? null;

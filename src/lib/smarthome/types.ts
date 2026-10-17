@@ -122,6 +122,9 @@ export interface HomeProvider {
   leaveHome?(keepOn?: string[]): Promise<void>;
   /** Start (or replace) a turn-on/off timer on one device; it keeps counting inside the home system. */
   startTimer?(id: string, minutes: number, action: "on" | "off"): Promise<void>;
+  /** Play a list of light.turn_on frames on one light from the home system's side, replacing any fade already running there. */
+  fade?(id: string, frames: Record<string, unknown>[], delaySeconds: number): Promise<void>;
+  stopFade?(id: string): Promise<void>;
   cancelTimer?(id: string): Promise<void>;
   returnHome?(): Promise<void>;
   /** Fresh state for just these devices (cheap: used to confirm a change landed). */

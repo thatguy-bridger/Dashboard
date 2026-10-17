@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
   const res = await fetch("https://api.spotify.com/v1/me/player/queue", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
   if (!res.ok) return NextResponse.json({ next: [] }, { headers: { "Cache-Control": "no-store" } });
   const j = await res.json();
-  const next = ((j.queue ?? []) as { id: string; name: string; artists?: { name: string }[] }[])
+  const next = ((j.queue ?? []) as { id: string; name: string; artists?: { name: string }[]; album?: { images?: { url: string }[] } }[])
     .slice(0, 2)
-    .map((t) => ({ id: t.id, name: t.name, artists: (t.artists ?? []).map((a) => a.name).join(", ") }));
+    .map((t) => ({ id: t.id, name: t.name, artists: (t.artists ?? []).map((a) => a.name).join(", "), art: t.album?.images?.[0]?.url ?? null }));
   return NextResponse.json({ next }, { headers: { "Cache-Control": "no-store" } });
 }
