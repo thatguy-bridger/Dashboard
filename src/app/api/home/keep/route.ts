@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
-import { checkPin } from "@/lib/smarthome";
+import { NextRequest, NextResponse, after } from "next/server";
+import { checkPin, haConfigured } from "@/lib/smarthome";
+import { installAwayScripts } from "@/lib/smarthome/homeAssistant";
 import { getHomeConfig, saveHomeConfig } from "@/lib/smarthome/config";
 
 /** Body: { id, keep }. Flags a light/switch as "stays on" when All lights is turned off. */
@@ -13,5 +14,7 @@ export async function POST(req: NextRequest) {
   if (keep) set.add(id); else set.delete(id);
   config.keepOn = [...set];
   await saveHomeConfig(config);
+  // keep the Home Assistant "I'm leaving" script in step with the flags
+  if (haConfigured()) after(async () => { await installAwayScripts(config.keepOn).catch(() => {}); });
   return NextResponse.json({ keepOn: config.keepOn });
 }

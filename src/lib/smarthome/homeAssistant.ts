@@ -106,6 +106,24 @@ function serviceFor(domain: string, action: HomeAction): { domain: string; servi
   }
 }
 
+async function leaveHomeSlow(keepOn: string[] = []) {
+  const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+  const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
+  const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
+  const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
+  const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
+  // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
+  if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
+  const offLights = lights.filter((id) => !stayOn.has(id)), offSwitches = switches.filter((id) => !stayOn.has(id));
+  if (offLights.length) await call("light", "turn_off", { entity_id: offLights });
+  if (offSwitches.length) await call("switch", "turn_off", { entity_id: offSwitches });
+  // the LED plugs are meant to be on while you're out
+  const led = [...stayOn].filter((id) => id.startsWith("switch.") || id.startsWith("light."));
+  if (led.length) { const byDomain = (d: string) => led.filter((id) => id.startsWith(`${d}.`)); for (const d of ["switch", "light"]) if (byDomain(d).length) await call(d, "turn_on", { entity_id: byDomain(d) }); }
+  const playing = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.state === "playing").map((s) => s.entity_id);
+  if (playing.length) await call("media_player", "media_pause", { entity_id: playing });
+}
+
 export const homeAssistantProvider: HomeProvider = {
   name: "homeassistant",
   async snapshot(): Promise<HomeSnapshot> {
@@ -123,27 +141,24 @@ export const homeAssistantProvider: HomeProvider = {
     });
     return { provider: "homeassistant", entities, away, ...(people.length ? { people } : {}) };
   },
+  /** One Home Assistant call: the "I'm leaving" script does the rest locally (pause music, remember, turn off, LEDs on). */
   async leaveHome(keepOn: string[] = []) {
-    const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
-    const armed = raw.some((s) => s.entity_id === AWAY_SCENE);
-    const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
-    const switches = raw.filter((s) => s.entity_id.startsWith("switch.")).map((s) => s.entity_id);
-    const stayOn = new Set(raw.filter((s) => KEEP_ON.test(s.attributes.friendly_name ?? "") || keepOn.includes(s.entity_id)).map((s) => s.entity_id));
-    // Remember how things were, unless we're already away (a second press must not overwrite the memory with "all off").
-    if (!armed && lights.length + switches.length > 0) await call("scene", "create", { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] });
-    const offLights = lights.filter((id) => !stayOn.has(id)), offSwitches = switches.filter((id) => !stayOn.has(id));
-    if (offLights.length) await call("light", "turn_off", { entity_id: offLights });
-    if (offSwitches.length) await call("switch", "turn_off", { entity_id: offSwitches });
-    // the LED plugs are meant to be on while you're out
-    const led = [...stayOn].filter((id) => id.startsWith("switch.") || id.startsWith("light."));
-    if (led.length) { const byDomain = (d: string) => led.filter((id) => id.startsWith(`${d}.`)); for (const d of ["switch", "light"]) if (byDomain(d).length) await call(d, "turn_on", { entity_id: byDomain(d) }); }
-    const playing = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.state === "playing").map((s) => s.entity_id);
-    if (playing.length) await call("media_player", "media_pause", { entity_id: playing });
+    try {
+      await call("script", "turn_on", { entity_id: "script.home_base_leaving" });
+    } catch {
+      // script missing (not installed yet): do it step by step
+      await leaveHomeSlow(keepOn);
+    }
   },
   async returnHome() {
-    await call("scene", "turn_on", { entity_id: AWAY_SCENE });
-    try { await call("scene", "delete", { entity_id: AWAY_SCENE }); } catch { /* an older Home Assistant keeps it; harmless but it would read as still away */ }
+    try {
+      await call("script", "turn_on", { entity_id: "script.home_base_returning" });
+    } catch {
+      await call("scene", "turn_on", { entity_id: AWAY_SCENE });
+      try { await call("scene", "delete", { entity_id: AWAY_SCENE }); } catch { /* an older Home Assistant keeps it */ }
+    }
   },
+
   async peek(ids: string[]) {
     const out = await Promise.all(
       ids.slice(0, 20).filter((id) => DOMAINS[id.split(".")[0]]).map(async (id) => {
@@ -256,11 +271,17 @@ export async function installAwayScripts(keepOn: string[] = []): Promise<string[
       description: "Remembers which lights are on, turns everything off, pauses music. Home Base restores it when you return.",
       mode: "single",
       sequence: [
-        { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
-        ...(offLights.length ? [{ action: "light.turn_off", target: { entity_id: offLights } }] : []),
-        ...(offSwitches.length ? [{ action: "switch.turn_off", target: { entity_id: offSwitches } }] : []),
-        ...(ledOn.length ? [{ action: "homeassistant.turn_on", target: { entity_id: ledOn } }] : []),
-        { action: "media_player.media_pause", target: { entity_id: "all" }, continue_on_error: true },
+        // music stops first (it's what you hear), remembering the lights happens alongside it
+        { parallel: [
+          { action: "media_player.media_pause", target: { entity_id: "all" }, continue_on_error: true },
+          { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
+        ] },
+        // then everything goes off at the same time
+        { parallel: [
+          ...(offLights.length ? [{ action: "light.turn_off", target: { entity_id: offLights } }] : []),
+          ...(offSwitches.length ? [{ action: "switch.turn_off", target: { entity_id: offSwitches } }] : []),
+          ...(ledOn.length ? [{ action: "homeassistant.turn_on", target: { entity_id: ledOn } }] : []),
+        ] },
       ],
     },
     home_base_returning: {
