@@ -16,6 +16,8 @@ interface HaState {
     min_color_temp_kelvin?: number;
     max_color_temp_kelvin?: number;
     hs_color?: [number, number];
+    percentage?: number;
+    percentage_step?: number;
   };
 }
 
@@ -25,7 +27,7 @@ const KEEP_ON = /\bled\b/i;
 const AWAY_ID = "home_base_before_leaving";
 const AWAY_SCENE = `scene.${AWAY_ID}`;
 
-const DOMAINS: Record<string, HomeKind> = { light: "light", switch: "switch", scene: "scene", media_player: "media" };
+const DOMAINS: Record<string, HomeKind> = { light: "light", switch: "switch", scene: "scene", media_player: "media", fan: "fan" };
 
 /** Home Assistant doesn't put the room (area) in /api/states; one template call looks them all up. */
 let areaCache: { at: number; key: string; map: Map<string, string> } | null = null;
@@ -76,6 +78,10 @@ function toEntity(s: HaState, room: string): HomeEntity {
     };
   }
   if (kind === "switch") return { ...base, on: s.state === "on" };
+  if (kind === "fan") {
+    const step = s.attributes.percentage_step;
+    return { ...base, on: s.state === "on", speed: s.state === "on" ? Math.round(s.attributes.percentage ?? 0) : 0, speedSteps: step && step > 0 ? Math.max(1, Math.round(100 / step)) : 3 };
+  }
   if (kind === "media") {
     return {
       ...base,
@@ -103,6 +109,7 @@ function serviceFor(domain: string, action: HomeAction): { domain: string; servi
     case "brightness": return { domain: "light", service: "turn_on", data: { brightness_pct: Math.max(1, Math.min(100, Math.round(action.value))) } };
     case "colorTemp": return { domain: "light", service: "turn_on", data: { color_temp_kelvin: Math.round(action.value) } };
     case "color": return { domain: "light", service: "turn_on", data: { hs_color: [Math.max(0, Math.min(360, action.h)), Math.max(0, Math.min(100, action.s))] } };
+    case "speed": return { domain: "fan", service: "set_percentage", data: { percentage: Math.max(0, Math.min(100, Math.round(action.value))) } };
     case "volume": return { domain: "media_player", service: "volume_set", data: { volume_level: Math.max(0, Math.min(100, action.value)) / 100 } };
     case "play": return { domain: "media_player", service: "media_play", data: {} };
     case "pause": return { domain: "media_player", service: "media_pause", data: {} };
@@ -155,6 +162,8 @@ export const homeAssistantProvider: HomeProvider = {
       await leaveHomeSlow(keepOn);
     }
   },
+  async startTimer(id: string, minutes: number, action: "on" | "off") { await startDeviceTimer(id, minutes, action); },
+  async cancelTimer(id: string) { await cancelDeviceTimer(id); },
   async returnHome() {
     try {
       await call("script", "turn_on", { entity_id: "script.home_base_returning" });
@@ -200,6 +209,7 @@ export const homeAssistantProvider: HomeProvider = {
       case "brightness": return call("light", "turn_on", { entity_id: id, brightness_pct: Math.max(1, Math.min(100, Math.round(action.value))) });
       case "colorTemp": return call("light", "turn_on", { entity_id: id, color_temp_kelvin: Math.round(action.value) });
       case "color": return call("light", "turn_on", { entity_id: id, hs_color: [Math.max(0, Math.min(360, action.h)), Math.max(0, Math.min(100, action.s))] });
+      case "speed": return call("fan", "set_percentage", { entity_id: id, percentage: Math.max(0, Math.min(100, Math.round(action.value))) });
       case "volume": return call("media_player", "volume_set", { entity_id: id, volume_level: Math.max(0, Math.min(100, action.value)) / 100 });
       case "play": return call("media_player", "media_play", { entity_id: id });
       case "pause": return call("media_player", "media_pause", { entity_id: id });
@@ -382,4 +392,28 @@ export async function tabletBattery(device: string): Promise<{ level: number | n
   const [level, state] = await Promise.all([get(`sensor.${device}_battery_level`), get(`sensor.${device}_battery_state`)]);
   const n = Number(level);
   return { level: level != null && Number.isFinite(n) ? n : null, charging: state === "charging" || state === "full" };
+}
+
+const timerScript = (id: string) => `hb_timer_${id.replace(/[^a-z0-9]/gi, "_").toLowerCase()}`;
+
+/** A one-off Home Assistant script per device: wait, then turn it on/off. Creating it each time sets the delay;
+ *  mode "restart" means starting it again replaces a running timer. */
+export async function startDeviceTimer(id: string, minutes: number, action: "on" | "off") {
+  const name = timerScript(id);
+  const mins = Math.max(1, Math.round(minutes));
+  const body = {
+    alias: `Home Base timer: ${id}`,
+    mode: "restart",
+    sequence: [
+      { delay: { hours: Math.floor(mins / 60), minutes: mins % 60, seconds: 0 } },
+      { action: `homeassistant.turn_${action}`, target: { entity_id: id } },
+    ],
+  };
+  const res = await fetch(`${URL_()}/api/config/script/config/${name}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't create the timer (${res.status})`);
+  await call("script", "turn_on", { entity_id: `script.${name}` });
+}
+
+export async function cancelDeviceTimer(id: string) {
+  await call("script", "turn_off", { entity_id: `script.${timerScript(id)}` });
 }

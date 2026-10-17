@@ -9,6 +9,7 @@ const state: HomeEntity[] = [
   { id: "demo.counter", name: "Under Cabinet", kind: "light", room: "Kitchen", available: true, on: false, dimmable: true, brightness: 60 },
   { id: "demo.bed_lamp", name: "Bedside Lamp", kind: "light", room: "Bedroom", available: true, on: false, dimmable: true, brightness: 40 },
   { id: "demo.porch", name: "Porch", kind: "switch", room: "Outside", available: true, on: false },
+  { id: "demo.fan", name: "Ceiling Fan", kind: "fan", room: "Bedroom", available: true, on: true, speed: 33, speedSteps: 6 },
   { id: "demo.scene_movie", name: "Movie", kind: "scene", room: "Scenes", available: true },
   { id: "demo.scene_bright", name: "Bright", kind: "scene", room: "Scenes", available: true },
   { id: "demo.scene_goodnight", name: "Goodnight", kind: "scene", room: "Scenes", available: true },
@@ -55,6 +56,7 @@ export const demoProvider: HomeProvider = {
       case "activate": applyScene(id); break;
       case "colorTemp": e.colorTemp = Math.round(action.value); e.on = true; break;
       case "color": e.hs = [action.h, action.s]; e.on = true; break;
+      case "speed": e.speed = Math.max(0, Math.min(100, Math.round(action.value))); e.on = e.speed > 0; break;
       case "volume": e.volume = Math.max(0, Math.min(100, Math.round(action.value))); break;
       case "play": e.playing = true; e.on = true; break;
       case "pause": e.playing = false; break;

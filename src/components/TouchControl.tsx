@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { Backdrop } from "@/components/StandBy";
 import { TopBar } from "@/components/TopBar";
 import { ActivityPills } from "@/components/ActivityPills";
@@ -9,7 +9,7 @@ import { controlSpotify, pollOnce, setNowPlayingDimmed, useEstimatedProgress, us
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
-import type { HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
+import type { DeviceTimer, HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
 
 /** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
 const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
@@ -152,6 +152,20 @@ function useHome(pin: string | null) {
     [load]
   );
 
+  /** "Turn off (or on) in N minutes": counted by the home system, so it still fires if this screen is off. */
+  const setTimer = useCallback(async (id: string, minutes: number, action: "on" | "off") => {
+    setSnap((s) => (s ? { ...s, timers: { ...(s.timers ?? {}), [id]: { endsAt: Date.now() + minutes * 60_000, action } } } : s));
+    try {
+      await fetch("/api/home/timer", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ id, minutes, action }) });
+    } catch { /* the next refresh shows the truth */ }
+  }, []);
+  const cancelTimer = useCallback(async (id: string) => {
+    setSnap((s) => { if (!s?.timers) return s; const t = { ...s.timers }; delete t[id]; return { ...s, timers: t }; });
+    try {
+      await fetch("/api/home/timer", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ id, cancel: true }) });
+    } catch { /* the next refresh shows the truth */ }
+  }, []);
+
   /** Different colours on several lights at once (the album-art lights). */
   const colorMany = useCallback((items: { id: string; h: number; s: number }[]) => {
     const ids = items.map((i) => i.id);
@@ -211,7 +225,7 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany };
+  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -220,6 +234,7 @@ function matches(server: HomeEntity, want: HomeEntity): boolean {
   if (want.brightness != null && server.brightness != null && Math.abs(server.brightness - want.brightness) > 4) return false;
   if (want.colorTemp && server.colorTemp && Math.abs(server.colorTemp - want.colorTemp) > 150) return false;
   if (want.volume != null && server.volume != null && Math.abs(server.volume - want.volume) > 3) return false;
+  if (want.kind === "fan" && want.speed != null && server.speed != null && Math.abs(server.speed - want.speed) > 8) return false;
   if (want.kind === "media" && Boolean(server.playing) !== Boolean(want.playing)) return false;
   return true;
 }
@@ -231,6 +246,7 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
     case "off": return { ...e, on: false };
     case "brightness": return { ...e, on: true, brightness: a.value };
     case "volume": return { ...e, volume: a.value };
+    case "speed": return { ...e, on: a.value > 0, speed: a.value };
     case "colorTemp": return { ...e, on: true, colorTemp: a.value, hs: undefined };
     case "color": return { ...e, on: true, hs: [a.h, a.s] as [number, number] };
     case "play": return { ...e, playing: true, on: true };
@@ -628,6 +644,9 @@ function LightsSheet({ title, lights, act, accent, onClose, extras, keepOn = [],
         <div className="text-white font-bold" style={{ fontSize: 22 }}>{sel ? targets[0]?.name : lights.length > 1 ? "All lights here" : targets[0]?.name} · {anyOn ? `${onOnes.length} on` : "off"}</div>
         <Toggle on={anyOn} onChange={(v) => act(ids, { type: v ? "on" : "off" })} />
       </div>
+      {lights.length === 1 && (
+        <div className="glass-card" style={{ borderRadius: 30, padding: "16px 24px" }}><TimerRow e={lights[0]} /></div>
+      )}
       {onKeep && lights.length === 1 && (
         <Press onClick={() => onKeep(lights[0].id, !keepOn.includes(lights[0].id))} className="flex items-center justify-between glass-card text-left" style={{ borderRadius: 30, padding: "16px 24px" }}>
           <div>
@@ -742,25 +761,103 @@ function LightTile({ e, act, onOpen, syncing }: { e: HomeEntity; act: Act; onOpe
         <span className={syncing ? "animate-pulse" : ""}><SegmentBulb lights={[e]} size={52} /></span>
         <div className="min-w-0 flex-1">
           <FitText className="text-white font-bold" style={{ fontSize: 22 }}>{e.name}</FitText>
-          <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? (e.dimmable ? `${e.brightness ?? 100}%` : "On") : "Off"}</div>
+          <div className="num-rounded font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? (e.dimmable ? `${e.brightness ?? 100}%` : "On") : "Off"}<TimerBadge id={e.id} /></div>
         </div>
       </div>
     </ToggleButton>
   );
 }
 
-function SwitchTile({ e, act }: { e: HomeEntity; act: Act }) {
+function SwitchTile({ e, act, onOpen }: { e: HomeEntity; act: Act; onOpen?: () => void }) {
   const on = Boolean(e.on);
   return (
-    <ToggleButton on={on} onTap={() => act(e.id, { type: on ? "off" : "on" })} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4 }}>
+    <ToggleButton on={on} onTap={() => act(e.id, { type: on ? "off" : "on" })} onLong={onOpen} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4 }}>
       <div className="flex items-center gap-4">
         <SegmentBulb lights={[e]} size={52} />
         <div className="min-w-0 flex-1">
           <FitText className="text-white font-bold" style={{ fontSize: 22 }}>{e.name}</FitText>
-          <div className="font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? "On" : "Off"}</div>
+          <div className="font-semibold text-white/60" style={{ fontSize: 16 }}>{on ? "On" : "Off"}<TimerBadge id={e.id} /></div>
         </div>
       </div>
     </ToggleButton>
+  );
+}
+
+// ---------- timers ----------
+
+const TimerCtx = createContext<{ timers: Record<string, DeviceTimer>; set: (id: string, minutes: number, action: "on" | "off") => void; cancel: (id: string) => void }>({ timers: {}, set: () => {}, cancel: () => {} });
+
+/** The current time as state, refreshed every `ms` while `on` (keeps render pure). */
+function useClock(ms: number, on = true) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on) return;
+    const id = setInterval(() => setNow(Date.now()), ms);
+    return () => clearInterval(id);
+  }, [ms, on]);
+  return now;
+}
+
+const fmtCountdown = (ms: number) => {
+  const t = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+};
+
+/** " · off in 12m" on a tile while a timer runs. */
+function TimerBadge({ id }: { id: string }) {
+  const { timers } = useContext(TimerCtx);
+  const t = timers[id];
+  const now = useClock(15_000, Boolean(t));
+  if (!t || t.endsAt <= now) return null;
+  return <span> · {t.action} in {Math.max(1, Math.round((t.endsAt - now) / 60_000))}m</span>;
+}
+
+/** Turn a device off (or on, if it's off) after a while. Shows the countdown while one is running. */
+function TimerRow({ e, compact = false }: { e: HomeEntity; compact?: boolean }) {
+  const { timers, set, cancel } = useContext(TimerCtx);
+  const t = timers[e.id];
+  const now = useClock(1000, Boolean(t));
+  const action: "on" | "off" = e.on || (e.kind === "media" && e.playing) ? "off" : "on";
+  if (t && t.endsAt > now) {
+    return (
+      <div className="flex items-center justify-between gap-3" style={{ padding: compact ? "2px 4px" : "4px 2px" }}>
+        <span className="text-white/75 font-semibold" style={{ fontSize: compact ? 15 : 17 }}>Turns {t.action} in <span className="num-rounded font-bold text-white">{fmtCountdown(t.endsAt - now)}</span></span>
+        <Press onClick={() => cancel(e.id)} className="px-4 py-2 font-semibold text-white" style={{ borderRadius: 18, fontSize: 15, background: "rgba(255,255,255,0.14)" }}>Cancel</Press>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-white/50 font-semibold" style={{ fontSize: compact ? 14 : 15, marginRight: 4 }}>Turn {action} in</span>
+      {[15, 30, 60, 120, 240].map((m) => (
+        <Press key={m} onClick={() => set(e.id, m, action)} className="px-3 py-2 font-semibold text-white" style={{ borderRadius: 18, fontSize: compact ? 14 : 16, background: "rgba(255,255,255,0.12)" }}>{m < 60 ? `${m}m` : `${m / 60}h`}</Press>
+      ))}
+    </div>
+  );
+}
+
+// ---------- fans ----------
+
+/** A fan: one tap on a speed number sets it, Off turns it off. */
+function FanCard({ e, act }: { e: HomeEntity; act: Act }) {
+  const steps = Math.max(1, Math.min(8, e.speedSteps ?? 3));
+  const speed = e.on ? (e.speed ?? 0) : 0;
+  const current = speed <= 0 ? 0 : Math.max(1, Math.round((speed / 100) * steps));
+  return (
+    <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 34, padding: "18px 22px", opacity: e.available ? 1 : 0.4 }}>
+      <div className="flex items-baseline justify-between">
+        <FitText className="text-white font-bold" style={{ fontSize: 24 }}>{e.name}</FitText>
+        <span className="text-white/55 font-semibold shrink-0" style={{ fontSize: 16 }}>{current === 0 ? "Off" : `Speed ${current} of ${steps}`}</span>
+      </div>
+      <div className="flex gap-2">
+        <Press onClick={() => act(e.id, { type: "off" })} className="font-bold" style={{ flex: "0 0 auto", minWidth: 84, height: 72, borderRadius: 24, fontSize: 20, background: current === 0 ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: current === 0 ? "#000" : "#fff" }}>Off</Press>
+        {Array.from({ length: steps }, (_, i) => i + 1).map((n) => (
+          <Press key={n} onClick={() => act(e.id, { type: "speed", value: Math.round((n / steps) * 100) })} className="num-rounded font-bold" style={{ flex: 1, height: 72, borderRadius: 24, fontSize: 26, background: current >= n ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: current >= n ? "#000" : "#fff" }}>{n}</Press>
+        ))}
+      </div>
+      <TimerRow e={e} compact />
+    </div>
   );
 }
 
@@ -920,6 +1017,7 @@ function MediaRow({ e, act, accent }: { e: HomeEntity; act: Act; accent: string 
         <Press onClick={() => act(e.id, { type: "next" })} className="p-2 text-white/80"><Icon d={NEXT} size={28} /></Press>
       </div>
       {e.volume != null && <Slider value={vol} onChange={setLive} onCommit={(v) => { setLive(null); act(e.id, { type: "volume", value: v }); }} accent={accent} height={30} />}
+      <TimerRow e={e} compact />
     </div>
   );
 }
@@ -1165,7 +1263,7 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany } = useHome(pin);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin);
   useAutoUpdate();
   const presence = useRef(false);
   const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
@@ -1318,6 +1416,7 @@ export function TouchControl() {
   const media = entities.filter((e) => e.kind === "media");
   const devices = entities.filter((e) => e.kind === "light" || e.kind === "switch");
   const lights = devices.filter((d) => d.kind === "light");
+  const fans = entities.filter((e) => e.kind === "fan");
   const rooms = [...new Set(devices.map((d) => d.room))].sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
   // The main volume slider drives every speaker (not TVs) so it actually moves the sound.
   const speakers = media.filter((m) => m.volume != null && m.available && !/\b(tv|uhd|crystal)\b/i.test(m.name));
@@ -1338,6 +1437,7 @@ export function TouchControl() {
   const anythingOn = devices.some((d) => d.on);
 
   return (
+    <TimerCtx.Provider value={{ timers: snap?.timers ?? {}, set: setTimer, cancel: cancelTimer }}>
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
       <Backdrop art={backdrop} playing={playing} accent={color} />
       <div className="absolute" style={{ left: "50%", top: "50%", width: cw, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}>
@@ -1384,7 +1484,7 @@ export function TouchControl() {
                 </div>
               )}
 
-              <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none", margin: "-24px -40px -40px", padding: "24px 40px 40px" }}>
+              <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none", margin: "-24px -40px -40px", padding: "24px 40px 40px", maskImage: "linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 30px), transparent 100%)", WebkitMaskImage: "linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 30px), transparent 100%)" }}>
                 <div style={{ minHeight: "100%" }}>
                   <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
                     {rooms.map((room) => {
@@ -1403,6 +1503,12 @@ export function TouchControl() {
                       );
                     })}
                   </div>
+                  {fans.length > 0 && (
+                    <div className="flex flex-col gap-3 mt-5">
+                      <div className="caps-label" style={{ fontSize: 13 }}>Fans</div>
+                      {fans.map((f) => <FanCard key={f.id} e={f} act={act} />)}
+                    </div>
+                  )}
                   {devices.length > 0 && (night && !away ? (
                     /* after 9pm "I'm leaving" becomes "It's the night", and grows the later it gets */
                     <Press
@@ -1428,7 +1534,7 @@ export function TouchControl() {
                   <div className="pb-10">
                     <div className="caps-label mb-3" style={{ fontSize: 13 }}>Individual lights</div>
                     <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
-                      {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
+                      {devices.map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} onOpen={() => setSheet({ type: "light", id: d.id })} />))}
                     </div>
                   </div>
                 )}
@@ -1515,5 +1621,6 @@ export function TouchControl() {
         )}
       </div>
     </div>
+    </TimerCtx.Provider>
   );
 }

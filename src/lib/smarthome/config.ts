@@ -9,6 +9,17 @@ const strMap = (v: unknown): Record<string, string> => {
   return out;
 };
 
+function parseTimers(v: unknown): HomeConfig["timers"] {
+  const out: HomeConfig["timers"] = {};
+  if (v && typeof v === "object") {
+    for (const [id, t] of Object.entries(v as Record<string, unknown>)) {
+      const o = t as { endsAt?: unknown; action?: unknown };
+      if (typeof o?.endsAt === "number" && o.endsAt > Date.now() && (o.action === "on" || o.action === "off")) out[id.slice(0, 120)] = { endsAt: o.endsAt, action: o.action };
+    }
+  }
+  return out;
+}
+
 export function parseHomeConfig(raw: unknown): HomeConfig {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const scenes: SavedScene[] = Array.isArray(r.scenes)
@@ -22,6 +33,7 @@ export function parseHomeConfig(raw: unknown): HomeConfig {
     rooms: strMap(r.rooms),
     names: strMap(r.names),
     scenes,
+    timers: parseTimers(r.timers),
     keepOn: Array.isArray(r.keepOn) ? (r.keepOn as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 300) : [],
   };
 }

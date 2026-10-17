@@ -3,7 +3,7 @@ import { checkPin, getProvider, runScene, type HomeAction } from "@/lib/smarthom
 import { getHomeConfig } from "@/lib/smarthome/config";
 
 const SIMPLE = new Set(["toggle", "on", "off", "activate", "play", "pause", "next", "previous"]);
-const VALUED = new Set(["brightness", "volume", "colorTemp"]);
+const VALUED = new Set(["brightness", "volume", "colorTemp", "speed"]);
 
 /** Body: { id } or { ids: [...] } plus { action }. Saved scenes use id "custom:<sceneId>". */
 export async function POST(req: NextRequest) {
