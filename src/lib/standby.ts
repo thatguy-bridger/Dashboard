@@ -46,8 +46,6 @@ const RAW_DEFS: Def[] = [
   D("homelights", "Lights (every bulb in its real colour)", false, 740, 300, 420, 260, true),
   D("homespeakers", "Speakers & TVs (what's playing)", false, 740, 300, 420, 200, true),
   D("homeplugs", "Plugs & switches", false, 740, 300, 420, 200, true),
-  D("news", widgetLabel("news"), false, 740, 624, 420, 66, true),
-  D("stocks", widgetLabel("stocks"), false, 1170, 624, 210, 66, true),
   D("sports", widgetLabel("sports"), false, 60, 600, 620, 100, true),
   D("traffic", widgetLabel("traffic"), false, 740, 300, 400, 260, true),
   D("trafficcamera", widgetLabel("trafficcamera"), false, 740, 300, 400, 260, true),

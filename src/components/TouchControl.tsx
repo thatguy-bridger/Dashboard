@@ -587,24 +587,51 @@ function LightsSheet({ title, lights, act, accent, onClose, extras, keepOn = [],
 }
 
 /** One big button: tap toggles, press and hold opens the details. */
-function ToggleButton({ on, onTap, onLong, children, style, glow }: { on: boolean; onTap: () => void; onLong?: () => void; children: React.ReactNode; style?: React.CSSProperties; glow?: string }) {
+function ToggleButton({ on, onTap, onLong, onLevel, children, style, glow }: { on: boolean; onTap: () => void; onLong?: () => void; /** drag sideways across the button to set a level 0-100 (brightness) */ onLevel?: (pct: number) => void; children: React.ReactNode; style?: React.CSSProperties; glow?: string }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
   const fired = useRef(false);
+  const dragging = useRef(false);
+  const lastPct = useRef(0);
+  const [drag, setDrag] = useState<number | null>(null);
   const clear = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; start.current = null; };
+  const pctFrom = (e: React.PointerEvent<HTMLButtonElement>) => { const r = e.currentTarget.getBoundingClientRect(); return Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100))); };
   return (
     <button
       onPointerDown={(e) => {
         fired.current = false;
+        dragging.current = false;
         start.current = { x: e.clientX, y: e.clientY };
+        if (onLevel) e.currentTarget.setPointerCapture?.(e.pointerId);
         if (onLong) timer.current = setTimeout(() => { fired.current = true; start.current = null; onLong(); }, 480);
       }}
-      onPointerMove={(e) => { if (start.current && Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y) > 12) clear(); }}
-      onPointerUp={() => { const wasLong = fired.current; const armed = start.current; clear(); if (!wasLong && armed) onTap(); }}
-      onPointerCancel={clear}
+      onPointerMove={(e) => {
+        if (!start.current) return;
+        const dx = e.clientX - start.current.x, dy = e.clientY - start.current.y;
+        if (onLevel && !dragging.current && Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy)) {
+          dragging.current = true; // a sideways drag: this is a brightness slide, not a tap or a hold
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = null;
+        }
+        if (dragging.current) { lastPct.current = pctFrom(e); setDrag(lastPct.current); }
+        else if (Math.hypot(dx, dy) > 12) clear();
+      }}
+      onPointerUp={(e) => {
+        if (dragging.current) {
+          const v = pctFrom(e);
+          dragging.current = false;
+          setDrag(null);
+          clear();
+          onLevel?.(v);
+          return;
+        }
+        const wasLong = fired.current; const armed = start.current; clear(); if (!wasLong && armed) onTap();
+      }}
+      onPointerCancel={() => { dragging.current = false; setDrag(null); clear(); }}
       onContextMenu={(e) => e.preventDefault()}
-      className="touch-manipulation select-none text-left active:scale-[0.97] transition-transform duration-150"
+      className="relative overflow-hidden select-none text-left active:scale-[0.97] transition-transform duration-150"
       style={{
+        touchAction: onLevel ? "pan-y" : "manipulation",
         borderRadius: 40,
         border: "1px solid rgba(255,255,255,0.14)",
         background: on
@@ -615,7 +642,13 @@ function ToggleButton({ on, onTap, onLong, children, style, glow }: { on: boolea
         ...style,
       }}
     >
-      {children}
+      {drag !== null && (
+        <>
+          <span className="absolute inset-y-0 left-0 pointer-events-none" style={{ width: `${drag}%`, background: "rgba(255,255,255,0.24)", zIndex: 0 }} />
+          <span className="absolute top-3 right-5 num-rounded font-bold text-white pointer-events-none" style={{ fontSize: 22, zIndex: 2 }}>{drag}%</span>
+        </>
+      )}
+      <div className="relative" style={{ zIndex: 1 }}>{children}</div>
     </button>
   );
 }
@@ -625,7 +658,7 @@ const groupGlow = (ls: HomeEntity[]) => { const l = ls.find((x) => x.on); return
 function LightTile({ e, act, onOpen, syncing }: { e: HomeEntity; act: Act; onOpen?: () => void; syncing?: boolean }) {
   const on = Boolean(e.on);
   return (
-    <ToggleButton on={on} glow={on ? lightColor(e) : undefined} onTap={() => act(e.id, { type: on ? "off" : "on" })} onLong={onOpen} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4, outline: syncing ? "2px solid rgba(255,255,255,0.3)" : undefined }}>
+    <ToggleButton on={on} glow={on ? lightColor(e) : undefined} onTap={() => act(e.id, { type: on ? "off" : "on" })} onLong={onOpen} onLevel={e.dimmable ? (v) => act(e.id, v <= 0 ? { type: "off" } : { type: "brightness", value: v }) : undefined} style={{ width: "100%", height: 120, padding: "0 24px", opacity: e.available ? 1 : 0.4, outline: syncing ? "2px solid rgba(255,255,255,0.3)" : undefined }}>
       <div className="flex items-center gap-4">
         <span className={syncing ? "animate-pulse" : ""}><SegmentBulb lights={[e]} size={52} /></span>
         <div className="min-w-0 flex-1">
@@ -1310,7 +1343,8 @@ export function TouchControl() {
   const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin);
   useAutoUpdate();
   // ?guestPreview=1 only changes how this screen looks (to check the layout); the server still decides what is allowed.
-  const guest = Boolean(snap?.guest?.active) || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("guestPreview") === "1");
+  const previewGuest = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("guestPreview");
+  const guest = previewGuest === "1" ? true : previewGuest === "0" ? false : Boolean(snap?.guest?.active);
   const { level: dimLevel, idle, activity, sleep } = useDimmer();
   // Guest mode pauses whatever is playing (Spotify and any speaker) once, as soon as it starts.
   const guestPaused = useRef(false);
@@ -1378,7 +1412,24 @@ export function TouchControl() {
     colorMany(targets.map((l, i) => { const [h, s] = colors[(i + rot) % colors.length]; return { id: l.id, h, s }; }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours or the rotation change
   }, [guest, ml.enabled, ml.ids, playing, palette, mono, rot, np?.track?.id, colorMany]);
-  /** Switch the album-art lights on (remembering how those lights were) or off (putting them back). */
+  /** Plain white at full brightness (neutral 4000K where a bulb has a white temperature, otherwise colour with no saturation). */
+  const resetToWhite = (targets: HomeEntity[]) => {
+    const ls = targets.filter((l) => l.kind === "light");
+    const temp = ls.filter((l) => l.supportsColorTemp);
+    const colourOnly = ls.filter((l) => !l.supportsColorTemp && l.supportsColor);
+    const plain = ls.filter((l) => !l.supportsColorTemp && !l.supportsColor);
+    if (temp.length) act(temp.map((l) => l.id), { type: "colorTemp", value: 4000 });
+    if (colourOnly.length) act(colourOnly.map((l) => l.id), { type: "color", h: 0, s: 0 });
+    const dim = ls.filter((l) => l.dimmable);
+    if (dim.length) act(dim.map((l) => l.id), { type: "brightness", value: 100 });
+    if (plain.length) act(plain.map((l) => l.id), { type: "on" });
+  };
+  /** The Reset button: no theme, every light plain white at 100%. */
+  const resetAllLights = () => {
+    if (ml.enabled) saveMl({ ...ml, enabled: false, restore: {} });
+    resetToWhite(devices);
+  };
+  /** Switch the album-art lights on (remembering how those lights were) or off (back to plain white at 100%). */
   const setMusicLights = (on: boolean) => {
     if (on) {
       const targets = mlTargets(ml.ids);
@@ -1387,13 +1438,7 @@ export function TouchControl() {
       appliedKey.current = "";
       saveMl({ ...ml, enabled: true, restore });
     } else {
-      for (const [id, r] of Object.entries(ml.restore)) {
-        if (!r.on) act(id, { type: "off" });
-        else if (r.hs) act(id, { type: "color", h: r.hs[0], s: r.hs[1] });
-        else if (r.colorTemp) act(id, { type: "colorTemp", value: r.colorTemp });
-        else act(id, { type: "on" });
-        if (r.on && r.brightness != null) act(id, { type: "brightness", value: r.brightness });
-      }
+      resetToWhite(mlTargets(ml.ids));
       saveMl({ ...ml, enabled: false, restore: {} });
     }
   };
@@ -1495,6 +1540,7 @@ export function TouchControl() {
                   glow={groupGlow(allTargets)}
                   onTap={() => { act(allTargets.map((d) => d.id), { type: anyOn ? "off" : "on" }); if (anyOn) nightOff(); }}
                   onLong={guest ? undefined : () => setSheet({ type: "all" })}
+                  onLevel={(v) => { const dim = allTargets.filter((d) => d.kind === "light" && d.dimmable); if (dim.length) act(dim.map((d) => d.id), v <= 0 ? { type: "off" } : { type: "brightness", value: v }); }}
                   style={{ width: "100%", height: "100%", padding: `0 ${Math.round(64 * fit)}px`, borderRadius: 64 }}
                 >
                   <div className="flex items-center" style={{ gap: Math.round(56 * fit) }}>
@@ -1506,6 +1552,13 @@ export function TouchControl() {
                     </div>
                   </div>
                 </ToggleButton>
+                  <Press
+                    onClick={resetAllLights}
+                    className="absolute font-bold"
+                    style={{ top: 22, right: 214, padding: "14px 22px", borderRadius: 26, fontSize: 19, background: "rgba(0,0,0,0.4)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }}
+                  >
+                    ↺ Reset
+                  </Press>
                   <Press
                     onClick={() => { act(devices.map((d) => d.id), { type: "off" }); nightOff(); }}
                     className="absolute font-bold"
@@ -1523,7 +1576,7 @@ export function TouchControl() {
                       const inRoom = devices.filter((d) => d.room === room);
                       const roomOn = inRoom.some((d) => d.on);
                       return (
-                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={guest ? undefined : () => setSheet({ type: "room", room })} style={{ height: 88, padding: "0 22px", borderRadius: 30 }}>
+                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={guest ? undefined : () => setSheet({ type: "room", room })} onLevel={(v) => { const dim = inRoom.filter((d) => d.kind === "light" && d.dimmable); if (dim.length) act(dim.map((d) => d.id), v <= 0 ? { type: "off" } : { type: "brightness", value: v }); }} style={{ height: 88, padding: "0 22px", borderRadius: 30 }}>
                           <div className="flex items-center gap-3">
                             <SegmentBulb lights={inRoom} size={40} />
                             <div className="min-w-0 flex-1">
