@@ -1572,7 +1572,7 @@ export function TouchControl() {
                   <Press
                     onClick={resetAllLights}
                     className="absolute font-bold"
-                    style={{ top: 22, right: 214, padding: "14px 22px", borderRadius: 26, fontSize: 19, background: "rgba(0,0,0,0.4)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }}
+                    style={{ top: 22, left: 26, padding: "14px 22px", borderRadius: 26, fontSize: 19, background: "rgba(0,0,0,0.4)", color: "#fff", border: "1px solid rgba(255,255,255,0.22)" }}
                   >
                     ↺ Reset
                   </Press>
