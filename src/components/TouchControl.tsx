@@ -180,12 +180,24 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
 function useScale() {
   const [s, setS] = useState(1);
   useEffect(() => {
-    const f = () => setS(Math.min(window.innerWidth / W, window.innerHeight / H));
+    // fill the screen: scale by height, let the canvas width follow the aspect ratio
+    const f = () => setS(Math.max(0.5, Math.min(window.innerHeight / H, window.innerWidth / 1100)));
     f();
     window.addEventListener("resize", f);
     return () => window.removeEventListener("resize", f);
   }, []);
   return s;
+}
+
+function useCanvasWidth(scale: number) {
+  const [w, setW] = useState(W);
+  useEffect(() => {
+    const f = () => setW(Math.max(1100, Math.round(window.innerWidth / scale)));
+    f();
+    window.addEventListener("resize", f);
+    return () => window.removeEventListener("resize", f);
+  }, [scale]);
+  return w;
 }
 
 // ---------- primitives ----------
@@ -507,6 +519,7 @@ function PinPad({ gate, onSubmit }: { gate: Gate; onSubmit: (pin: string) => voi
 
 export function TouchControl() {
   const scale = useScale();
+  const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
   const { backdrop, accent } = useArtTheme(artUrl);
@@ -538,19 +551,21 @@ export function TouchControl() {
   const scenes = entities.filter((e) => e.kind === "scene");
   const media = entities.filter((e) => e.kind === "media");
   const devices = entities.filter((e) => e.kind === "light" || e.kind === "switch");
-  const rooms = [...new Set(devices.map((d) => d.room))];
+  const rooms = [...new Set(devices.map((d) => d.room))].sort((a, b) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
+  const rightW = Math.min(520, Math.max(420, Math.round(cw * 0.3)));
+  const leftW = cw - rightW - 50 - 40 - 50;
   const time = now ? now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
 
   return (
     <div className="fixed inset-0 bg-black overflow-hidden text-white" style={{ ["--accent" as string]: color }}>
       <Backdrop art={backdrop} playing={playing} accent={color} />
-      <div className="absolute" style={{ left: "50%", top: "50%", width: W, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+      <div className="absolute" style={{ left: "50%", top: "50%", width: cw, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}>
         {gate ? (
           <div className="absolute inset-0 flex items-center justify-center"><PinPad gate={gate} onSubmit={submitPin} /></div>
         ) : (
           <>
             {/* left: scenes + lights */}
-            <div className="absolute flex flex-col" style={{ left: 50, top: 84, width: 840, height: 790 }}>
+            <div className="absolute flex flex-col" style={{ left: 50, top: 84, width: leftW, height: 790 }}>
               <div className="flex items-end justify-between mb-5">
                 <div className="num-rounded text-gradient-white font-semibold" style={{ fontSize: 76, lineHeight: 1 }}>{time}</div>
                 {snap?.provider === "demo" && (
@@ -601,7 +616,7 @@ export function TouchControl() {
                         );
                       })()}
                     </div>
-                    <div className="flex flex-wrap gap-3" style={{ maxWidth: 2 * 212 }}>
+                    <div className="flex flex-wrap gap-3">
                       {devices.filter((d) => d.room === room).map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} accent={color} onMore={() => setSheetId(d.id)} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
                     </div>
                   </div>
@@ -612,10 +627,12 @@ export function TouchControl() {
             </div>
 
             {/* right: music + speakers */}
-            <div className="absolute flex flex-col gap-4 overflow-y-auto" style={{ left: 930, top: 96, width: 460, height: 780, scrollbarWidth: "none" }}>
+            <div className="absolute flex flex-col gap-4 overflow-y-auto" style={{ left: cw - rightW - 50, top: 96, width: rightW, height: 780, scrollbarWidth: "none" }}>
               <MusicCard accent={color} />
-              {media.length > 0 && <div className="caps-label mt-1" style={{ fontSize: 13, paddingLeft: 8 }}>Speakers & TVs</div>}
-              {media.map((m) => <MediaRow key={m.id} e={m} act={act} accent={color} />)}
+              {media.some((m) => m.playing) && <div className="caps-label mt-1" style={{ fontSize: 13, paddingLeft: 8 }}>Playing now</div>}
+              {media.filter((m) => m.playing).map((m) => <MediaRow key={m.id} e={m} act={act} accent={color} />)}
+              {media.some((m) => !m.playing) && <div className="caps-label mt-1" style={{ fontSize: 13, paddingLeft: 8 }}>{media.some((m) => m.playing) ? "Other speakers & TVs" : "Speakers & TVs"}</div>}
+              {media.filter((m) => !m.playing).map((m) => <MediaRow key={m.id} e={m} act={act} accent={color} />)}
             </div>
           </>
         )}
