@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WeatherIcon } from "@/lib/weatherVisuals";
 import { weatherLabel } from "@/lib/weatherCodes";
 import { eventColor } from "@/lib/eventColors";
@@ -119,6 +119,31 @@ function useSelfBattery(enabled: boolean, pin: string | null) {
   return b;
 }
 
+/** Keeps the whole top row visible: if the pills on both sides are wider than the space between the screen edges (leaving the
+ *  middle free for the music pill), both sides shrink together instead of being cropped. */
+function useFitScale(deps: unknown[]) {
+  const left = useRef<HTMLDivElement>(null);
+  const right = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const measure = () => {
+      const l = left.current, r = right.current;
+      if (!l || !r) return;
+      const natural = l.offsetWidth + r.offsetWidth + 24;
+      const room = window.innerWidth - 40 - 300; // 20px margins, and 300px kept free in the middle for the island
+      setScale(natural > room ? Math.max(0.5, room / natural) : 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (left.current) ro.observe(left.current);
+    if (right.current) ro.observe(right.current);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measures when the pills change
+  }, deps);
+  return { left, right, scale };
+}
+
 export function TopBar({ hide = [], showTime = false, selfBattery = false, pin = null }: { hide?: TopBarHide[]; showTime?: boolean; selfBattery?: boolean; pin?: string | null }) {
   const self = useSelfBattery(selfBattery, pin);
   const { weather, events, devices } = useFeeds();
@@ -128,6 +153,7 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
     return () => clearInterval(id);
   }, []);
   const commute = useCommute(now);
+  const fit = useFitScale([showTime, selfBattery]);
 
   const next = (events ?? []).find((e) => {
     if (e.allDay) return false;
@@ -145,7 +171,7 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
 
   return (
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 175px)" }}>
+      <div ref={fit.left} className="flex items-center gap-3 shrink-0" style={{ transform: `scale(${fit.scale})`, transformOrigin: "left top" }}>
         {showTime && (
           <div className={chip} style={chipStyle}>
             <span className="num-rounded font-bold text-white whitespace-nowrap" style={{ fontSize: 22 }}>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
@@ -169,7 +195,7 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
         <HomePeoplePills />
       </div>
 
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 175px)" }}>
+      <div ref={fit.right} className="flex items-center gap-3 shrink-0 justify-end" style={{ transform: `scale(${fit.scale})`, transformOrigin: "right top" }}>
         {next && !hide.includes("countdown") && (
           <div className={chip} style={{ ...chipStyle, borderColor: soon ? "rgba(255,184,77,0.55)" : "rgba(255,255,255,0.12)" }}>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: soon ? "#ffb84d" : (next.color ?? eventColor(next.colorId, next.source)), boxShadow: `0 0 8px ${soon ? "#ffb84d" : (next.color ?? "#fff")}` }} />
