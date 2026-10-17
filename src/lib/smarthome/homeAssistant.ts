@@ -328,7 +328,7 @@ let motionCache: { at: number; value: { sensors: number; active: boolean; since:
 export async function motionState(fresh = false): Promise<{ sensors: number; active: boolean; since: number }> {
   if (!fresh && motionCache && Date.now() - motionCache.at < 1500) return motionCache.value;
   // A template returns only the few sensors we care about (a few bytes), instead of every entity in the house.
-  const template = `{% set ns = namespace(n=0, on=0, since=0) %}{% for s in states.binary_sensor if s.attributes.device_class in ['motion','occupancy','presence'] %}{% set ns.n = ns.n + 1 %}{% if s.state == 'on' %}{% set ns.on = ns.on + 1 %}{% set ns.since = [ns.since, as_timestamp(s.last_changed)] | max %}{% endif %}{% endfor %}{{ ns.n }}|{{ ns.on }}|{{ ns.since }}`;
+  const template = `{% set ns = namespace(n=0, on=0, since=0) %}{% for s in states.binary_sensor if s.attributes.device_class in ['motion','occupancy','presence'] %}{% set ns.n = ns.n + 1 %}{% if s.state == 'on' %}{% set ns.on = ns.on + 1 %}{% set lm = as_timestamp(s.attributes.last_motion, 0) %}{% set ns.since = [ns.since, lm if lm > 0 else as_timestamp(s.last_changed)] | max %}{% endif %}{% endfor %}{{ ns.n }}|{{ ns.on }}|{{ ns.since }}`;
   const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
   if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
   const [n, on, since] = (await res.text()).trim().split("|");

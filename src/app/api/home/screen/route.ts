@@ -44,6 +44,16 @@ export async function POST(req: NextRequest) {
     try { await installMotionWake(cfg.service, cfg.awake); return NextResponse.json({ ok: true }); }
     catch (err) { return NextResponse.json({ ok: false, error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
+  if (b.mode === "level" && typeof b.level === "number") {
+    if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
+    try {
+      await Promise.all([
+        tabletCommand(cfg.service, "command_auto_screen_brightness", { command: "turn_off" }),
+        tabletCommand(cfg.service, "command_screen_brightness_level", { command: Math.max(1, Math.min(255, Math.round(b.level))) }),
+      ]);
+      return NextResponse.json({ ok: true });
+    } catch (err) { return NextResponse.json({ ok: false, error: "command_failed", detail: String(err) }, { status: 502 }); }
+  }
   if (b.mode !== "dim" && b.mode !== "wake") return NextResponse.json({ error: "bad request" }, { status: 400 });
   if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
   try {

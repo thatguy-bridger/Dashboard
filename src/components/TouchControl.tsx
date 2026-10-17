@@ -203,23 +203,31 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
   }
 }
 
-/** True after `ms` with no touch. The first touch while asleep only wakes the screen. */
-function useIdle(ms: number) {
-  const [idle, setIdle] = useState(false);
-  const api = useRef<{ wake: () => void; sleep: () => void }>({ wake() {}, sleep() {} });
+/** How dark the screen should be, 0 (awake) to 1 (black), from how long nobody has touched it or moved in front of it.
+ *  With a presence sensor: nothing for 5s starts a slow fade that reaches black at 20s. Without one: the old 2 minutes of no touches.
+ *  Any touch or movement snaps straight back to awake. */
+function useDimmer(presence: React.MutableRefObject<boolean>) {
+  const [level, setLevel] = useState(0);
+  const last = useRef(0);
+  const forced = useRef(false);
+  const api = useRef<{ activity: () => void; sleep: () => void }>({ activity() {}, sleep() {} });
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout>;
-    let asleep = false;
-    const set = (v: boolean) => { asleep = v; setIdle(v); };
-    const arm = () => { clearTimeout(t); t = setTimeout(() => set(true), ms); };
-    const touch = () => { if (!asleep) arm(); };
-    arm();
-    api.current = { wake() { set(false); arm(); }, sleep() { clearTimeout(t); set(true); } };
-    window.addEventListener("pointerdown", touch, true);
-    window.addEventListener("pointermove", touch, true);
-    return () => { clearTimeout(t); window.removeEventListener("pointerdown", touch, true); window.removeEventListener("pointermove", touch, true); };
-  }, [ms]);
-  return { idle, wake: () => api.current.wake(), sleep: () => api.current.sleep() };
+    last.current = Date.now();
+    const compute = () => {
+      if (forced.current) return 1;
+      const t = (Date.now() - last.current) / 1000;
+      const [start, ramp] = presence.current ? [5, 15] : [120, 15];
+      return t < start ? 0 : Math.min(1, (t - start) / ramp);
+    };
+    const tick = () => setLevel((cur) => { const n = Math.round(compute() * 50) / 50; return n === cur ? cur : n; });
+    const activity = () => { last.current = Date.now(); forced.current = false; setLevel(0); };
+    api.current = { activity, sleep() { forced.current = true; setLevel(1); } };
+    window.addEventListener("pointerdown", activity, true);
+    window.addEventListener("pointermove", activity, true);
+    const id = setInterval(tick, 250);
+    return () => { clearInterval(id); window.removeEventListener("pointerdown", activity, true); window.removeEventListener("pointermove", activity, true); };
+  }, [presence]);
+  return { level, idle: level >= 1, activity: () => api.current.activity(), sleep: () => api.current.sleep() };
 }
 
 /** Fully Kiosk Browser's JavaScript interface (Fire/Android kiosk tablets). Needs "JavaScript Interface (PLUS)" on. */
@@ -1060,7 +1068,9 @@ export function TouchControl() {
   }, []);
   const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep } = useHome(pin);
   useAutoUpdate();
-  const { idle, wake, sleep } = useIdle(2 * 60_000);
+  const presence = useRef(false);
+  const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
+  const wake = activity;
 
   // Dimmed screens poll Spotify rarely; on wake everything refreshes at once so the first glance is current.
   const wasIdle = useRef(false);
@@ -1096,19 +1106,22 @@ export function TouchControl() {
   useEffect(() => { if (away) awaySince.current = Date.now(); }, [away]);
   const onApproach = () => {
     if (away && Date.now() - awaySince.current > 60_000) setAway("return");
-    if (idle) wake();
+    activity(); // someone's there: back to full brightness and restart the dim timer
   };
-  const motionSensors = useHaMotion(pin, wakeCam && (idle || away), onApproach);
+  const motionSensors = useHaMotion(pin, wakeCam, onApproach);
+  useEffect(() => { presence.current = wakeCam && motionSensors > 0; });
   // With a Home Assistant motion sensor (or the tablet streaming its camera there) the browser doesn't need the camera.
   const camStatus = useApproach(wakeCam && (idle || away) && motionSensors === 0, onApproach);
-  // Real dimming through the Home Assistant app on this tablet (needs "modify system settings" allowed for it).
-  const dimmedOnce = useRef(false);
+  // Real backlight dimming through the Home Assistant app, stepping down with the on-screen fade and back up on any activity.
+  const lastStep = useRef(0);
   useEffect(() => {
     if (!pin || getFully()) return;
-    if (!idle && !dimmedOnce.current) return; // nothing to undo on first load
-    dimmedOnce.current = true;
-    fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: idle ? "dim" : "wake" }) }).catch(() => {});
-  }, [idle, pin]);
+    const step = dimLevel <= 0 ? 0 : Math.min(5, Math.ceil(dimLevel * 5));
+    if (step === lastStep.current) return;
+    lastStep.current = step;
+    const levels = [0, 130, 95, 60, 30, 1];
+    fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify(step === 0 ? { mode: "wake" } : { mode: "level", level: levels[step] }) }).catch(() => {});
+  }, [dimLevel, pin]);
   // On Fully Kiosk, really dim the backlight while idle (the black overlay can't turn an LCD off), and put it back on wake.
   useEffect(() => {
     const fully = getFully();
@@ -1320,7 +1333,7 @@ export function TouchControl() {
         <button
           onClick={() => setAway("return")}
           className="absolute inset-0 z-[45] flex flex-col items-center justify-center gap-6 touch-manipulation select-none"
-          style={{ background: `radial-gradient(90% 70% at 50% 40%, ${color}55, #000 75%)`, border: "none" }}
+          style={{ backgroundColor: "#050507", backgroundImage: `radial-gradient(90% 70% at 50% 40%, ${color}66, transparent 75%)`, border: "none" }}
         >
           <span className="text-white font-bold" style={{ fontSize: 96, lineHeight: 1 }}>Welcome back</span>
           <span className="text-white/65 font-semibold" style={{ fontSize: 30 }}>Tap anywhere to turn your lights on and resume your music</span>
@@ -1330,7 +1343,7 @@ export function TouchControl() {
       <div
         onPointerDown={() => { if (away) setAway("return"); wake(); }}
         className="absolute inset-0 z-50 bg-black flex items-center justify-center"
-        style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: idle ? "opacity 1.2s ease" : "opacity 0.12s ease-out" }}
+        style={{ opacity: dimLevel, pointerEvents: idle ? "auto" : "none", transition: dimLevel === 0 ? "opacity 0.12s ease-out" : "opacity 0.3s linear" }}
       >
         <div className="num-rounded font-semibold" style={{ fontSize: 120, color: "rgba(255,255,255,0.12)" }}>{time}</div>
         {(away || camStatus === "on") && (
