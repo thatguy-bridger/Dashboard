@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
   for (let i = 0; url && i < 4; i++) {
     const res: Response = await spotifyFetch(url);
     if (res.status === 401) return NextResponse.json({ error: "not_connected" }, { status: 401 });
+    if (res.status === 429) return NextResponse.json({ error: "rate_limited" }, { status: 429 });
     if (res.status === 403) return NextResponse.json({ error: "reconnect" }, { status: 403 });
     if (!res.ok) return NextResponse.json({ error: "spotify_failed", status: res.status }, { status: 502 });
     const j = await res.json();
