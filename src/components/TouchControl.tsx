@@ -1474,20 +1474,26 @@ export function TouchControl() {
       .then((j: { lights: { id: string; model: string }[] } | null) => { if (j) setModels(Object.fromEntries(j.lights.map((l) => [l.id, l.model]))); })
       .catch(() => {});
   }, [ml.enabled, pin]);
-  // While a song plays the colours slowly shift around the chosen lights: about ten times per song, so the pace follows the
-  // song's length (never faster than every 14 seconds, which a slow fade needs). Starts over with each song.
-  const [rot, setRot] = useState(0);
+  // Colour shifts inside a song land on fixed points of the song (every tenth of its length, never closer than 15 seconds),
+  // worked out from Spotify's position instead of a free-running timer, so they stay evenly spaced and in step after skips,
+  // pauses and reloads. No shift happens in the last 8 seconds: the song's own dim is about to start.
+  // the shift number belongs to one song: a stale value from the previous song is ignored (no double command at a song change)
+  const [rotState, setRotState] = useState<{ track: string | null; idx: number }>({ track: null, idx: 0 });
   const trackId = np?.track?.id;
-  const songMs = np?.track?.durationMs ?? 0;
+  const rot = rotState.track === trackId ? rotState.idx : 0;
   useEffect(() => {
-    setRot(0);
-  }, [trackId]);
-  useEffect(() => {
-    if (!ml.enabled || !playing || guest || !songMs) return;
-    const every = Math.max(14_000, Math.min(60_000, songMs / 10));
-    const id = setInterval(() => setRot((r) => r + 1), every);
-    return () => clearInterval(id);
-  }, [ml.enabled, playing, guest, trackId, songMs]);
+    if (guest || !ml.enabled || !playing || !np?.track) return;
+    const track = np.track;
+    const every = Math.max(15_000, track.durationMs / 10);
+    const pos = track.progressMs + (Date.now() - (np.fetchedAt ?? Date.now()));
+    const idx = Math.floor(pos / every);
+    setRotState((cur) => (cur.track === track.id && cur.idx === idx ? cur : { track: track.id, idx }));
+    const next = (idx + 1) * every;
+    if (next > track.durationMs - 8_000) return;
+    const id = setTimeout(() => setRotState({ track: track.id, idx: idx + 1 }), Math.max(0, next - pos));
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-plans whenever Spotify's position is refreshed
+  }, [guest, ml.enabled, playing, trackId, np?.fetchedAt]);
   useEffect(() => {
     if (guest || !ml.enabled || !playing || !np?.track) return;
     if (!mono && !palette.length) return; // art not analysed yet
@@ -1506,7 +1512,12 @@ export function TouchControl() {
       if (mode === "color" && l.supportsColor && !mono && base.length) {
         const [h0, s0] = base[(colourIndex++ + rot) % base.length];
         if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100, ...lift }); continue; } // a washed-out colour is really a white
-        items.push({ id: l.id, mode: "color", h: calibrateHue(models[l.id], h0), s: s0, brightness: l.brightness ?? 100, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined, ...(songChanged ? { instant: true, ...lift } : {}) });
+        const target = calibrateHue(models[l.id], h0);
+        const from = l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined;
+        // Inside a song only the colour changes (never the brightness). A small change glides; a big one (green to pink would
+        // sweep through yellow and red on the way) simply switches.
+        const bigJump = !from || Math.abs(((target - from.h + 540) % 360) - 180) > 50;
+        items.push({ id: l.id, mode: "color", h: target, s: s0, from, ...(songChanged ? { instant: true, ...lift } : bigJump ? { instant: true } : {}) });
       } else if (!songChanged) {
         continue; // whites and offs only change when the song does
       } else if (mode === "off") {
@@ -1525,8 +1536,9 @@ export function TouchControl() {
     if (appliedKey.current === key) return;
     appliedKey.current = key;
     lastTrack.current = np.track.id;
-    // between songs: instant colours with a five-second brighten; inside a song: a slow twelve-second glide
-    colorMany(items, songChanged ? (firstApply ? 0 : 5) : 12);
+    // between songs: instant colours with a five-second brighten; inside a song: colour only, a twelve-second glide for small changes and an instant switch for big ones
+    const gliding = !songChanged && items.some((i) => i.mode === "color" && !i.instant);
+    colorMany(items, songChanged ? (firstApply ? 0 : 5) : gliding ? 12 : 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours, the rotation or a light's state change
   }, [guest, ml.enabled, ml.modes, ml.ids, playing, palette, mono, models, rot, np?.track?.id, colorMany]);
   // Dim into the end of each song: about five seconds before it finishes the lit lights ease down to a quarter, then the

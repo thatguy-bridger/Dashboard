@@ -24,14 +24,12 @@ interface Item {
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const hueDist = (a: number, b: number) => Math.abs(((b - a + 540) % 360) - 180);
 const lerpHue = (a: number, b: number, t: number) => { const d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Body: { items: [...], seconds } sets several lights at once. These bulbs can't fade on their own (their cloud has no
  *  transition), so changes are stepped: about one step every 2 seconds, up to six.
- *  A small hue change glides; a big one (green to pink would sweep through yellow and red) dips the brightness in the
- *  middle, changes colour there, and comes back up, so it never flashes through other colours. */
+ *  Colour changes glide; "instant" items switch at once. Only items with a ramp ever change brightness. */
 export async function POST(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return NextResponse.json({ error: gate }, { status: gate === "pin_not_configured" ? 403 : 401 });
@@ -49,15 +47,6 @@ export async function POST(req: NextRequest) {
     if (it.mode === "color" && typeof it.h === "number" && typeof it.s === "number") {
       const from = it.from ?? { h: it.h, s: 0 };
       if (it.instant) { await provider.act(it.id, { type: "color", h: it.h, s: it.s, brightness: ramped }); return; }
-      if (hueDist(from.h, it.h) > 50) {
-        // a big jump: dip, change colour at the bottom, come back up
-        const base = it.brightness ?? 100;
-        const dip = 1 - 0.6 * Math.sin(Math.PI * t); // 1 -> 0.4 (middle) -> 1
-        const h = t < 0.5 ? from.h : it.h;
-        const s = t < 0.5 ? from.s : it.s;
-        await provider.act(it.id, { type: "color", h, s, brightness: Math.max(5, base * dip) });
-        return;
-      }
       await provider.act(it.id, { type: "color", h: lerpHue(from.h, it.h, t), s: lerp(from.s, it.s, t), brightness: ramped });
     } else if (it.mode === "dim") {
       await provider.act(it.id, { type: "brightness", value: ramped ?? it.brightness ?? 30 });
