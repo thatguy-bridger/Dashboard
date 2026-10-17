@@ -18,6 +18,18 @@ import { DEFAULT_MORNING, type DeviceTimer, type HomeEntity, type HomeSnapshot, 
 /** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
 const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
 
+/** What the album-art lights ask of one light (see /api/home/colors). */
+interface ThemeItem {
+  id: string;
+  mode: "color" | "white" | "onoff";
+  h?: number;
+  s?: number;
+  kelvin?: number;
+  brightness?: number;
+  on?: boolean;
+  from?: { h: number; s: number };
+}
+
 const W = 1440;
 const H = 900;
 const PIN_KEY = "hb-control-pin";
@@ -170,23 +182,26 @@ function useHome(pin: string | null) {
     } catch { /* the next refresh shows the truth */ }
   }, []);
 
-  /** Different colours on several lights at once (the album-art lights). */
-  const colorMany = useCallback((items: { id: string; h: number; s: number }[]) => {
+  /** The album-art lights: each light gets what suits it (a colour, a white, or plain on/off) and the server fades there. */
+  const colorMany = useCallback((items: ThemeItem[], seconds: number) => {
     const ids = items.map((i) => i.id);
     setSnap((s) => {
       if (!s) return s;
       return { ...s, entities: s.entities.map((e) => {
         const it = items.find((i) => i.id === e.id);
         if (!it) return e;
-        const to = applyLocal(e, { type: "color", h: it.h, s: it.s });
-        pending.current.set(e.id, { until: Date.now() + 9000, to });
+        const to: HomeEntity = it.mode === "color" && it.h != null && it.s != null ? applyLocal(e, { type: "color", h: it.h, s: it.s })
+          : it.mode === "white" && it.on === false ? { ...e, on: false }
+          : it.mode === "white" ? { ...e, on: true, hs: undefined, colorTemp: it.kelvin ?? e.colorTemp }
+          : { ...e, on: it.on !== false };
+        pending.current.set(e.id, { until: Date.now() + 9000 + seconds * 1000, to });
         return to;
       }) };
     });
     markSyncing();
     queue.current = queue.current.then(async () => {
       try {
-        await fetch("/api/home/colors", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ colors: items }) });
+        await fetch("/api/home/colors", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ items, seconds }) });
       } catch { /* the confirm loop shows the truth */ }
     });
     queue.current.then(() => confirm(ids));
@@ -385,6 +400,24 @@ function useNightVolume(pin: string | null) {
   };
   return { volume, save };
 }
+/** Which white suits a hue: warm covers get a warm white, cool covers a cool one. */
+const kelvinForHue = (h: number) => (h < 70 || h >= 330 ? 2700 : h < 150 ? 4000 : h < 260 ? 6000 : 5000);
+
+/** These Tuya bulbs render some hues off: on the generic "Color Light" bulbs and bars a pure yellow (60°) looks greenish,
+ *  so yellows are pulled toward orange; the "100W Tune + Color" bulb needs only a little of that. Piecewise-linear. */
+const HUE_FIX: Record<string, [number, number][]> = {
+  "Color Light": [[0, 0], [20, 16], [40, 32], [60, 46], [80, 66], [120, 120], [360, 360]],
+  "100W Tune + Color": [[0, 0], [40, 36], [60, 54], [80, 76], [360, 360]],
+};
+const calibrateHue = (model: string | undefined, h: number) => {
+  const pts = model ? HUE_FIX[model] : undefined;
+  if (!pts) return h;
+  for (let i = 1; i < pts.length; i++) {
+    if (h <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return Math.round(y0 + ((h - x0) / (x1 - x0)) * (y1 - y0)); }
+  }
+  return h;
+};
+
 const hexToHs = (hex: string): [number, number] => {
   const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
@@ -1252,7 +1285,7 @@ function MusicLightsScene({ api, accent }: { api: MusicLightsApi; accent: string
           <div className="flex items-center gap-2 flex-wrap">
             {api.mono ? <span className="text-white/60 font-semibold" style={{ fontSize: 14 }}>Black-and-white art: lights go white</span> : api.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 26, height: 26, background: c, boxShadow: `0 0 12px ${withAlpha(c, 70)}` }} />)}
           </div>
-          <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Lights in the scene</div>
+          <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Lights in the scene · colour lights show the colours, white-only lights go on or off</div>
           <div className="flex flex-wrap gap-2">
             {api.lights.map((l) => {
               const sel = api.active.includes(l.id);
@@ -1351,7 +1384,7 @@ export function TouchControl() {
   const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent, palette, mono } = useArtTheme(artUrl);
+  const { backdrop, accent, palette, mono, lum } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
@@ -1394,11 +1427,21 @@ export function TouchControl() {
   // Album-art lights: each new song recolours the chosen lights (default: the Light Bars) from the artwork.
   const [ml, setMl] = useState<MusicLightsCfg>(() => (typeof window === "undefined" ? { enabled: false, ids: [], restore: {} } : readMusicLights()));
   const saveMl = (next: MusicLightsCfg) => { setMl(next); try { localStorage.setItem(ML_KEY, JSON.stringify(next)); } catch { /* ignore */ } };
-  const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light" && e.supportsColor);
-  const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name)));
+  const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light");
+  const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name) && l.supportsColor));
   const appliedKey = useRef("");
+  const lastTrack = useRef<string | null>(null);
+  // How each light really renders: its model (from Home Assistant's device info), fetched once while the scene is on.
+  const [models, setModels] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!ml.enabled || !pin) return;
+    fetch("/api/home/lights-info", { cache: "no-store", headers: { "x-control-pin": pin } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { lights: { id: string; model: string }[] } | null) => { if (j) setModels(Object.fromEntries(j.lights.map((l) => [l.id, l.model]))); })
+      .catch(() => {});
+  }, [ml.enabled, pin]);
   // While a song plays the colours slowly shift around the chosen lights: about ten times per song, so the pace follows the
-  // song's length (never faster than every 8 seconds, which cloud bulbs can't keep up with). Starts over with each song.
+  // song's length (never faster than every 14 seconds, which a slow fade needs). Starts over with each song.
   const [rot, setRot] = useState(0);
   const trackId = np?.track?.id;
   const songMs = np?.track?.durationMs ?? 0;
@@ -1407,7 +1450,7 @@ export function TouchControl() {
   }, [trackId]);
   useEffect(() => {
     if (!ml.enabled || !playing || guest || !songMs) return;
-    const every = Math.max(8_000, Math.min(60_000, songMs / 10));
+    const every = Math.max(14_000, Math.min(60_000, songMs / 10));
     const id = setInterval(() => setRot((r) => r + 1), every);
     return () => clearInterval(id);
   }, [ml.enabled, playing, guest, trackId, songMs]);
@@ -1416,20 +1459,33 @@ export function TouchControl() {
     if (!mono && !palette.length) return; // art not analysed yet
     const targets = mlTargets(ml.ids).filter((l) => l.available);
     if (!targets.length) return;
-    // Colour list: the artwork's colours, topped up with neighbouring hues when it has fewer colours than there are lights.
-    // Black-and-white artwork: plain white.
-    const base: [number, number][] = mono ? [[0, 0]] : palette.map(hexToHs);
-    const colors = [...base];
-    for (let i = 0; !mono && colors.length < Math.min(targets.length, 4) && i < 6; i++) {
-      const [h, s] = base[i % base.length];
-      colors.push([(h + (i % 2 ? -1 : 1) * (28 + 14 * Math.floor(i / 2)) + 360) % 360, s]);
-    }
-    const key = `${np.track.id}|${mono ? "mono" : palette.join(",")}|${colors.length > 1 ? rot % colors.length : 0}|${targets.map((l) => l.id).join(",")}`;
+    const base: [number, number][] = palette.map(hexToHs); // only the colours that are really in the artwork
+    const dark = lum < 0.2;
+    const songChanged = lastTrack.current !== np.track.id;
+    const items: ThemeItem[] = [];
+    targets.forEach((l, i) => {
+      if (l.supportsColor && !mono && base.length) {
+        const [h0, s0] = base[(i + rot) % base.length];
+        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100 }); return; } // a washed-out colour is really a white
+        items.push({ id: l.id, mode: "color", h: calibrateHue(models[l.id], h0), s: s0, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined });
+      } else if (!songChanged) {
+        return; // white-only and plain lights only change when the song does
+      } else if (l.supportsColor || l.supportsColorTemp) {
+        // a white (or a colour light on black-and-white art): on in a white that matches the cover's mood, off for a dark cover
+        items.push({ id: l.id, mode: "white", on: mono ? true : !dark, kelvin: mono ? 4000 : kelvinForHue(base[0]?.[0] ?? 40), brightness: 100 });
+      } else {
+        items.push({ id: l.id, mode: "onoff", on: mono ? true : !dark });
+      }
+    });
+    if (!items.length) return;
+    const key = `${np.track.id}|${mono ? "mono" : palette.join(",")}|${base.length > 1 ? rot % base.length : 0}|${targets.map((l) => l.id).join(",")}`;
     if (appliedKey.current === key) return;
     appliedKey.current = key;
-    colorMany(targets.map((l, i) => { const [h, s] = colors[(i + rot) % colors.length]; return { id: l.id, h, s }; }));
+    lastTrack.current = np.track.id;
+    // slower between songs, slower still inside a song
+    colorMany(items, songChanged ? 5 : 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours or the rotation change
-  }, [guest, ml.enabled, ml.ids, playing, palette, mono, rot, np?.track?.id, colorMany]);
+  }, [guest, ml.enabled, ml.ids, playing, palette, mono, lum, models, rot, np?.track?.id, colorMany]);
   /** Plain white at full brightness (neutral 4000K where a bulb has a white temperature, otherwise colour with no saturation). */
   const resetToWhite = (targets: HomeEntity[]) => {
     const ls = targets.filter((l) => l.kind === "light");

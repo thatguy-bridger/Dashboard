@@ -11,6 +11,8 @@ export interface ArtTheme {
   palette: string[];
   /** the artwork was analysed and has no real colour (black and white): lights should go white */
   mono: boolean;
+  /** average brightness of the artwork, 0 (black) to 1 (white): dark covers turn white-only lights off */
+  lum: number;
 }
 
 export const NEUTRAL_ACCENT = "#f0b38a";
@@ -41,21 +43,27 @@ function analyse(img: HTMLImageElement): ArtTheme {
   const { data } = sctx.getImageData(0, 0, 160, 160);
 
   const buckets = new Array(12).fill(0);
-  const fine = new Array(24).fill(0);
-  const sums = Array.from({ length: 24 }, () => [0, 0, 0, 0]); // weighted r,g,b and weight, per 15-degree hue bucket
+  const fine = new Array(36).fill(0);
+  const satSum = new Array(36).fill(0);
+  let lumSum = 0, lumN = 0;
   let colourful = 0;
   for (let i = 0; i < data.length; i += 16) {
     const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    lumSum += 0.2126 * r + 0.7152 * g + 0.0722 * b; lumN++;
     const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
     if (max === 0 || d / max < 0.15) continue;
     let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
     h = (h * 60 + 360) % 360;
     const w = (d / max) * max;
-    const bi = Math.floor(h / 15) % 24;
-    fine[bi] += w;
     buckets[Math.floor(h / 30) % 12] += w;
-    sums[bi][0] += r * w; sums[bi][1] += g * w; sums[bi][2] += b * w; sums[bi][3] += w;
     colourful += w;
+    // for the lights: only clearly coloured, clearly lit pixels count (dark or grey noise must not invent a colour)
+    if (max >= 0.25 && d / max >= 0.2) {
+      const bi = Math.floor(h / 10) % 36;
+      const pw = (d / max) * max;
+      fine[bi] += pw;
+      satSum[bi] += (d / max) * pw;
+    }
   }
 
   let accent = NEUTRAL_ACCENT;
@@ -66,20 +74,31 @@ function analyse(img: HTMLImageElement): ArtTheme {
     accent = `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
   }
 
-  // Palette for lights: up to six colours. Take the strongest 15-degree hue buckets that are at least 30 degrees apart,
-  // each the weighted average colour of its pixels pushed to full vividness (bulbs wash out pale colours).
+  // Palette for lights: the colours that are really in the artwork, no more. Hues are grouped into clusters (anything within
+  // 30 degrees is the same colour, so a yellow cover with some orange stays ONE yellow). A cluster only counts if it is a
+  // meaningful share of the colour in the picture, so a single-colour cover gives a single colour.
   const palette: string[] = [];
-  if (colourful > 20) {
-    const order = fine.map((w, i) => [w, i]).sort((a, b) => b[0] - a[0]);
-    const picked: number[] = [];
-    for (const [w, i] of order) {
-      if (picked.length >= 6 || w < order[0][0] * 0.04 || sums[i][3] === 0) break;
-      const far = picked.every((p) => Math.min(Math.abs(p - i), 24 - Math.abs(p - i)) >= 2);
-      if (!far) continue;
-      picked.push(i);
-      const [sr, sg, sb, sw] = sums[i];
-      const [hh, ss] = rgbToHsv(sr / sw, sg / sw, sb / sw);
-      const [r, g, b] = hsvToRgb(hh, Math.max(0.7, Math.min(1, ss * 1.15)), 1);
+  const total = fine.reduce((a, b) => a + b, 0);
+  if (colourful > 20 && total > 0) {
+    const w = [...fine];
+    const clusters: { weight: number; hue: number; sat: number }[] = [];
+    for (let n = 0; n < 4; n++) {
+      let peak = 0;
+      for (let i = 1; i < 36; i++) if (w[i] > w[peak]) peak = i;
+      if (w[peak] <= 0) break;
+      let weight = 0, vx = 0, vy = 0, sat = 0, base = 0;
+      for (let k = -3; k <= 3; k++) {
+        const i = (peak + k + 36) % 36;
+        const ang = ((i * 10 + 5) * Math.PI) / 180;
+        weight += w[i]; vx += Math.cos(ang) * w[i]; vy += Math.sin(ang) * w[i];
+        sat += satSum[i] * (w[i] / (fine[i] || 1)); base += w[i];
+        w[i] = 0;
+      }
+      if (clusters.length && (weight < clusters[0].weight * 0.22 || weight < total * 0.07)) break;
+      clusters.push({ weight, hue: ((Math.atan2(vy, vx) * 180) / Math.PI + 360) % 360, sat: base > 0 ? sat / base : 0.8 });
+    }
+    for (const c of clusters) {
+      const [r, g, b] = hsvToRgb(c.hue / 360, Math.max(0.35, Math.min(1, c.sat * 1.1)), 1);
       palette.push(`#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`);
     }
   }
@@ -90,17 +109,17 @@ function analyse(img: HTMLImageElement): ArtTheme {
   const bctx = blur.getContext("2d")!;
   bctx.filter = "blur(13px) saturate(1.5)";
   bctx.drawImage(img, -16, -16, 272, 272);
-  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono: palette.length === 0 };
+  return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono: palette.length === 0, lum: lumN ? lumSum / lumN : 0.5 };
 }
 
 export function useArtTheme(url: string | null | undefined): ArtTheme {
   const [theme, setTheme] = useState<ArtTheme>(
-    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false }
+    (url && cache.get(url)) || { backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5 }
   );
 
   useEffect(() => {
     if (!url) {
-      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false });
+      setTheme({ backdrop: null, accent: NEUTRAL_ACCENT, palette: [], mono: false, lum: 0.5 });
       return;
     }
     const hit = cache.get(url);
