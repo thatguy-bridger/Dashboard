@@ -653,8 +653,3 @@ export async function runFade(id: string, frames: FadeFrame[], delaySeconds: num
 export async function stopFade(id: string) {
   try { await call("script", "turn_off", { entity_id: `script.${fadeName(id)}` }); } catch { /* no fade was running */ }
 }
-
-/** TEMP: disable an entity in Home Assistant's registry. */
-export async function disableEntityTemp(entityId: string) {
-  return wsRequest({ type: "config/entity_registry/update", entity_id: entityId, disabled_by: "user" });
-}
