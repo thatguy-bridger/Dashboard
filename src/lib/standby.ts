@@ -5,7 +5,7 @@ import { isWidgetVisible, hasAnyRule, type VisibilityContext } from "@/lib/visib
 export const SB_W = 1440;
 export const SB_H = 900;
 
-export type CustomItemId = "homestatus" | "homelights" | "homespeakers" | "homeplugs" | "clock" | "leaveby" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
+export type CustomItemId = "homelights" | "homespeakers" | "homeplugs" | "clock" | "leaveby" | "weatherhero" | "daysummary" | "upnext" | "tomorrow" | "weather" | "forecast" | "battery" | "nowplaying" | "agenda";
 export type StandByItemId = CustomItemId | Exclude<WidgetType, "clock" | "weather">;
 
 export interface StandByItem {
@@ -42,7 +42,6 @@ const RAW_DEFS: Def[] = [
   D("battery", "Device batteries (large chips)", false, 60, 618, 620, 84, true),
   D("nowplaying", "Now playing + lyrics", true, 740, 134, 638, 480, true),
   D("agenda", "Next up (calendar)", true, 60, 710, 1320, 130, true),
-  D("homestatus", "House status (who's home, lights, fan, timers)", true, 740, 628, 638, 60, true),
   D("homelights", "Lights (every bulb in its real colour)", false, 740, 300, 420, 260, true),
   D("homespeakers", "Speakers & TVs (what's playing)", false, 740, 300, 420, 200, true),
   D("homeplugs", "Plugs & switches", false, 740, 300, 420, 200, true),
@@ -70,7 +69,7 @@ export const STANDBY_DEFS: Def[] = RAW_DEFS.map((d, i) =>
 
 /** Items that are one row of chips/cards: resizing widens the row (more fits / drifts less)
  *  instead of stretching it. */
-export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "daysummary", "sports", "homestatus"];
+export const ROW_ITEMS: StandByItemId[] = ["forecast", "agenda", "battery", "daysummary", "sports"];
 export const STANDBY_DEFAULT_SIZE = Object.fromEntries(STANDBY_DEFS.map((d) => [d.id, { w: d.w, h: d.h }])) as Record<StandByItemId, { w: number; h: number }>;
 
 /** Lists that reflow: scale by width and use however much height the box has. */
@@ -142,7 +141,6 @@ export function defaultScenes(): StandByScene[] {
         weather: { x: 60, y: 350, w: 380, h: 112 },
         forecast: { x: 60, y: 480, w: 600, h: 118 },
         radar: { x: 740, y: 100, w: 640, h: 500 },
-        homestatus: { x: 740, y: 620, w: 638, h: 60 },
         agenda: { x: 60, y: 710, w: 1320, h: 130 },
       }),
     },
@@ -168,7 +166,6 @@ export function defaultScenes(): StandByScene[] {
       items: scene({
         clock: { x: 320, y: 230, w: 800, h: 390 },
         weather: { x: 530, y: 650, w: 380, h: 112 },
-        homestatus: { x: 380, y: 140, w: 680, h: 60 },
       }),
     },
     {
@@ -181,7 +178,6 @@ export function defaultScenes(): StandByScene[] {
         nowplaying: { x: 740, y: 134 },
         agenda: { x: 60, y: 710 },
         sports: { x: 60, y: 600, w: 620, h: 100 },
-        homestatus: {},
       }),
     },
   ];

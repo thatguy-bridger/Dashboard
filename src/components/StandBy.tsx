@@ -1,6 +1,6 @@
 "use client";
 
-import { HomeLights, HomePlugs, HomeSpeakers, HomeStatus } from "@/components/HomeGlance";
+import { HomeLights, HomePlugs, HomeSpeakers } from "@/components/HomeGlance";
 import { useEffect, useRef, useState } from "react";
 import { WeatherIcon, weatherGradient } from "@/lib/weatherVisuals";
 import { weatherLabel } from "@/lib/weatherCodes";
@@ -1146,7 +1146,6 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
         );
       case "agenda": return <Agenda events={playing ? upcoming : upcoming.slice(1)} width={it.w} />;
       case "sports": return <SportsStrip width={it.w} />;
-      case "homestatus": return <HomeStatus width={it.w} />;
       case "homelights": return <HomeLights />;
       case "homespeakers": return <HomeSpeakers />;
       case "homeplugs": return <HomePlugs />;

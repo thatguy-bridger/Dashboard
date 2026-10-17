@@ -1502,7 +1502,7 @@ export function TouchControl() {
           <div className="absolute inset-0 flex items-center justify-center"><PinPad gate={gate} onSubmit={submitPin} /></div>
         ) : guest ? (
           /* guest mode: one giant light switch and the fan, nothing else */
-          <div className="absolute flex flex-col gap-6" style={{ left: "50%", top: 84, width: Math.min(980, cw - 160), height: 740, transform: "translateX(-50%)" }}>
+          <div className="absolute flex flex-col gap-6" style={{ left: "50%", top: 108, width: Math.min(980, cw - 160), height: 710, transform: "translateX(-50%)" }}>
             <ToggleButton
               on={lights.some((d) => d.on)}
               glow={groupGlow(lights)}
@@ -1522,7 +1522,7 @@ export function TouchControl() {
         ) : (
           <>
             {/* left: all lights, rooms, then (scroll) individual lights */}
-            <div className="absolute flex flex-col" style={{ left: 50, top: 78, width: leftW, height: 796 }}>
+            <div className="absolute flex flex-col" style={{ left: 50, top: 104, width: leftW, height: 780 }}>
               <div className="flex items-end justify-end mb-3 shrink-0">
                 {snap?.provider === "demo" && (
                   <div className="glass-card px-5 py-2 text-white/60 font-semibold" style={{ borderRadius: 24, fontSize: 14 }}>
@@ -1647,8 +1647,8 @@ export function TouchControl() {
             </div>
 
             {/* right: music, as tall as the screen allows */}
-            <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 90, width: rightW }}>
-              <MusicController guest={guest} accent={color} music={music} pin={pin} onOpen={() => { if (!guest) setSheet({ type: "music" }); }} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
+            <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 106, width: rightW }}>
+              <MusicController guest={guest} accent={color} music={music} pin={pin} onOpen={() => { if (!guest) setSheet({ type: "music" }); }} setMessage={setMessage} height={message && sheet?.type !== "music" ? 670 : 750} />
               {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>

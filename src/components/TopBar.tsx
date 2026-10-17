@@ -9,6 +9,7 @@ import { useSettings } from "@/lib/useSettings";
 import { pollEvery } from "@/lib/poll";
 import { Marquee } from "@/components/Marquee";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
+import { HomeStatusPills } from "@/components/HomeGlance";
 
 const chip = "flex items-center gap-2.5 px-4 rounded-full shrink-0 min-w-0";
 const chipStyle = {
@@ -143,6 +144,7 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
     .slice(0, 3);
 
   return (
+    <>
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
       <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 290px)" }}>
         {showTime && (
@@ -206,5 +208,10 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
         )}
       </div>
     </div>
+    {/* the house pills: a second row under the main one, on every screen */}
+    <div className="fixed left-0 right-0 z-10 pointer-events-none flex items-center justify-center gap-2 overflow-hidden" style={{ top: 62, padding: "0 20px" }}>
+      <HomeStatusPills />
+    </div>
+    </>
   );
 }
