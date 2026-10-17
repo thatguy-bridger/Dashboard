@@ -39,10 +39,13 @@ async function areas(ids: string[]): Promise<Map<string, string>> {
   return out;
 }
 
+/** Some integrations send names HTML-escaped (65&quot; TV). */
+const unescapeName = (n: string) => n.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+
 function toEntity(s: HaState, room: string): HomeEntity {
   const domain = s.entity_id.split(".")[0];
   const kind = DOMAINS[domain];
-  const base = { id: s.entity_id, name: s.attributes.friendly_name ?? s.entity_id, kind, room, available: s.state !== "unavailable" };
+  const base = { id: s.entity_id, name: unescapeName(s.attributes.friendly_name ?? s.entity_id), kind, room, available: s.state !== "unavailable" };
   if (kind === "light") {
     const modes = s.attributes.supported_color_modes ?? [];
     const dimmable = modes.some((m) => m !== "onoff");
