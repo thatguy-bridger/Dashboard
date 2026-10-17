@@ -1527,13 +1527,20 @@ export function TouchControl() {
   const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light" && e.supportsColor);
   const mlTargets = (ids: string[]) => (ids.length ? colorLights.filter((l) => ids.includes(l.id)) : colorLights.filter((l) => /light bar/i.test(l.name)));
   const appliedKey = useRef("");
-  // While a song plays, the colours slowly rotate around the lights (every 15s) so the room keeps moving.
+  // While a song plays the colours slowly shift around the chosen lights: about ten times per song, so the pace follows the
+  // song's length (never faster than every 8 seconds, which cloud bulbs can't keep up with). Starts over with each song.
   const [rot, setRot] = useState(0);
+  const trackId = np?.track?.id;
+  const songMs = np?.track?.durationMs ?? 0;
   useEffect(() => {
-    if (!ml.enabled || !playing || guest) return;
-    const id = setInterval(() => setRot((r) => r + 1), 15_000);
+    setRot(0);
+  }, [trackId]);
+  useEffect(() => {
+    if (!ml.enabled || !playing || guest || !songMs) return;
+    const every = Math.max(8_000, Math.min(60_000, songMs / 10));
+    const id = setInterval(() => setRot((r) => r + 1), every);
     return () => clearInterval(id);
-  }, [ml.enabled, playing, guest]);
+  }, [ml.enabled, playing, guest, trackId, songMs]);
   useEffect(() => {
     if (guest || !ml.enabled || !playing || !np?.track) return;
     if (!mono && !palette.length) return; // art not analysed yet
