@@ -1492,7 +1492,6 @@ export function TouchControl() {
     if (!targets.length) return;
     const base: [number, number][] = palette.map(hexToHs); // only the colours that are really in the artwork
     const songChanged = lastTrack.current !== np.track.id;
-    const white = mono ? 4000 : kelvinForHue(base[0]?.[0] ?? 40);
     const items: ThemeItem[] = [];
     let colourIndex = 0;
     for (const l of targets) {
@@ -1505,8 +1504,10 @@ export function TouchControl() {
         continue; // whites and offs only change when the song does
       } else if (mode === "off") {
         items.push({ id: l.id, mode: l.supportsColor || l.supportsColorTemp ? "white" : "onoff", on: false });
-      } else if (l.supportsColor || l.supportsColorTemp) {
-        items.push({ id: l.id, mode: "white", on: true, kelvin: white, brightness: 100 }); // "on", or a colour light on black-and-white art
+      } else if (l.supportsColorTemp) {
+        items.push({ id: l.id, mode: "white", on: true, kelvin: 4000, brightness: 100 }); // "on" is the same neutral white for every song
+      } else if (l.supportsColor) {
+        items.push({ id: l.id, mode: "color", h: 0, s: 0, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined }); // a colour-only bulb: white means no colour
       } else {
         items.push({ id: l.id, mode: "onoff", on: true });
       }
