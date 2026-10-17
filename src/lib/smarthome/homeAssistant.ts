@@ -551,3 +551,49 @@ export async function assistantAvailable(): Promise<boolean> {
 export async function assistantCommand(command: string) {
   await call("google_assistant_sdk", "send_text_command", { command });
 }
+
+export interface LightInfo {
+  id: string;
+  name: string;
+  manufacturer: string;
+  model: string;
+  platform: string;
+  /** Home Assistant's supported_color_modes, e.g. ["color_temp","hs"] or ["onoff"] */
+  modes: string[];
+  colorMode: string | null;
+  minKelvin: number | null;
+  maxKelvin: number | null;
+  /** can it fade between colours on its own (supported_features bit 32) */
+  transition: boolean;
+  effects: boolean;
+}
+
+/** Brand, model and colour abilities of every light, in one template call plus one states call. */
+export async function lightsInfo(): Promise<LightInfo[]> {
+  const template = "{% for s in states.light %}{{ s.entity_id }}|{{ device_attr(s.entity_id,'manufacturer') or '' }}|{{ device_attr(s.entity_id,'model') or '' }}|{{ (integration_entities('tuya') | list).count(s.entity_id) > 0 }}\n{% endfor %}";
+  const [tplRes, stRes] = await Promise.all([
+    fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" }),
+    fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" }),
+  ]);
+  const meta = new Map<string, { manufacturer: string; model: string; tuya: boolean }>();
+  if (tplRes.ok) for (const line of (await tplRes.text()).split("\n").filter(Boolean)) { const [id, man, mod, tuya] = line.split("|"); meta.set(id, { manufacturer: man, model: mod, tuya: tuya === "True" }); }
+  const raw = (await stRes.json()) as (HaState & { attributes: Record<string, unknown> })[];
+  return raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => {
+    const m = meta.get(s.entity_id);
+    const a = s.attributes as Record<string, unknown>;
+    const features = Number(a.supported_features ?? 0);
+    return {
+      id: s.entity_id,
+      name: unescapeName(String(a.friendly_name ?? s.entity_id)),
+      manufacturer: m?.manufacturer ?? "",
+      model: m?.model ?? "",
+      platform: m?.tuya ? "tuya" : "",
+      modes: Array.isArray(a.supported_color_modes) ? (a.supported_color_modes as string[]) : [],
+      colorMode: typeof a.color_mode === "string" ? a.color_mode : null,
+      minKelvin: typeof a.min_color_temp_kelvin === "number" ? a.min_color_temp_kelvin : null,
+      maxKelvin: typeof a.max_color_temp_kelvin === "number" ? a.max_color_temp_kelvin : null,
+      transition: (features & 32) !== 0,
+      effects: (features & 4) !== 0,
+    };
+  });
+}
