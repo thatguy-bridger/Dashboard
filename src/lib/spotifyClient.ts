@@ -18,6 +18,9 @@ export interface NowPlaying {
   fetchedAt?: number;
   volumePercent?: number | null;
   track: SpotifyTrack | null;
+  /** set when Spotify could not be asked (rate limit, outage): the rest of the reply is empty and must not replace what's shown */
+  error?: string;
+  retryAfter?: number;
 }
 
 export interface LyricLine {
@@ -31,7 +34,7 @@ export interface LyricLine {
 // progress bar is interpolated locally, so frequent polling buys nothing.
 // The free hosting plan allows 1M requests a month in total, so these are deliberately lazy: taps update the screen
 // instantly on their own (optimistic), and this only has to notice changes made elsewhere.
-const PLAYING_MS = 7_000;
+const PLAYING_MS = 10_000;
 const IDLE_MS = 45_000;
 /** After a tap, ignore polls that still show the old play/pause state (Spotify takes a moment to report it). */
 let hold: { isPlaying: boolean; until: number } | null = null;
@@ -39,6 +42,7 @@ let latest: NowPlaying | null = null;
 const listeners = new Set<(d: NowPlaying) => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
+let backoffUntil = 0;
 
 export async function pollOnce() {
   if (typeof document !== "undefined" && document.hidden) return;
@@ -51,6 +55,17 @@ export async function pollOnce() {
     // Put the moment Spotify measured the position on this screen's own clock: assume the reply took half the
     // round trip, and correct for the server's clock differing from this one.
     if (typeof next.serverNow === "number" && next.fetchedAt) next.fetchedAt = next.fetchedAt - (next.serverNow - (sent + received) / 2);
+    if (next.error) {
+      // Spotify couldn't be asked: keep showing the last song (until its estimated end) instead of blanking every screen
+      backoffUntil = Date.now() + Math.min(Math.max(next.retryAfter ?? 30, 30), 300) * 1000;
+      const l = latest;
+      if (l?.track && l.isPlaying && l.fetchedAt && l.fetchedAt + (l.track.durationMs - l.track.progressMs) + 5000 < Date.now()) {
+        latest = { ...l, isPlaying: false, track: null };
+        listeners.forEach((fn) => fn(latest!));
+      }
+      return;
+    }
+    backoffUntil = 0;
     if (hold && Date.now() < hold.until && next.isPlaying !== hold.isPlaying) return;
     latest = next;
     listeners.forEach((fn) => fn(latest!));
@@ -67,6 +82,7 @@ export function setNowPlayingDimmed(v: boolean) {
 }
 
 function nextDelay(): number {
+  if (Date.now() < backoffUntil) return Math.max(15_000, backoffUntil - Date.now());
   if (dimmed) return 20_000;
   const d = latest;
   if (!d?.connected || !d.isPlaying || !d.track) return IDLE_MS;

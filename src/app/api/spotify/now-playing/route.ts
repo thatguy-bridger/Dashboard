@@ -16,7 +16,7 @@ const stamp = (body: unknown) => ({ ...(body as Record<string, unknown>), server
 export async function GET() {
   if (Date.now() < npState.blockedUntil) {
     return NextResponse.json(
-      stamp(npState.cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" }),
+      stamp({ connected: true, isPlaying: false, track: null, error: "rate limited by Spotify", retryAfter: Math.ceil((npState.blockedUntil - Date.now()) / 1000) }),
       NO_STORE
     );
   }
@@ -46,6 +46,7 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
   if (res.status === 429) {
     const retry = Number(res.headers.get("retry-after")) || 60;
     npState.blockedUntil = Date.now() + retry * 1000;
+    return ({ connected: true, isPlaying: false, track: null, error: "rate limited by Spotify", retryAfter: retry });
   }
   if (!res.ok) {
     return ({ connected: true, isPlaying: false, track: null, error: "spotify request failed" });
