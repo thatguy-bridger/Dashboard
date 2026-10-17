@@ -993,6 +993,14 @@ export function TouchControl() {
     if (away && Date.now() - awaySince.current > 60_000) setAway("return");
     if (idle) wake();
   });
+  // Real dimming through the Home Assistant app on this tablet (needs "modify system settings" allowed for it).
+  const dimmedOnce = useRef(false);
+  useEffect(() => {
+    if (!pin || getFully()) return;
+    if (!idle && !dimmedOnce.current) return; // nothing to undo on first load
+    dimmedOnce.current = true;
+    fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: idle ? "dim" : "wake" }) }).catch(() => {});
+  }, [idle, pin]);
   // On Fully Kiosk, really dim the backlight while idle (the black overlay can't turn an LCD off), and put it back on wake.
   useEffect(() => {
     const fully = getFully();

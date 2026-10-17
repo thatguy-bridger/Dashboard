@@ -279,3 +279,16 @@ export async function installAwayScripts(): Promise<string[]> {
   }
   return Object.keys(scripts).map((k) => `script.${k}`);
 }
+
+/** The Home Assistant app on each phone/tablet shows up as a notify.mobile_app_* service. */
+export async function mobileAppServices(): Promise<string[]> {
+  const res = await fetch(`${URL_()}/api/services`, { headers: headers(), cache: "no-store" });
+  if (!res.ok) return [];
+  const all = (await res.json()) as { domain: string; services: Record<string, unknown> }[];
+  return Object.keys(all.find((d) => d.domain === "notify")?.services ?? {}).filter((s) => s.startsWith("mobile_app_"));
+}
+
+/** Home Assistant app commands (screen on, brightness...): a "notification" whose message is the command. */
+export async function tabletCommand(service: string, message: string, data?: Record<string, unknown>) {
+  await call("notify", service, { message, ...(data ? { data } : {}) });
+}

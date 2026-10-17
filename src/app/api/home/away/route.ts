@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
+import { resumeMusic } from "@/lib/spotifyPlay";
 import { installAwayScripts } from "@/lib/smarthome/homeAssistant";
 
 /** Body: { mode: "leave" | "return" }. Leave remembers what was on and turns everything off;
@@ -18,7 +19,9 @@ export async function POST(req: NextRequest) {
   try {
     if (mode === "leave") await provider.leaveHome?.();
     else await provider.returnHome?.();
-    return NextResponse.json({ ok: true });
+    // Coming back: pick the music up where it was.
+    const music = mode === "return" ? await resumeMusic().catch(() => "failed") : null;
+    return NextResponse.json({ ok: true, music });
   } catch (err) {
     return NextResponse.json({ error: "away_failed", detail: String(err) }, { status: 502 });
   }
