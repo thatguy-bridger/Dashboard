@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { d1Query } from "@/lib/d1";
 import { checkPin, haConfigured } from "@/lib/smarthome";
-import { mobileAppServices, tabletCommand } from "@/lib/smarthome/homeAssistant";
+import { installMotionWake, mobileAppServices, tabletCommand } from "@/lib/smarthome/homeAssistant";
 
 const KEY = "tabletScreen";
 interface Cfg { service: string | null; awake: number }
@@ -38,6 +38,11 @@ export async function POST(req: NextRequest) {
     cfg = { service: typeof b.service === "string" ? b.service.replace(/^notify\./, "") : cfg.service, awake: typeof b.awake === "number" ? Math.max(10, Math.min(255, Math.round(b.awake))) : cfg.awake };
     await save(cfg);
     if (!b.mode) return NextResponse.json({ ok: true, config: cfg });
+  }
+  if (b.install === "motion_wake") {
+    if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
+    try { await installMotionWake(cfg.service, cfg.awake); return NextResponse.json({ ok: true }); }
+    catch (err) { return NextResponse.json({ ok: false, error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
   if (b.mode !== "dim" && b.mode !== "wake") return NextResponse.json({ error: "bad request" }, { status: 400 });
   if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });

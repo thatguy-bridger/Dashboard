@@ -276,16 +276,19 @@ export async function installAwayScripts(keepOn: string[] = []): Promise<string[
       description: "Remembers which lights are on, turns everything off, pauses music. Home Base restores it when you return.",
       mode: "single",
       sequence: [
-        // music stops first (it's what you hear), remembering the lights happens alongside it
+        // Music and lights are separate branches: slow or unreachable speakers (TVs, cast groups) must never hold up the lights.
         { parallel: [
           { action: "media_player.media_pause", target: { entity_id: "all" }, continue_on_error: true },
-          { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
-        ] },
-        // then everything goes off at the same time
-        { parallel: [
-          ...(offLights.length ? [{ action: "light.turn_off", target: { entity_id: offLights } }] : []),
-          ...(offSwitches.length ? [{ action: "switch.turn_off", target: { entity_id: offSwitches } }] : []),
-          ...(ledOn.length ? [{ action: "homeassistant.turn_on", target: { entity_id: ledOn } }] : []),
+          { sequence: [
+            // remember how things were (instant, local)...
+            { if: [{ condition: "template", value_template: notArmed }], then: [{ action: "scene.create", data: { scene_id: AWAY_ID, snapshot_entities: [...lights, ...switches] } }] },
+            // ...then everything goes off together
+            { parallel: [
+              ...(offLights.length ? [{ action: "light.turn_off", target: { entity_id: offLights } }] : []),
+              ...(offSwitches.length ? [{ action: "switch.turn_off", target: { entity_id: offSwitches } }] : []),
+              ...(ledOn.length ? [{ action: "homeassistant.turn_on", target: { entity_id: ledOn } }] : []),
+            ] },
+          ] },
         ] },
       ],
     },
@@ -322,8 +325,8 @@ export async function tabletCommand(service: string, message: string, data?: Rec
 /** Any Home Assistant motion / occupancy / presence sensor (a motion sensor, the IP Webcam app, mmWave...).
  *  `since` is when the most recent one turned on (ms), so the screen can wake on a fresh trigger only. */
 let motionCache: { at: number; value: { sensors: number; active: boolean; since: number } } | null = null;
-export async function motionState(): Promise<{ sensors: number; active: boolean; since: number }> {
-  if (motionCache && Date.now() - motionCache.at < 1500) return motionCache.value;
+export async function motionState(fresh = false): Promise<{ sensors: number; active: boolean; since: number }> {
+  if (!fresh && motionCache && Date.now() - motionCache.at < 1500) return motionCache.value;
   // A template returns only the few sensors we care about (a few bytes), instead of every entity in the house.
   const template = `{% set ns = namespace(n=0, on=0, since=0) %}{% for s in states.binary_sensor if s.attributes.device_class in ['motion','occupancy','presence'] %}{% set ns.n = ns.n + 1 %}{% if s.state == 'on' %}{% set ns.on = ns.on + 1 %}{% set ns.since = [ns.since, as_timestamp(s.last_changed)] | max %}{% endif %}{% endfor %}{{ ns.n }}|{{ ns.on }}|{{ ns.since }}`;
   const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
@@ -332,4 +335,21 @@ export async function motionState(): Promise<{ sensors: number; active: boolean;
   const value = { sensors: Number(n) || 0, active: Number(on) > 0, since: Math.round((Number(since) || 0) * 1000) };
   motionCache = { at: Date.now(), value };
   return value;
+}
+
+/** A Home Assistant automation that wakes the tablet's backlight the instant the motion sensor fires,
+ *  straight from Home Assistant to the tablet app, without waiting for the dashboard page. */
+export async function installMotionWake(service: string, awake: number) {
+  const body = {
+    alias: "Home Base: wake tablet on motion",
+    description: "Turns the tablet screen on and restores its brightness when the camera motion sensor fires.",
+    mode: "single",
+    triggers: [{ trigger: "state", entity_id: "binary_sensor.tablet_camera_motion", to: "on" }],
+    actions: [{ parallel: [
+      { action: `notify.${service}`, data: { message: "command_screen_on" } },
+      { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
+    ] }],
+  };
+  const res = await fetch(`${URL_()}/api/config/automation/config/home_base_wake_on_motion`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't create the automation (${res.status})`);
 }

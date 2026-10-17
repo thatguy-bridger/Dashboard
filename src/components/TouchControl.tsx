@@ -240,23 +240,29 @@ function useHaMotion(pin: string | null, enabled: boolean, onMotion: () => void)
   useEffect(() => { cb.current = onMotion; });
   useEffect(() => {
     if (!pin) return;
-    let seen = -1;
     let stopped = false;
-    const tick = async () => {
+    let seen = Date.now(); // only triggers newer than "now" count
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ctrl = new AbortController();
+    const run = async () => {
+      if (stopped) return;
       try {
-        const res = await fetch("/api/home/motion", { cache: "no-store", headers: { "x-control-pin": pin } });
-        if (!res.ok || stopped) return;
-        const m = (await res.json()) as { sensors: number; active: boolean; since: number };
-        setSensors(m.sensors);
-        if (!enabled) return;
-        if (seen >= 0 && m.active && m.since > seen) cb.current();
-        seen = Math.max(seen, m.since);
-      } catch { /* try again next tick */ }
+        // While waiting on motion the server holds this request open and answers the moment a sensor fires;
+        // otherwise it's just a slow check that a sensor exists.
+        const res = await fetch(`/api/home/motion${enabled ? `?wait=1&since=${seen}` : ""}`, { cache: "no-store", headers: { "x-control-pin": pin }, signal: ctrl.signal });
+        if (stopped) return;
+        if (res.ok) {
+          const m = (await res.json()) as { sensors: number; active: boolean; since: number };
+          setSensors(m.sensors);
+          if (enabled && m.active && m.since > seen) { seen = m.since; cb.current(); }
+          timer = setTimeout(run, enabled ? (m.sensors ? 0 : 5000) : 60_000);
+          return;
+        }
+      } catch { /* aborted or offline */ }
+      if (!stopped) timer = setTimeout(run, enabled ? 3000 : 60_000);
     };
-    tick();
-    // fast only while something is waiting on it (dimmed or away); otherwise just a slow check that the sensor exists
-    const id = setInterval(tick, enabled ? 2000 : 60_000);
-    return () => { stopped = true; clearInterval(id); };
+    run();
+    return () => { stopped = true; ctrl.abort(); if (timer) clearTimeout(timer); };
   }, [pin, enabled]);
   return sensors;
 }
@@ -1313,7 +1319,7 @@ export function TouchControl() {
       <div
         onPointerDown={wake}
         className="absolute inset-0 z-50 bg-black flex items-center justify-center"
-        style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: "opacity 1.2s ease" }}
+        style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: idle ? "opacity 1.2s ease" : "opacity 0.12s ease-out" }}
       >
         <div className="num-rounded font-semibold" style={{ fontSize: 120, color: "rgba(255,255,255,0.12)" }}>{time}</div>
         {(away || camStatus === "on") && (
