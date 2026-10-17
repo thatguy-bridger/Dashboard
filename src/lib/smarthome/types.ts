@@ -71,4 +71,6 @@ export interface HomeProvider {
   act(id: string, action: HomeAction): Promise<void>;
   /** Same action on several devices; providers may batch it into fewer calls. */
   actMany?(ids: string[], action: HomeAction): Promise<void>;
+  /** Fresh state for just these devices (cheap: used to confirm a change landed). */
+  peek(ids: string[]): Promise<HomeEntity[]>;
 }

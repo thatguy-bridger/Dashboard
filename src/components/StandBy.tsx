@@ -13,6 +13,7 @@ import { FitText } from "@/components/FitText";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import { useSettings } from "@/lib/useSettings";
+import { useAutoUpdate } from "@/lib/useAutoUpdate";
 import { hbLog, installFlashLog } from "@/lib/flashLog";
 import { DebugOverlay } from "@/components/DebugOverlay";
 import { pollEvery } from "@/lib/poll";
@@ -1097,6 +1098,7 @@ export function StandBy({ draft = null, sceneId = null, profile = null, debug = 
   }, [playing]);
   const cfg = useStandByConfig(draft, profile);
   const appSettings = useSettings();
+  useAutoUpdate();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);

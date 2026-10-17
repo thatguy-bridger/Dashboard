@@ -8,6 +8,7 @@ import { FitText } from "@/components/FitText";
 import { controlSpotify, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
+import { useAutoUpdate } from "@/lib/useAutoUpdate";
 import type { HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
 
 const W = 1440;
@@ -28,6 +29,9 @@ function useHome(pin: string | null) {
    *  (cloud bulbs take a few seconds), instead of snapping back to the stale value and inviting a second tap. */
   const pending = useRef(new Map<string, { until: number; to: HomeEntity }>());
   const queue = useRef<Promise<unknown>>(Promise.resolve());
+  /** ids still waiting for their device to confirm (drives the little "syncing" pulse) */
+  const [syncing, setSyncing] = useState<Set<string>>(new Set());
+  const markSyncing = () => setSyncing(new Set(pending.current.keys()));
 
   const load = useCallback(async () => {
     try {
@@ -45,6 +49,7 @@ function useHome(pin: string | null) {
           return p.to; // device hasn't caught up yet
         });
         setSnap({ ...(j as HomeSnapshot), entities: merged });
+        markSyncing();
         setGate(null);
         setError(null);
       } else if (j.error === "needs_pin" || j.error === "bad_pin" || j.error === "pin_not_configured") {
@@ -76,6 +81,7 @@ function useHome(pin: string | null) {
         });
         return { ...s, entities };
       });
+      markSyncing();
       // Commands go out one at a time, in the order they were tapped.
       queue.current = queue.current.then(async () => {
         try {
@@ -85,16 +91,50 @@ function useHome(pin: string | null) {
             body: JSON.stringify({ ids, action }),
           });
         } catch {
-          // the re-syncs below show the truth
+          // the confirm loop / next refresh shows the truth
         }
       });
-      // Re-check as the device catches up (slow cloud bulbs can take several seconds).
-      setTimeout(load, 1800);
-      setTimeout(load, 4500);
-      setTimeout(load, 9500);
+      // Then watch just these devices until they report the change (cloud bulbs take a second or two),
+      // and settle the screen the moment they do. Doesn't block later taps.
+      if (action.type !== "activate") {
+        queue.current.then(() => confirm(ids));
+      } else {
+        setTimeout(load, 2000);
+        setTimeout(load, 5000);
+      }
+      setTimeout(load, 10_000);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- confirm is defined below and only uses refs/stable setters
     [load]
   );
+
+  async function confirm(ids: string[]) {
+    for (let i = 0; i < 9; i++) {
+      await new Promise((r) => setTimeout(r, 700));
+      const open = ids.filter((id) => pending.current.has(id));
+      if (open.length === 0) break;
+      try {
+        const res = await fetch(`/api/home/state?ids=${encodeURIComponent(open.join(","))}`, { cache: "no-store", headers: { "x-control-pin": pinRef.current ?? "" } });
+        if (!res.ok) continue;
+        const { entities } = (await res.json()) as { entities: HomeEntity[] };
+        const settled = new Map<string, HomeEntity>();
+        for (const e of entities) {
+          const p = pending.current.get(e.id);
+          if (p && matches(e, p.to)) {
+            pending.current.delete(e.id);
+            settled.set(e.id, e);
+          }
+        }
+        if (settled.size) {
+          // take the device's reported values, keep our names/rooms
+          setSnap((s) => (s ? { ...s, entities: s.entities.map((x) => (settled.has(x.id) ? { ...x, ...settled.get(x.id)!, name: x.name, room: x.room } : x)) } : s));
+          markSyncing();
+        }
+      } catch {
+        // try again
+      }
+    }
+  }
 
   /** Remember the lights as they are now under a name (stored on the server). */
   const saveScene = useCallback(
@@ -109,7 +149,7 @@ function useHome(pin: string | null) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene };
+  return { snap, gate, error, act, load, saveScene, syncing };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -223,7 +263,7 @@ function SceneButton({ e, act, accent }: { e: HomeEntity; act: (target: string |
   );
 }
 
-function LightTile({ e, act, accent, onMore }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void; accent: string; onMore: () => void }) {
+function LightTile({ e, act, accent, onMore, syncing }: { e: HomeEntity; act: (target: string | string[], a: HomeAction) => void; accent: string; onMore: () => void; syncing?: boolean }) {
   const [live, setLive] = useState<number | null>(null);
   const level = live ?? e.brightness ?? (e.on ? 100 : 0);
   const on = Boolean(e.on);
@@ -232,6 +272,8 @@ function LightTile({ e, act, accent, onMore }: { e: HomeEntity; act: (target: st
       className="glass-card flex flex-col justify-between"
       style={{
         width: 200, height: 168, borderRadius: 34, padding: 18, opacity: e.available ? 1 : 0.4,
+        boxShadow: syncing ? `0 0 0 2px ${accent}99` : undefined,
+        transition: "box-shadow 0.3s",
         background: on
           ? "radial-gradient(120% 120% at 20% 0%, rgba(255,200,110,0.30), transparent 70%), linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.07))"
           : undefined,
@@ -239,7 +281,7 @@ function LightTile({ e, act, accent, onMore }: { e: HomeEntity; act: (target: st
     >
       <Press onClick={() => act(e.id, { type: on ? "off" : "on" })} className="text-left flex-1 flex flex-col justify-between">
         <div className="flex items-start justify-between">
-          <Bulb on={on} />
+          <span className={syncing ? "animate-pulse" : ""}><Bulb on={on} /></span>
           {(e.supportsColor || e.supportsColorTemp) && (
             <span
               role="button"
@@ -474,7 +516,8 @@ export function TouchControl() {
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
   }, []);
-  const { snap, gate, error, act, saveScene } = useHome(pin);
+  const { snap, gate, error, act, saveScene, syncing } = useHome(pin);
+  useAutoUpdate();
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -559,7 +602,7 @@ export function TouchControl() {
                       })()}
                     </div>
                     <div className="flex flex-wrap gap-3" style={{ maxWidth: 2 * 212 }}>
-                      {devices.filter((d) => d.room === room).map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} accent={color} onMore={() => setSheetId(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
+                      {devices.filter((d) => d.room === room).map((d) => (d.kind === "light" ? <LightTile key={d.id} e={d} act={act} accent={color} onMore={() => setSheetId(d.id)} syncing={syncing.has(d.id)} /> : <SwitchTile key={d.id} e={d} act={act} />))}
                     </div>
                   </div>
                 ))}

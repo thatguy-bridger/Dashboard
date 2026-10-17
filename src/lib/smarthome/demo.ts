@@ -38,6 +38,9 @@ function applyScene(id: string) {
 
 export const demoProvider: HomeProvider = {
   name: "demo",
+  async peek(ids: string[]) {
+    return state.filter((e) => ids.includes(e.id)).map((e) => ({ ...e }));
+  },
   async snapshot(): Promise<HomeSnapshot> {
     return { provider: "demo", entities: state.map((e) => ({ ...e })) };
   },

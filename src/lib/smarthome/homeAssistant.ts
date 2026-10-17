@@ -113,6 +113,16 @@ export const homeAssistantProvider: HomeProvider = {
     });
     return { provider: "homeassistant", entities };
   },
+  async peek(ids: string[]) {
+    const out = await Promise.all(
+      ids.slice(0, 20).filter((id) => DOMAINS[id.split(".")[0]]).map(async (id) => {
+        const res = await fetch(`${URL_()}/api/states/${encodeURIComponent(id)}`, { headers: headers(), cache: "no-store" });
+        if (!res.ok) return null;
+        return toEntity((await res.json()) as HaState, "");
+      })
+    );
+    return out.filter((e): e is HomeEntity => e !== null);
+  },
   /** One service call per domain with every entity in it (what Home Assistant's own UI does),
    *  instead of one request per device, which cloud bulbs (Tuya) handle badly. */
   async actMany(ids: string[], action: HomeAction) {
