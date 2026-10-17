@@ -347,40 +347,71 @@ export async function motionState(fresh = false): Promise<{ sensors: number; act
   return value;
 }
 
-/** A Home Assistant automation that wakes the tablet's backlight the instant the motion sensor fires,
- *  straight from Home Assistant to the tablet app, without waiting for the dashboard page. */
+/** The tablet's whole presence behaviour, run by Home Assistant itself (it watches the camera's motion sensor and talks to
+ *  the tablet app directly), so none of it costs the dashboard a single request:
+ *   - motion: wake the screen and restore brightness (unless it's night and every light is off);
+ *   - no motion for 5 seconds: dim in five steps, screen off at 20 seconds;
+ *   - away for over a minute and motion/your phone shows up: the lights return and the music resumes. */
 export async function installMotionWake(service: string, awake: number) {
-  const body = {
+  const n = (message: string, data?: Record<string, unknown>) => ({ action: `notify.${service}`, data: { message, ...(data ? { data } : {}) } });
+  const awakeSteps = [n("command_screen_on"), n("command_screen_brightness_level", { command: awake })];
+  const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+  const people = raw.filter((p) => p.entity_id.startsWith("person."));
+  const owner = (people.find((p) => /bridger/i.test(p.attributes.friendly_name ?? "")) ?? people[0])?.entity_id ?? null;
+  const awayArmed = `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 }}`;
+  const awayLong = `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 and (now() - s[0].last_updated).total_seconds() > 60 }}`;
+  const comeBack = [
+    { action: "script.turn_on", target: { entity_id: "script.home_base_returning" } },
+    ...awakeSteps,
+    { action: "rest_command.home_base_hook", data: { do: "resume_music" }, continue_on_error: true },
+  ];
+  const post = async (kind: "automation" | "script", id: string, body: unknown) => {
+    const res = await fetch(`${URL_()}/api/config/${kind}/config/${id}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+    if (!res.ok) throw new Error(`couldn't create ${kind} ${id} (${res.status})`);
+  };
+  // the dimming sequence: starts at 130, steps down every 3s, screen off at the end (20s after the last movement)
+  await post("script", "home_base_dim", {
+    alias: "Home Base: dim the tablet",
+    mode: "restart",
+    sequence: [
+      n("command_auto_screen_brightness", { command: "turn_off" }),
+      ...[130, 95, 60, 30, 1].flatMap((level) => [n("command_screen_brightness_level", { command: level }), { delay: { seconds: 3 } }]),
+      n("command_screen_off"),
+    ],
+  });
+  await post("automation", "home_base_wake_on_motion", {
     alias: "Home Base: wake tablet on motion",
-    description: "Turns the tablet screen on and restores its brightness when the camera motion sensor fires; if you are away, also brings the lights back.",
+    description: "Movement in front of the tablet stops any dimming and wakes the screen; after being away it also brings the lights and music back.",
     mode: "single",
     triggers: [{ trigger: "state", entity_id: "binary_sensor.tablet_camera_motion", to: "on" }],
-    actions: [{ parallel: [
-      // wake the screen, unless it's night and every light is off (then the room should stay dark)
-      { if: [{ condition: "template", value_template: "{{ not ((now().hour >= 21 or now().hour < 5) and (states.light | selectattr('state','eq','on') | list | count == 0)) }}" }], then: [
-        { action: `notify.${service}`, data: { message: "command_screen_on" } },
-        { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
+    actions: [
+      { action: "script.turn_off", target: { entity_id: "script.home_base_dim" } },
+      { parallel: [
+        // wake the screen, unless it's night and every light is off (then the room should stay dark)
+        { if: [{ condition: "template", value_template: "{{ not ((now().hour >= 21 or now().hour < 5) and (states.light | selectattr('state','eq','on') | list | count == 0)) }}" }], then: awakeSteps },
+        // away and it's been a minute (so walking out the door doesn't count): you're back
+        { if: [{ condition: "template", value_template: awayLong }], then: comeBack },
       ] },
-      // Away and it's been a minute (so you walking out the door doesn't count): you're back, lights return and the screen wakes.
-      { if: [{ condition: "template", value_template: `{% set s = states.scene | selectattr('entity_id','eq','${AWAY_SCENE}') | list %}{{ s | count > 0 and (now() - s[0].last_updated).total_seconds() > 60 }}` }], then: [
-        { action: "script.turn_on", target: { entity_id: "script.home_base_returning" } },
-        { action: `notify.${service}`, data: { message: "command_screen_on" } },
-        { action: `notify.${service}`, data: { message: "command_screen_brightness_level", data: { command: awake } } },
-      ] },
-    ] }],
-  };
-  const res = await fetch(`${URL_()}/api/config/automation/config/home_base_wake_on_motion`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
-  if (!res.ok) throw new Error(`couldn't create the automation (${res.status})`);
-}
-
-/** "It's the night": every light and switch off (no exemptions), speakers to the night volume, all in one go. */
-export async function nightMode(volume: number, speakerIds: string[]) {
-  const speakers = speakerIds.filter((id) => id.startsWith("media_player."));
-  await Promise.all([
-    call("light", "turn_off", { entity_id: "all" }),
-    call("switch", "turn_off", { entity_id: "all" }),
-    ...(speakers.length ? [call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 })] : []),
-  ]);
+    ],
+  });
+  await post("automation", "home_base_dim_when_idle", {
+    alias: "Home Base: dim tablet when nobody is around",
+    description: "5 seconds with no movement starts a slow dim; the screen is off 20 seconds in.",
+    mode: "restart",
+    triggers: [{ trigger: "state", entity_id: "binary_sensor.tablet_camera_motion", to: "off", for: { seconds: 5 } }],
+    actions: [{ action: "script.turn_on", target: { entity_id: "script.home_base_dim" } }],
+  });
+  if (owner) {
+    await post("automation", "home_base_arrive", {
+      alias: "Home Base: you're home",
+      description: "When your phone arrives home after 'I'm leaving', the lights come back and the music resumes.",
+      mode: "single",
+      triggers: [{ trigger: "state", entity_id: owner, to: "home" }],
+      conditions: [{ condition: "template", value_template: awayArmed }],
+      actions: comeBack,
+    });
+  }
+  return { owner };
 }
 
 /** The tablet's battery from the Home Assistant app's sensors (sensor.<device>_battery_level / _battery_state). */
@@ -476,4 +507,14 @@ export async function setSpeakersVolume(volume: number) {
   const raw = (await res.json()) as HaState[];
   const speakers = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.attributes.volume_level != null && s.state !== "unavailable" && !/\b(tv|uhd|crystal)\b/i.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id);
   if (speakers.length) await call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 });
+}
+
+/** "It's the night": every light and switch off (no exemptions), speakers to the night volume, all in one go. */
+export async function nightMode(volume: number, speakerIds: string[]) {
+  const speakers = speakerIds.filter((id) => id.startsWith("media_player."));
+  await Promise.all([
+    call("light", "turn_off", { entity_id: "all" }),
+    call("switch", "turn_off", { entity_id: "all" }),
+    ...(speakers.length ? [call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 })] : []),
+  ]);
 }

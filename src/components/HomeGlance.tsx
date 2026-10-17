@@ -16,28 +16,38 @@ interface Glance {
   guest: boolean;
 }
 
+// One shared poller for every widget on the screen (each widget used to make its own request).
+let shared: Glance | null = null;
+const listeners = new Set<(g: Glance | null) => void>();
+let stopShared: (() => void) | null = null;
+
+async function loadGlance() {
+  try {
+    const headers: Record<string, string> = {};
+    const pin = localStorage.getItem("hb-control-pin");
+    const dev = localStorage.getItem("home-base:device-id");
+    if (pin) headers["x-control-pin"] = pin;
+    if (dev) headers["x-device-id"] = dev;
+    const res = await fetch("/api/home/glance", { cache: "no-store", headers });
+    shared = res.ok ? ((await res.json()) as Glance) : null;
+    listeners.forEach((fn) => fn(shared));
+  } catch { /* keep last */ }
+}
+
 /** House state for the StandBy screens. Sent with the Control PIN if this screen has one, else its device id
- *  (approved screens only): the answer says who is home, so it isn't public. */
+ *  (approved screens only): the answer says who is home, so it isn't public. Refreshes once a minute. */
 function useHomeGlance(): Glance | null {
-  const [g, setG] = useState<Glance | null>(null);
+  const [g, setG] = useState<Glance | null>(shared);
   useEffect(() => {
-    let off = false;
-    async function load() {
-      try {
-        const headers: Record<string, string> = {};
-        const pin = localStorage.getItem("hb-control-pin");
-        const dev = localStorage.getItem("home-base:device-id");
-        if (pin) headers["x-control-pin"] = pin;
-        if (dev) headers["x-device-id"] = dev;
-        const res = await fetch("/api/home/glance", { cache: "no-store", headers });
-        if (!res.ok) { if (!off) setG(null); return; }
-        const j = (await res.json()) as Glance;
-        if (!off) setG(j);
-      } catch { /* keep last */ }
+    listeners.add(setG);
+    if (!stopShared) {
+      loadGlance();
+      stopShared = pollEvery(loadGlance, 60_000);
     }
-    load();
-    const stop = pollEvery(load, 20_000);
-    return () => { off = true; stop(); };
+    return () => {
+      listeners.delete(setG);
+      if (listeners.size === 0 && stopShared) { stopShared(); stopShared = null; }
+    };
   }, []);
   return g;
 }

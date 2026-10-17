@@ -29,8 +29,10 @@ export interface LyricLine {
 // from it instead of each hitting the API (Spotify rate-limits hard).
 // Adaptive: 30s while playing (plus a poll right as the track ends), 60s when idle — the
 // progress bar is interpolated locally, so frequent polling buys nothing.
-const PLAYING_MS = 4_000;
-const IDLE_MS = 15_000;
+// The free hosting plan allows 1M requests a month in total, so these are deliberately lazy: taps update the screen
+// instantly on their own (optimistic), and this only has to notice changes made elsewhere.
+const PLAYING_MS = 7_000;
+const IDLE_MS = 45_000;
 /** After a tap, ignore polls that still show the old play/pause state (Spotify takes a moment to report it). */
 let hold: { isPlaying: boolean; until: number } | null = null;
 let latest: NowPlaying | null = null;

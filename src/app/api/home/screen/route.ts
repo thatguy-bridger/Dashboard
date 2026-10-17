@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   }
   if (b.install === "motion_wake") {
     if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
-    try { await installMotionWake(cfg.service, cfg.awake); return NextResponse.json({ ok: true }); }
+    try { const { owner } = await installMotionWake(cfg.service, cfg.awake); return NextResponse.json({ ok: true, owner }); }
     catch (err) { return NextResponse.json({ ok: false, error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
   if (b.mode === "off") {

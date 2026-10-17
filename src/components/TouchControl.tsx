@@ -5,7 +5,7 @@ import { Backdrop } from "@/components/StandBy";
 import { TopBar } from "@/components/TopBar";
 import { ActivityPills } from "@/components/ActivityPills";
 import { FitText } from "@/components/FitText";
-import { controlSpotify, pollOnce, setNowPlayingDimmed, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
+import { controlSpotify, pollOnce, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
@@ -71,7 +71,7 @@ function useHome(pin: string | null) {
 
   useEffect(() => {
     load();
-    return pollEvery(load, 20_000);
+    return pollEvery(load, 45_000);
   }, [load, pin]);
 
   /** Apply the change locally first (feels instant on a touch screen), send it, then re-sync. */
@@ -259,133 +259,17 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
   }
 }
 
-/** How dark the screen should be, 0 (awake) to 1 (black), from how long nobody has touched it or moved in front of it.
- *  With a presence sensor: nothing for 5s starts a slow fade that reaches black at 20s. Without one: the old 2 minutes of no touches.
- *  Any touch or movement snaps straight back to awake. */
-function useDimmer(presence: React.MutableRefObject<boolean>) {
-  const [level, setLevel] = useState(0);
-  const last = useRef(0);
-  const forced = useRef(false);
-  const api = useRef<{ activity: () => void; sleep: () => void }>({ activity() {}, sleep() {} });
+/** The page only goes black on purpose (after "I'm leaving", or lights-off at night). Everything else about dimming and
+ *  waking the tablet is Home Assistant's job now (it watches the camera's motion sensor and talks to the tablet app
+ *  directly), which costs the dashboard no requests at all. Any touch clears the black screen. */
+function useDimmer() {
+  const [dark, setDark] = useState(false);
   useEffect(() => {
-    last.current = Date.now();
-    const compute = () => {
-      if (forced.current) return 1;
-      const t = (Date.now() - last.current) / 1000;
-      const [start, ramp] = presence.current ? [5, 15] : [120, 15];
-      return t < start ? 0 : Math.min(1, (t - start) / ramp);
-    };
-    const tick = () => setLevel((cur) => { const n = Math.round(compute() * 50) / 50; return n === cur ? cur : n; });
-    const activity = () => { last.current = Date.now(); forced.current = false; setLevel(0); };
-    api.current = { activity, sleep() { forced.current = true; setLevel(1); } };
-    window.addEventListener("pointerdown", activity, true);
-    window.addEventListener("pointermove", activity, true);
-    const id = setInterval(tick, 250);
-    return () => { clearInterval(id); window.removeEventListener("pointerdown", activity, true); window.removeEventListener("pointermove", activity, true); };
-  }, [presence]);
-  return { level, idle: level >= 1, activity: () => api.current.activity(), sleep: () => api.current.sleep() };
-}
-
-/** Fully Kiosk Browser's JavaScript interface (Fire/Android kiosk tablets). Needs "JavaScript Interface (PLUS)" on. */
-interface FullyApi {
-  bind?: (event: string, js: string) => void;
-  startMotionDetection?: () => void;
-  stopMotionDetection?: () => void;
-  setScreenBrightness?: (v: number) => void;
-  getScreenBrightness?: () => number;
-}
-const getFully = (): FullyApi | null => (typeof window !== "undefined" ? ((window as unknown as { fully?: FullyApi }).fully ?? null) : null);
-
-/** Polls Home Assistant for motion sensors (e.g. this tablet's camera via the IP Webcam app) while `enabled`.
- *  Calls onMotion on a fresh trigger. Returns how many motion sensors exist (0 = none set up). */
-function useHaMotion(pin: string | null, enabled: boolean, onMotion: () => void): number {
-  const [sensors, setSensors] = useState(0);
-  const cb = useRef(onMotion);
-  useEffect(() => { cb.current = onMotion; });
-  useEffect(() => {
-    if (!pin) return;
-    let stopped = false;
-    let seen = Date.now(); // only triggers newer than "now" count
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const ctrl = new AbortController();
-    const run = async () => {
-      if (stopped) return;
-      try {
-        // While waiting on motion the server holds this request open and answers the moment a sensor fires;
-        // otherwise it's just a slow check that a sensor exists.
-        const res = await fetch(`/api/home/motion${enabled ? `?wait=1&since=${seen}` : ""}`, { cache: "no-store", headers: { "x-control-pin": pin }, signal: ctrl.signal });
-        if (stopped) return;
-        if (res.ok) {
-          const m = (await res.json()) as { sensors: number; active: boolean; since: number };
-          setSensors(m.sensors);
-          if (enabled && m.active && m.since > seen) { seen = m.since; cb.current(); }
-          timer = setTimeout(run, enabled ? (m.sensors ? 0 : 5000) : 60_000);
-          return;
-        }
-      } catch { /* aborted or offline */ }
-      if (!stopped) timer = setTimeout(run, enabled ? 3000 : 60_000);
-    };
-    run();
-    return () => { stopped = true; ctrl.abort(); if (timer) clearTimeout(timer); };
-  }, [pin, enabled]);
-  return sensors;
-}
-
-const FACE_MODEL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
-const MP_VERSION = "1.1.1";
-
-/** Watches the front camera for a face (on this device only, nothing is uploaded) and calls
- *  onFace when someone stands there. The camera is only on while `enabled`. */
-function useApproach(enabled: boolean, onFace: () => void): "off" | "on" | "denied" | "error" {
-  const [status, setStatus] = useState<"on" | "denied" | "error">("on");
-  const cb = useRef(onFace);
-  useEffect(() => { cb.current = onFace; });
-  useEffect(() => {
-    if (!enabled) return;
-    // Inside Fully Kiosk the browser can't prompt for the camera; use Fully's own motion detection instead.
-    const fully = getFully();
-    if (fully?.startMotionDetection && fully.bind) {
-      (window as unknown as { __hbMotion?: () => void }).__hbMotion = () => cb.current();
-      fully.bind("onMotion", "window.__hbMotion && window.__hbMotion();");
-      fully.startMotionDetection();
-      return () => { fully.stopMotionDetection?.(); (window as unknown as { __hbMotion?: () => void }).__hbMotion = undefined; };
-    }
-    let stopped = false;
-    let stream: MediaStream | null = null;
-    let timer: ReturnType<typeof setInterval> | undefined;
-    (async () => {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 320, height: 240 }, audio: false });
-      } catch {
-        if (!stopped) setStatus("denied");
-        return;
-      }
-      try {
-        const { FaceDetector, FilesetResolver } = await import("@mediapipe/tasks-vision");
-        const fileset = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`);
-        const detector = await FaceDetector.createFromOptions(fileset, { baseOptions: { modelAssetPath: FACE_MODEL }, runningMode: "VIDEO", minDetectionConfidence: 0.6 });
-        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
-        const video = document.createElement("video");
-        video.muted = true;
-        video.playsInline = true;
-        video.srcObject = stream;
-        await video.play();
-        setStatus("on");
-        let hits = 0;
-        timer = setInterval(() => {
-          if (video.readyState < 2) return;
-          const seen = detector.detectForVideo(video, performance.now()).detections.length > 0;
-          hits = seen ? hits + 1 : 0;
-          if (hits >= 2) { hits = 0; cb.current(); }
-        }, 500);
-      } catch {
-        stream.getTracks().forEach((t) => t.stop());
-        if (!stopped) setStatus("error");
-      }
-    })();
-    return () => { stopped = true; if (timer) clearInterval(timer); stream?.getTracks().forEach((t) => t.stop()); };
-  }, [enabled]);
-  return enabled ? status : "off";
+    const touch = () => setDark(false);
+    window.addEventListener("pointerdown", touch, true);
+    return () => window.removeEventListener("pointerdown", touch, true);
+  }, []);
+  return { level: dark ? 1 : 0, idle: dark, activity: () => setDark(false), sleep: () => setDark(true) };
 }
 
 function useScale() {
@@ -825,7 +709,7 @@ function TimerRow({ e, compact = false }: { e: HomeEntity; compact?: boolean }) 
 // ---------- fans ----------
 
 /** A fan: one tap on a speed number sets it, Off turns it off. */
-function FanCard({ e, act }: { e: HomeEntity; act: Act }) {
+function FanCard({ e, act, simple = false }: { e: HomeEntity; act: Act; simple?: boolean }) {
   const steps = !e.speedSteps || e.speedSteps > 8 ? 6 : e.speedSteps; // a 1-100 fan still gets six buttons, like the voice routines
   const speed = e.on ? (e.speed ?? 0) : 0;
   const current = speed <= 0 ? 0 : Math.max(1, Math.round((speed / 100) * steps));
@@ -841,7 +725,7 @@ function FanCard({ e, act }: { e: HomeEntity; act: Act }) {
           <Press key={n} onClick={() => act(e.id, { type: "speed", value: Math.round((n / steps) * 100) })} className="num-rounded font-bold" style={{ flex: 1, height: 72, borderRadius: 24, fontSize: 26, background: current >= n ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: current >= n ? "#000" : "#fff" }}>{n}</Press>
         ))}
       </div>
-      <TimerRow e={e} compact />
+      {!simple && <TimerRow e={e} compact />}
     </div>
   );
 }
@@ -1425,97 +1309,31 @@ export function TouchControl() {
   }, []);
   const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin);
   useAutoUpdate();
-  const guest = Boolean(snap?.guest?.active);
-  const presence = useRef(false);
-  const { level: dimLevel, idle, activity, sleep } = useDimmer(presence);
-  const wake = activity;
-
-  // Dimmed screens poll Spotify rarely; on wake everything refreshes at once so the first glance is current.
-  const wasIdle = useRef(false);
+  // ?guestPreview=1 only changes how this screen looks (to check the layout); the server still decides what is allowed.
+  const guest = Boolean(snap?.guest?.active) || (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("guestPreview") === "1");
+  const { level: dimLevel, idle, activity, sleep } = useDimmer();
+  // Guest mode pauses whatever is playing (Spotify and any speaker) once, as soon as it starts.
+  const guestPaused = useRef(false);
   useEffect(() => {
-    setNowPlayingDimmed(idle);
-    if (wasIdle.current && !idle) load();
-    wasIdle.current = idle;
-  }, [idle, load]);
-
-  // Wake on approach: a per-tablet switch, because it needs this tablet's camera permission.
-  const [wakeCam, setWakeCam] = useState(() => {
-    try { return typeof window !== "undefined" && localStorage.getItem("hb-wake-camera") === "1"; } catch { return false; }
-  });
-  const [camAsk, setCamAsk] = useState<string | null>(null);
-  const toggleWakeCam = () => {
-    const next = !wakeCam;
-    setWakeCam(next);
-    setCamAsk(null);
-    try { localStorage.setItem("hb-wake-camera", next ? "1" : "0"); } catch { /* ignore */ }
-    // Ask for the camera right now, from this tap, so the permission prompt shows while you're looking at the screen.
-    if (next && !getFully()) {
-      const why = !window.isSecureContext ? "this page isn't secure (needs https)"
-        : window.self !== window.top ? "this page is inside another page (an iframe), which blocks the camera"
-        : !navigator.mediaDevices ? "this browser has no camera access"
-        : null;
-      if (why) { setCamAsk(why); return; }
-      navigator.mediaDevices.getUserMedia({ video: true }).then((st) => st.getTracks().forEach((t) => t.stop())).catch((e: Error) => setCamAsk(`${e.name}: the browser refused (${e.message || "no reason given"})`));
-    }
-  };
+    if (!guest) { guestPaused.current = false; return; }
+    const playingMedia = (snap?.entities ?? []).filter((e) => e.kind === "media" && e.playing).map((e) => e.id);
+    if (!np?.isPlaying && playingMedia.length === 0) return;
+    if (guestPaused.current && !np?.isPlaying && playingMedia.length === 0) return;
+    guestPaused.current = true;
+    if (np?.isPlaying) controlSpotify("pause");
+    if (playingMedia.length) act(playingMedia, { type: "pause" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when guest mode starts or something starts playing during it
+  }, [guest, np?.isPlaying, snap?.entities]);
+  const wake = activity;
   const away = Boolean(snap?.away);
-  // Away from home: lights are off, waiting for you. Give the departure a minute before a face counts as "back".
-  const awaySince = useRef(0);
-  useEffect(() => { if (away) awaySince.current = Date.now(); }, [away]);
-  // At night with every light off, movement in the room must not light the tablet up again.
-  const nightQuiet = isNight() && !(snap?.entities ?? []).some((e) => (e.kind === "light" || e.kind === "switch") && e.on);
-  const onApproach = () => {
-    if (away && !guest && Date.now() - awaySince.current > 60_000) setAway("return");
-    if (!nightQuiet) activity(); // someone's there: back to full brightness and restart the dim timer
-  };
-  const motionSensors = useHaMotion(pin, wakeCam, onApproach);
-  useEffect(() => { presence.current = wakeCam && motionSensors > 0; });
-  // With a Home Assistant motion sensor (or the tablet streaming its camera there) the browser doesn't need the camera.
-  const camStatus = useApproach(wakeCam && (idle || away) && motionSensors === 0, onApproach);
   // Lights all off after 9pm: the tablet goes fully dark too (screen off, no light at all). The power button or a touch wakes it.
-  const forcedOff = useRef(false);
   const nightOff = () => {
     if (!isNight() || !pin) return;
-    forcedOff.current = true; // no brightness/wake commands from the dimmer until someone actually uses the tablet again
     sleep();
     const off = () => fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify({ mode: "off" }) }).catch(() => {});
     setTimeout(off, 400);
     setTimeout(off, 4000); // again, in case something nudged the screen back on
   };
-  // Real backlight dimming through the Home Assistant app, stepping down with the on-screen fade and back up on any activity.
-  const lastStep = useRef(0);
-  useEffect(() => {
-    if (!pin || getFully()) return;
-    const step = dimLevel <= 0 ? 0 : Math.min(5, Math.ceil(dimLevel * 5));
-    if (step === lastStep.current) return;
-    lastStep.current = step;
-    if (forcedOff.current) { if (step === 0) forcedOff.current = false; else return; } // screen was powered off on purpose
-    const levels = [0, 130, 95, 60, 30, 1];
-    fetch("/api/home/screen", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin }, body: JSON.stringify(step === 0 ? { mode: "wake" } : { mode: "level", level: levels[step] }) }).catch(() => {});
-  }, [dimLevel, pin]);
-  // On Fully Kiosk, really dim the backlight while idle (the black overlay can't turn an LCD off), and put it back on wake.
-  useEffect(() => {
-    const fully = getFully();
-    if (!fully?.setScreenBrightness) return;
-    try {
-      if (idle) {
-        const cur = fully.getScreenBrightness?.();
-        if (typeof cur === "number" && cur > 5) localStorage.setItem("hb-prev-brightness", String(cur));
-        fully.setScreenBrightness(1);
-      } else {
-        const prev = Number(localStorage.getItem("hb-prev-brightness"));
-        fully.setScreenBrightness(prev > 5 ? prev : 160);
-      }
-    } catch { /* not in Fully, or storage blocked */ }
-  }, [idle]);
-  // Or: a phone (Home Assistant person) that was away shows up home while we're waiting.
-  const wasHome = useRef<Record<string, boolean>>({});
-  useEffect(() => {
-    const ppl = snap?.people ?? [];
-    const cameHome = ppl.some((p) => p.home && wasHome.current[p.name] === false);
-    wasHome.current = Object.fromEntries(ppl.map((p) => [p.name, p.home]));
-    if (away && cameHome) setAway("return");
-  }, [snap, away, setAway]);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [unlocking, setUnlocking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1637,6 +1455,25 @@ export function TouchControl() {
       <div className="absolute" style={{ left: "50%", top: "50%", width: cw, height: H, transform: `translate(-50%, -50%) scale(${scale})` }}>
         {gate ? (
           <div className="absolute inset-0 flex items-center justify-center"><PinPad gate={gate} onSubmit={submitPin} /></div>
+        ) : guest ? (
+          /* guest mode: one giant light switch and the fan, nothing else */
+          <div className="absolute flex flex-col gap-6" style={{ left: "50%", top: 84, width: Math.min(980, cw - 160), height: 740, transform: "translateX(-50%)" }}>
+            <ToggleButton
+              on={lights.some((d) => d.on)}
+              glow={groupGlow(lights)}
+              onTap={() => act(lights.map((d) => d.id), { type: lights.some((d) => d.on) ? "off" : "on" })}
+              style={{ width: "100%", flex: 1, borderRadius: 72, padding: "0 70px", minHeight: 0 }}
+            >
+              <div className="flex items-center justify-center gap-16">
+                <SegmentBulb lights={lights} size={260} />
+                <div>
+                  <div className="text-white font-bold" style={{ fontSize: 104, lineHeight: 1 }}>Lights</div>
+                  <div className="text-white/65 font-semibold mt-3" style={{ fontSize: 36 }}>{lights.some((d) => d.on) ? "On · tap to turn off" : "Off · tap to turn on"}</div>
+                </div>
+              </div>
+            </ToggleButton>
+            {fans.map((f) => <FanCard key={f.id} e={f} act={act} simple />)}
+          </div>
         ) : (
           <>
             {/* left: all lights, rooms, then (scroll) individual lights */}
@@ -1752,16 +1589,6 @@ export function TouchControl() {
                     </Press>
                   </div>
                 )}
-                {snap && !guest && (
-                  <div className="pb-10 flex items-center gap-4">
-                    <Press onClick={toggleWakeCam} className="glass-card px-6 py-4 text-white font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>
-                      Wake on approach: {wakeCam ? "On" : "Off"}
-                    </Press>
-                    <div className="text-white/45 font-semibold" style={{ fontSize: 15 }}>
-                      {motionSensors > 0 ? `Using ${motionSensors} Home Assistant motion sensor${motionSensors > 1 ? "s" : ""} — no camera needed in the browser.` : camAsk ? `Camera unavailable: ${camAsk}` : camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : getFully() ? "Uses Fully Kiosk’s motion detection while dimmed or away, and dims the backlight when idle." : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
-                    </div>
-                  </div>
-                )}
                 {snap && devices.length === 0 && <div className="text-white/45 font-semibold" style={{ fontSize: 20 }}>No lights or switches found.</div>}
               </div>
             </div>
@@ -1814,8 +1641,8 @@ export function TouchControl() {
       <TopBar showTime selfBattery pin={pin} />
       <ActivityPills includeMusic={false} hide={["game"]} />
       {guest && !gate && (
-        <div className="absolute bottom-5 left-1/2 z-[44] flex items-center gap-3" style={{ transform: "translateX(-50%)" }}>
-          <div className="glass-card px-6 py-3 text-white/80 font-semibold" style={{ borderRadius: 26, fontSize: 17 }}>Guest mode · lights on/off only · no music</div>
+        <div className="absolute bottom-2 left-1/2 z-[44] flex items-center gap-3" style={{ transform: "translateX(-50%)" }}>
+          <div className="glass-card px-6 py-3 text-white/80 font-semibold" style={{ borderRadius: 26, fontSize: 17 }}>Guest mode</div>
           <Press onClick={() => setUnlocking(true)} className="glass-card px-6 py-3 text-white font-semibold" style={{ borderRadius: 26, fontSize: 17 }}>🔒 Owner unlock</Press>
         </div>
       )}
@@ -1838,11 +1665,8 @@ export function TouchControl() {
         style={{ opacity: dimLevel, pointerEvents: idle ? "auto" : "none", transition: dimLevel === 0 ? "opacity 0.12s ease-out" : "opacity 0.3s linear" }}
       >
         <div className="num-rounded font-semibold" style={{ fontSize: 120, color: "rgba(255,255,255,0.12)" }}>{time}</div>
-        {(away || camStatus === "on") && (
-          <div className="absolute bottom-10 flex items-center gap-3 font-semibold" style={{ fontSize: 16, color: "rgba(255,255,255,0.22)" }}>
-            {camStatus === "on" && <span className="rounded-full" style={{ width: 10, height: 10, background: "#ff5a4f" }} />}
-            {away ? "Away · lights return when you do" : "Camera on · wake on approach"}
-          </div>
+        {away && (
+          <div className="absolute bottom-10 font-semibold" style={{ fontSize: 16, color: "rgba(255,255,255,0.22)" }}>Away · lights return when you do</div>
         )}
       </div>
     </div>

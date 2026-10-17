@@ -5,7 +5,7 @@ import { checkPin, haConfigured } from "@/lib/smarthome";
 import { getHomeConfig } from "@/lib/smarthome/config";
 import { getGuestState } from "@/lib/smarthome/guest";
 import { setSpeakersVolume } from "@/lib/smarthome/homeAssistant";
-import { startDefaultPlaylist } from "@/lib/spotifyPlay";
+import { resumeMusic, startDefaultPlaylist } from "@/lib/spotifyPlay";
 
 const KEY = "hookSecret";
 
@@ -31,8 +31,10 @@ export async function GET(req: NextRequest) {
   const real = await secret(false);
   const a = Buffer.from(given), b = Buffer.from(real ?? "");
   if (!real || a.length !== b.length || !timingSafeEqual(a, b)) return NextResponse.json({ error: "no" }, { status: 401 });
-  if (q.get("do") !== "morning_music") return NextResponse.json({ error: "unknown" }, { status: 400 });
+  const what = q.get("do");
+  if (what !== "morning_music" && what !== "resume_music") return NextResponse.json({ error: "unknown" }, { status: 400 });
   if ((await getGuestState(true)).active) return NextResponse.json({ ok: false, skipped: "guest_mode" });
+  if (what === "resume_music") { const e = await resumeMusic(); return NextResponse.json({ ok: !e, error: e }); }
   const volume = (await getHomeConfig()).morning.volume;
   if (haConfigured()) await setSpeakersVolume(volume).catch(() => {});
   const err = await startDefaultPlaylist();
