@@ -9,7 +9,7 @@ import { useSettings } from "@/lib/useSettings";
 import { pollEvery } from "@/lib/poll";
 import { Marquee } from "@/components/Marquee";
 import { DeviceGlyph } from "@/components/DeviceGlyph";
-import { HomeStatusPills } from "@/components/HomeGlance";
+import { HomePeoplePills, HomeStatePills } from "@/components/HomeGlance";
 
 const chip = "flex items-center gap-2.5 px-4 rounded-full shrink-0 min-w-0";
 const chipStyle = {
@@ -144,9 +144,8 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
     .slice(0, 3);
 
   return (
-    <>
     <div className="fixed top-3 left-0 right-0 z-10 pointer-events-none flex items-start justify-between" style={{ padding: "0 20px" }}>
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 290px)" }}>
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden" style={{ maxWidth: "calc(50% - 175px)" }}>
         {showTime && (
           <div className={chip} style={chipStyle}>
             <span className="num-rounded font-bold text-white whitespace-nowrap" style={{ fontSize: 22 }}>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
@@ -167,9 +166,10 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
             {commute.delay >= 5 && <span className="num-rounded font-bold whitespace-nowrap" style={{ fontSize: 13, color: "#ffb84d" }}>+{commute.delay}</span>}
           </div>
         )}
+        <HomePeoplePills />
       </div>
 
-      <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 290px)" }}>
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden justify-end" style={{ maxWidth: "calc(50% - 175px)" }}>
         {next && !hide.includes("countdown") && (
           <div className={chip} style={{ ...chipStyle, borderColor: soon ? "rgba(255,184,77,0.55)" : "rgba(255,255,255,0.12)" }}>
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: soon ? "#ffb84d" : (next.color ?? eventColor(next.colorId, next.source)), boxShadow: `0 0 8px ${soon ? "#ffb84d" : (next.color ?? "#fff")}` }} />
@@ -181,6 +181,7 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
             </span>
           </div>
         )}
+        <HomeStatePills />
         {(hide.includes("batteries") ? [] : batteries).map((d) => {
           const pct = Math.round((d.batteryLevel as number) * 100);
           const low = pct <= 20;
@@ -208,10 +209,5 @@ export function TopBar({ hide = [], showTime = false, selfBattery = false, pin =
         )}
       </div>
     </div>
-    {/* the house pills: a second row under the main one, on every screen */}
-    <div className="fixed left-0 right-0 z-10 pointer-events-none flex items-center justify-center gap-2 overflow-hidden" style={{ top: 62, padding: "0 20px" }}>
-      <HomeStatusPills />
-    </div>
-    </>
   );
 }

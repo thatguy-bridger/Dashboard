@@ -77,8 +77,34 @@ function Chip({ children, tone = "plain" }: { children: React.ReactNode; tone?: 
   );
 }
 
-/** The house pills for the top bar of every screen: who's home, guest/away mode, lights on, fan, speakers, next timer. */
-export function HomeStatusPills() {
+const topChip = "flex items-center gap-2.5 px-4 rounded-full shrink-0 min-w-0 whitespace-nowrap";
+const topChipStyle = (tone: "plain" | "good" | "warn") => ({
+  height: 46,
+  background: "linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))",
+  border: `1px solid ${tone === "warn" ? "rgba(255,184,77,0.55)" : tone === "good" ? "rgba(120,220,150,0.45)" : "rgba(255,255,255,0.12)"}`,
+});
+
+/** Top-row pills, left side: who's home and the house mode (guest / away). Same size and style as the other top-row pills. */
+export function HomePeoplePills() {
+  const g = useHomeGlance();
+  if (!g) return null;
+  return (
+    <>
+      {g.people.map((p) => (
+        <div key={p.name} className={topChip} style={topChipStyle(p.home ? "good" : "plain")}>
+          <Dot color={p.home ? "#7be09a" : "#777"} glow={p.home} />
+          <span className="text-white font-bold" style={{ fontSize: 16 }}>{p.name.split(" ")[0]}</span>
+          <span className="text-white/55 font-semibold" style={{ fontSize: 14 }}>{p.home ? "home" : "away"}</span>
+        </div>
+      ))}
+      {g.guest && <div className={topChip} style={topChipStyle("warn")}><span className="font-bold" style={{ fontSize: 16, color: "#ffb84d" }}>Guest mode</span></div>}
+      {g.away && !g.guest && <div className={topChip} style={topChipStyle("warn")}><span className="font-bold" style={{ fontSize: 16, color: "#ffb84d" }}>Away mode</span></div>}
+    </>
+  );
+}
+
+/** Top-row pills, right side: lights on, fan, speakers playing, next timer. */
+export function HomeStatePills() {
   const g = useHomeGlance();
   const now = useNowMs(15_000);
   if (!g) return null;
@@ -86,50 +112,31 @@ export function HomeStatusPills() {
   const playing = g.media.filter((m) => m.playing).length;
   const fan = g.fans.find((f) => f.on);
   const nextTimer = [...g.timers].sort((a, b) => a.endsAt - b.endsAt)[0];
-  const pill = (tone: "plain" | "good" | "warn", key: string, children: React.ReactNode) => {
-    const border = tone === "warn" ? "rgba(255,184,77,0.55)" : tone === "good" ? "rgba(120,220,150,0.45)" : "rgba(255,255,255,0.12)";
-    return (
-      <div key={key} className="flex items-center gap-2 px-3.5 rounded-full shrink-0 whitespace-nowrap" style={{ height: 36, background: "linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.06))", border: `1px solid ${border}` }}>
-        {children}
-      </div>
-    );
-  };
   return (
     <>
-      {g.people.map((p) => pill(p.home ? "good" : "plain", p.name, (
-        <>
-          <Dot color={p.home ? "#7be09a" : "#777"} glow={p.home} />
-          <span className="text-white font-semibold" style={{ fontSize: 14 }}>{p.name.split(" ")[0]}</span>
-          <span className="text-white/55 font-semibold" style={{ fontSize: 13 }}>{p.home ? "home" : "away"}</span>
-        </>
-      )))}
-      {g.guest && pill("warn", "guest", <span className="font-bold" style={{ fontSize: 14, color: "#ffb84d" }}>Guest mode</span>)}
-      {g.away && !g.guest && pill("warn", "away", <span className="font-bold" style={{ fontSize: 14, color: "#ffb84d" }}>Away mode</span>)}
-      {pill("plain", "lights", (
-        <>
-          <Dot color={lightsOn ? "#ffd27a" : "#555"} glow={lightsOn > 0} />
-          <span className="num-rounded font-bold text-white" style={{ fontSize: 15 }}>{lightsOn}</span>
-          <span className="text-white/55 font-semibold" style={{ fontSize: 13 }}>of {g.lights.length} lights</span>
-        </>
-      ))}
-      {fan && pill("plain", "fan", (
-        <>
-          <span className="text-white/55 font-semibold" style={{ fontSize: 13 }}>Fan</span>
-          <span className="num-rounded font-bold text-white" style={{ fontSize: 15 }}>{Math.max(1, Math.round((fan.speed / 100) * (fan.steps > 8 ? 6 : fan.steps)))}</span>
-        </>
-      ))}
-      {playing > 0 && pill("plain", "media", (
-        <>
-          <span className="num-rounded font-bold text-white" style={{ fontSize: 15 }}>{playing}</span>
-          <span className="text-white/55 font-semibold" style={{ fontSize: 13 }}>playing</span>
-        </>
-      ))}
-      {nextTimer && pill("warn", "timer", (
-        <>
-          <span className="text-white/80 font-semibold" style={{ fontSize: 13 }}>{nextTimer.name} {nextTimer.action} in</span>
-          <span className="num-rounded font-bold" style={{ fontSize: 14, color: "#ffb84d" }}>{Math.max(1, Math.round((nextTimer.endsAt - now) / 60_000))}m</span>
-        </>
-      ))}
+      <div className={topChip} style={topChipStyle("plain")}>
+        <Dot color={lightsOn ? "#ffd27a" : "#555"} glow={lightsOn > 0} />
+        <span className="num-rounded font-bold text-white" style={{ fontSize: 17 }}>{lightsOn}/{g.lights.length}</span>
+        <span className="text-white/55 font-semibold" style={{ fontSize: 14 }}>lights</span>
+      </div>
+      {fan && (
+        <div className={topChip} style={topChipStyle("plain")}>
+          <span className="text-white/55 font-semibold" style={{ fontSize: 14 }}>Fan</span>
+          <span className="num-rounded font-bold text-white" style={{ fontSize: 17 }}>{Math.max(1, Math.round((fan.speed / 100) * (fan.steps > 8 ? 6 : fan.steps)))}</span>
+        </div>
+      )}
+      {playing > 0 && (
+        <div className={topChip} style={topChipStyle("plain")}>
+          <span className="num-rounded font-bold text-white" style={{ fontSize: 17 }}>{playing}</span>
+          <span className="text-white/55 font-semibold" style={{ fontSize: 14 }}>playing</span>
+        </div>
+      )}
+      {nextTimer && (
+        <div className={topChip} style={topChipStyle("warn")}>
+          <span className="text-white/80 font-semibold" style={{ fontSize: 14 }}>{nextTimer.name} {nextTimer.action} in</span>
+          <span className="num-rounded font-bold" style={{ fontSize: 16, color: "#ffb84d" }}>{Math.max(1, Math.round((nextTimer.endsAt - now) / 60_000))}m</span>
+        </div>
+      )}
     </>
   );
 }
