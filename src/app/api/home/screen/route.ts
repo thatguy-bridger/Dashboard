@@ -42,9 +42,12 @@ export async function POST(req: NextRequest) {
   if (b.mode !== "dim" && b.mode !== "wake") return NextResponse.json({ error: "bad request" }, { status: 400 });
   if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
   try {
-    await tabletCommand(cfg.service, "command_auto_screen_brightness", { command: "turn_off" });
-    if (b.mode === "wake") await tabletCommand(cfg.service, "command_screen_on");
-    await tabletCommand(cfg.service, "command_screen_brightness_level", { command: b.mode === "dim" ? 1 : cfg.awake });
+    // independent commands to the same tablet: send them together instead of one after another
+    await Promise.all([
+      tabletCommand(cfg.service, "command_auto_screen_brightness", { command: "turn_off" }),
+      ...(b.mode === "wake" ? [tabletCommand(cfg.service, "command_screen_on")] : []),
+      tabletCommand(cfg.service, "command_screen_brightness_level", { command: b.mode === "dim" ? 1 : cfg.awake }),
+    ]);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json({ ok: false, error: "command_failed", detail: String(err) }, { status: 502 });
