@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { d1Query } from "@/lib/d1";
 import { getValidSpotifyToken } from "@/lib/spotify";
-import { checkPin } from "@/lib/smarthome";
+import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
 
 const KEY = "musicDefaults";
-export interface MusicDefaults { uri: string | null; name: string | null; deviceId: string | null }
+export interface MusicDefaults { uri: string | null; name: string | null; deviceId: string | null; deviceName: string | null; entityId: string | null }
+export const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 async function getDefaults(): Promise<MusicDefaults> {
   try {
     const rows = await d1Query<{ value: string | null }>("SELECT value FROM settings WHERE key = ?", [KEY]);
     const v = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    return { uri: v.uri ?? null, name: v.name ?? null, deviceId: v.deviceId ?? null };
+    return { uri: v.uri ?? null, name: v.name ?? null, deviceId: v.deviceId ?? null, deviceName: v.deviceName ?? null, entityId: v.entityId ?? null };
   } catch {
-    return { uri: null, name: null, deviceId: null };
+    return { uri: null, name: null, deviceId: null, deviceName: null, entityId: null };
   }
 }
 
@@ -40,7 +41,20 @@ export async function GET(req: NextRequest) {
     const d = await fetch("https://api.spotify.com/v1/me/player/devices", { headers: h, cache: "no-store" });
     if (d.ok) devices = ((await d.json()).devices ?? []).filter((x: { id: string | null }) => x.id).map((x: { id: string; name: string; is_active: boolean }) => ({ id: x.id, name: x.name, active: x.is_active }));
   } catch { /* devices are optional */ }
-  return NextResponse.json({ playlists, devices, defaults: await getDefaults() });
+  // The hidden "network" view: every speaker Home Assistant knows, joined to its Spotify device by name
+  // (a speaker Spotify can't currently see is still listed; playing to it wakes it first).
+  const network: { name: string; deviceId: string | null; entityId: string | null; active: boolean }[] = [];
+  try {
+    const ha = haConfigured() ? (await getProvider().snapshot()).entities.filter((e) => e.kind === "media") : [];
+    const used = new Set<string>();
+    for (const s of ha) {
+      const d = devices.find((x) => normName(x.name) === normName(s.name) || normName(x.name).includes(normName(s.name)) || normName(s.name).includes(normName(x.name)));
+      if (d) used.add(d.id);
+      network.push({ name: d?.name ?? s.name, deviceId: d?.id ?? null, entityId: s.id, active: Boolean(d?.active) });
+    }
+    for (const d of devices) if (!used.has(d.id)) network.push({ name: d.name, deviceId: d.id, entityId: null, active: d.active });
+  } catch { /* the plain device list still works */ }
+  return NextResponse.json({ playlists, devices, network, defaults: await getDefaults() });
 }
 
 /** Body: { uri, name, deviceId? } saves the default playlist (and the device to play it on). */
@@ -53,6 +67,8 @@ export async function POST(req: NextRequest) {
     uri: typeof b.uri === "string" ? b.uri.slice(0, 120) : cur.uri,
     name: typeof b.name === "string" ? b.name.slice(0, 80) : cur.name,
     deviceId: "deviceId" in b ? (typeof b.deviceId === "string" ? b.deviceId.slice(0, 80) : null) : cur.deviceId,
+    deviceName: "deviceName" in b ? (typeof b.deviceName === "string" ? b.deviceName.slice(0, 80) : null) : cur.deviceName,
+    entityId: "entityId" in b ? (typeof b.entityId === "string" ? b.entityId.slice(0, 80) : null) : cur.entityId,
   };
   await d1Query(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [KEY, JSON.stringify(next)]);
   return NextResponse.json({ defaults: next });

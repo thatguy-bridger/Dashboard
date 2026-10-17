@@ -377,6 +377,7 @@ function lightColor(e: HomeEntity): string {
   return "#ffd27a";
 }
 
+const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
 /** A bulb split into one coloured stripe per light, glowing in the colour they are showing. */
@@ -615,7 +616,9 @@ function SwitchTile({ e, act }: { e: HomeEntity; act: Act }) {
 interface Library {
   playlists: { uri: string; name: string; image: string | null; tracks: number }[];
   devices: { id: string; name: string; active: boolean }[];
-  defaults: { uri: string | null; name: string | null; deviceId: string | null };
+  /** every speaker on the network joined to Spotify by name (the hidden view) */
+  network: { name: string; deviceId: string | null; entityId: string | null; active: boolean }[];
+  defaults: { uri: string | null; name: string | null; deviceId: string | null; deviceName: string | null; entityId: string | null };
 }
 
 function useLibrary(pin: string | null) {
@@ -650,7 +653,7 @@ function useLibrary(pin: string | null) {
 type MusicApi = ReturnType<typeof useLibrary>;
 
 const playError = (code: string | null) =>
-  code === "no_device" ? "No Spotify speaker is awake. Open Spotify once on a speaker, then try again." :
+  code === "no_device" ? "Couldn't reach that speaker. Press and hold \"Play on\" in Music to pick another." :
   code === "no_default" ? "Pick a default playlist first." :
   code ? "Couldn't start it. Try again." : null;
 
@@ -740,6 +743,8 @@ function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, m
   const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
   const { lib, error } = music;
   const [busy, setBusy] = useState<string | null>(null);
+  const [network, setNetwork] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playIt = async (uri: string) => {
     setBusy(uri);
     setMessage(playError(await music.play(uri)));
@@ -822,18 +827,33 @@ function MusicSheet({ accent, music, media, speakers, setVolume, act, onClose, m
         )}
       </div>
 
-      {lib && lib.devices.length > 0 && (
+      {lib && (
         <div>
-          <div className="caps-label mb-3" style={{ fontSize: 13 }}>Play on</div>
+          {/* press and hold the label: reveals every speaker on the network, matched to Spotify */}
+          <div
+            className="caps-label mb-3 select-none"
+            style={{ fontSize: 13 }}
+            onPointerDown={() => { holdTimer.current = setTimeout(() => setNetwork((n) => !n), 700); }}
+            onPointerUp={() => { if (holdTimer.current) clearTimeout(holdTimer.current); }}
+            onPointerLeave={() => { if (holdTimer.current) clearTimeout(holdTimer.current); }}
+          >
+            Play on{network ? " · all speakers" : ""}{lib.defaults.deviceName ? ` · default: ${lib.defaults.deviceName}` : ""}
+          </div>
           <div className="flex flex-wrap gap-2">
-            {lib.devices.map((d) => {
-              const chosen = lib.defaults.deviceId ? lib.defaults.deviceId === d.id : d.active;
+            {(network ? lib.network : lib.devices.map((d) => ({ name: d.name, deviceId: d.id, entityId: null as string | null, active: d.active }))).map((d) => {
+              const chosen = lib.defaults.deviceName ? normName(lib.defaults.deviceName) === normName(d.name) : d.active;
               return (
-                <Press key={d.id} onClick={() => music.saveDefaults({ deviceId: lib.defaults.deviceId === d.id ? null : d.id })} className="px-5 py-3 font-semibold" style={{ borderRadius: 24, fontSize: 17, background: chosen ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: chosen ? "#000" : "#fff" }}>
-                  {d.name}
+                <Press
+                  key={`${d.deviceId}-${d.entityId}-${d.name}`}
+                  onClick={() => music.saveDefaults(chosen && lib.defaults.deviceName ? { deviceId: null, deviceName: null, entityId: null } : { deviceId: d.deviceId, deviceName: d.name, entityId: d.entityId })}
+                  className="px-5 py-3 font-semibold"
+                  style={{ borderRadius: 24, fontSize: 17, background: chosen ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: chosen ? "#000" : "#fff", opacity: network && !d.deviceId ? 0.7 : 1 }}
+                >
+                  {d.name}{network && !d.deviceId ? " · asleep" : ""}
                 </Press>
               );
             })}
+            {!network && lib.devices.length === 0 && <div className="text-white/50 font-semibold" style={{ fontSize: 15 }}>No Spotify speakers awake. Press and hold this label to see all speakers.</div>}
           </div>
         </div>
       )}
