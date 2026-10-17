@@ -38,7 +38,7 @@ const PIN_KEY = "hb-control-pin";
 
 type Gate = null | "needs_pin" | "bad_pin" | "pin_not_configured";
 
-function useHome(pin: string | null) {
+function useHome(pin: string | null, ready = true, nonce = 0) {
   const [snap, setSnap] = useState<HomeSnapshot | null>(null);
   const [gate, setGate] = useState<Gate>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,10 +52,15 @@ function useHome(pin: string | null) {
   const [syncing, setSyncing] = useState<Set<string>>(new Set());
   const markSyncing = () => setSyncing(new Set(pending.current.keys()));
 
+  /** Only the newest request may change the screen: a slow, stale answer (for example the one sent before the saved PIN was
+   *  read) must never overwrite a newer, successful one. */
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++loadSeq.current;
     try {
       const res = await fetch("/api/home", { cache: "no-store", headers: { "x-control-pin": pinRef.current ?? "" } });
       const j = await res.json();
+      if (mine !== loadSeq.current) return;
       if (res.ok) {
         const now = Date.now();
         const merged = (j as HomeSnapshot).entities.map((e) => {
@@ -82,9 +87,10 @@ function useHome(pin: string | null) {
   }, []);
 
   useEffect(() => {
+    if (!ready) return; // wait until the saved PIN has been read from this browser
     load();
     return pollEvery(load, 45_000);
-  }, [load, pin]);
+  }, [load, pin, ready, nonce]);
 
   /** Apply the change locally first (feels instant on a touch screen), send it, then re-sync. */
   const act = useCallback(
@@ -1388,10 +1394,13 @@ export function TouchControl() {
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
+  const [pinReady, setPinReady] = useState(false);
+  const [pinTry, setPinTry] = useState(0);
   useEffect(() => {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
+    setPinReady(true);
   }, []);
-  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin, pinReady, pinTry);
   useAutoUpdate();
   // ?guestPreview=1 only changes how this screen looks (to check the layout); the server still decides what is allowed.
   const previewGuest = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("guestPreview");
@@ -1531,6 +1540,7 @@ export function TouchControl() {
   const submitPin = (p: string) => {
     try { localStorage.setItem(PIN_KEY, p); } catch { /* ignore */ }
     setPin(p);
+    setPinTry((n) => n + 1); // ask again right away, even when it is the same PIN that is already saved
   };
 
   const entities = snap?.entities ?? [];
