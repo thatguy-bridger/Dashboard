@@ -1,7 +1,7 @@
 import { cacheHeaders } from "@/lib/http";
 import { NextRequest, NextResponse } from "next/server";
 import { mergeStandByLayout, mergeScenes, type StandByItem, type StandByScene } from "@/lib/standby";
-import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode, type LayoutMode } from "@/lib/settings";
+import { getSettings, updateSettings, type MapPlace, type FavoriteTeam, type DisplayMode, type LayoutMode, type DesignLanguage } from "@/lib/settings";
 
 function parseTeamsPatch(raw: unknown): FavoriteTeam[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -46,6 +46,7 @@ export async function PATCH(req: NextRequest) {
     commute?: MapPlace | null;
     displayMode?: DisplayMode;
     layoutMode?: LayoutMode;
+    designLanguage?: DesignLanguage;
     standbyLayout?: StandByItem[];
     standbyScenes?: StandByScene[];
   } = {};
@@ -75,6 +76,10 @@ export async function PATCH(req: NextRequest) {
 
   if (body.layoutMode === "standby" || body.layoutMode === "grid") {
     patch.layoutMode = body.layoutMode;
+  }
+
+  if (body.designLanguage === "islet" || body.designLanguage === "glass") {
+    patch.designLanguage = body.designLanguage;
   }
 
   if ("standbyLayout" in body) {

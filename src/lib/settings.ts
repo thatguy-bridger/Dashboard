@@ -4,6 +4,8 @@ import { mergeStandByLayout, mergeScenes, type StandByItem, type StandByScene } 
 export type DisplayMode = "color" | "image";
 /** "standby" is the prebuilt full-screen view; "grid" is the customisable tile layout. */
 export type LayoutMode = "standby" | "grid";
+/** The visual language every screen is drawn in. */
+export type DesignLanguage = "islet" | "glass";
 
 export interface MapPlace {
   label: string;
@@ -29,11 +31,12 @@ export interface Settings {
   commute: MapPlace | null;
   displayMode: DisplayMode;
   layoutMode: LayoutMode;
+  designLanguage: DesignLanguage;
   standbyLayout: StandByItem[];
   standbyScenes: StandByScene[];
 }
 
-const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "commute", "displayMode", "layoutMode", "standbyLayout", "standbyScenes"] as const;
+const KEYS = ["favoriteTeam", "favoriteTeams", "mapHome", "mapDestination", "commute", "displayMode", "layoutMode", "designLanguage", "standbyLayout", "standbyScenes"] as const;
 type Key = (typeof KEYS)[number];
 
 function parsePlace(raw: string | null): MapPlace | null {
@@ -85,6 +88,7 @@ export async function getSettings(): Promise<Settings> {
     commute: parsePlace(byKey.get("commute") ?? null),
     displayMode: displayMode === "image" ? "image" : "color",
     layoutMode: byKey.get("layoutMode") === "grid" ? "grid" : "standby",
+    designLanguage: byKey.get("designLanguage") === "glass" ? "glass" : "islet",
     standbyScenes: mergeScenes(parseJson(byKey.get("standbyScenes") ?? null)),
     standbyLayout: mergeStandByLayout(parseJson(byKey.get("standbyLayout") ?? null)),
   };
@@ -108,6 +112,7 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
   if ("standbyScenes" in patch) await set("standbyScenes", patch.standbyScenes ? JSON.stringify(patch.standbyScenes) : null);
   if ("standbyLayout" in patch) await set("standbyLayout", patch.standbyLayout ? JSON.stringify(patch.standbyLayout) : null);
   if ("layoutMode" in patch) await set("layoutMode", patch.layoutMode ?? null);
+  if ("designLanguage" in patch) await set("designLanguage", patch.designLanguage ?? null);
 
   return getSettings();
 }

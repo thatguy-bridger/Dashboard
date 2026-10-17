@@ -197,3 +197,37 @@ body {
 @keyframes vinyl-spin {
   to { transform: rotate(360deg); }
 }
+
+/* ---- Liquid Glass design language (Settings → Design language) ----
+   Live frosted blur, the system (SF) font, soft specular edges, rounder corners. */
+[data-design="glass"] {
+  --font-rounded: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif;
+  --font-wide: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  --surface: rgba(255, 255, 255, 0.12);
+  --surface-border: rgba(255, 255, 255, 0.18);
+  --sheet-bg: rgba(34, 34, 40, 0.5);
+}
+
+[data-design="glass"] body {
+  font-family: -apple-system, "SF Pro Display", "SF Pro Text", var(--font-inter), system-ui, sans-serif;
+  letter-spacing: -0.022em;
+}
+
+[data-design="glass"] .glass-card,
+[data-design="glass"] .glass-panel {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.07) 55%, rgba(255, 255, 255, 0.12));
+  -webkit-backdrop-filter: blur(30px) saturate(1.7);
+  backdrop-filter: blur(30px) saturate(1.7);
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(255, 255, 255, 0.06), 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+[data-design="glass"] .caps-label {
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+[data-design="glass"] .num-rounded {
+  letter-spacing: -0.035em;
+}

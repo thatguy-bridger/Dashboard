@@ -108,6 +108,7 @@ export default function ControlPage() {
   const [favoriteTeams, setFavoriteTeams] = useState<FavoriteTeam[]>([]);
   const [displayMode, setDisplayMode] = useState<"color" | "image">("color");
   const [layoutMode, setLayoutMode] = useState<"standby" | "grid">("standby");
+  const [designLanguage, setDesignLanguage] = useState<"islet" | "glass">("islet");
   const [standbyLayout, setStandbyLayout] = useState<StandByItem[]>(defaultStandByLayout());
   const [standbyScenes, setStandbyScenes] = useState<StandByScene[]>(defaultScenes());
   const [standbyEditorOpen, setStandbyEditorOpen] = useState(false);
@@ -197,6 +198,7 @@ export default function ControlPage() {
         setMapDestination(data.settings.mapDestination ?? null);
         setDisplayMode(data.settings.displayMode ?? "color");
         setLayoutMode(data.settings.layoutMode ?? "standby");
+        setDesignLanguage(data.settings.designLanguage ?? "islet");
         if (data.settings.standbyLayout) setStandbyLayout(data.settings.standbyLayout);
         if (data.settings.standbyScenes) setStandbyScenes(mergeScenes(data.settings.standbyScenes));
       });
@@ -226,6 +228,15 @@ export default function ControlPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ layoutMode: mode }),
+    });
+  }
+
+  async function saveDesignLanguage(d: "islet" | "glass") {
+    setDesignLanguage(d);
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ designLanguage: d }),
     });
   }
 
@@ -788,6 +799,29 @@ export default function ControlPage() {
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">
           Settings
         </h2>
+        <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
+          <div>
+            <div className="text-sm font-medium">Design language</div>
+            <p className="text-xs text-[var(--muted)]">
+              Islet is the flat black look. Liquid Glass uses live frosted blur, the system font and soft specular edges. Applies to every screen.
+            </p>
+          </div>
+          <div className="flex gap-1 shrink-0">
+            {(["islet", "glass"] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => saveDesignLanguage(d)}
+                className={`text-xs px-3 py-1.5 rounded-lg border ${
+                  designLanguage === d
+                    ? "bg-[var(--accent)]/20 border-[var(--accent)] text-[var(--accent)]"
+                    : "border-[var(--surface-border)] text-[var(--muted)]"
+                }`}
+              >
+                {d === "islet" ? "Islet" : "Liquid Glass"}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--surface-border)]">
           <div>
             <div className="text-sm font-medium">Screen layout</div>

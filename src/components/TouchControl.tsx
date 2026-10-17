@@ -337,7 +337,7 @@ function Sheet({ title, onClose, children, width = 720, glow }: { title: string;
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/55" onClick={onClose}>
       <div
         className="glass-card flex flex-col overflow-hidden"
-        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${glow}55, transparent 70%), ` : ""}rgba(24,24,28,0.95)` }}
+        style={{ width, maxHeight: 840, borderRadius: 48, background: `${glow ? `radial-gradient(90% 40% at 50% 0%, ${glow}55, transparent 70%), ` : ""}var(--sheet-bg, rgba(24,24,28,0.95))` }}
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="flex items-center justify-between shrink-0" style={{ padding: "28px 36px 16px" }}>

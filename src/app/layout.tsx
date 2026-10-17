@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Nunito, Lexend } from "next/font/google";
 import "./globals.css";
+import { DesignLanguage } from "@/components/DesignLanguage";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 // Rounded numerals for the clock, temps, times (SF Pro Rounded stand-in off Apple devices).
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${inter.variable} ${nunito.variable} ${lexend.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <DesignLanguage />
+        {children}
+      </body>
     </html>
   );
 }
