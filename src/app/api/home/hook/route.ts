@@ -5,7 +5,10 @@ import { checkPin, haConfigured } from "@/lib/smarthome";
 import { getHomeConfig } from "@/lib/smarthome/config";
 import { getGuestState } from "@/lib/smarthome/guest";
 import { setSpeakersVolume } from "@/lib/smarthome/homeAssistant";
+import { tick } from "@/lib/music/conductor";
 import { resumeMusic, startDefaultPlaylist } from "@/lib/spotifyPlay";
+
+export const maxDuration = 30;
 
 const KEY = "hookSecret";
 
@@ -19,7 +22,8 @@ async function secret(create: boolean): Promise<string | null> {
 }
 
 /** With the Control PIN: returns the link secret (made on first use) to put in Home Assistant's rest_command.
- *  With ?secret=...&do=morning_music (called by Home Assistant): starts the morning music. Only that one thing. */
+ *  With ?secret=...&do=morning_music|resume_music|tick (called by Home Assistant): starts the morning music, picks music back up,
+ *  or updates the music brain. Only those things. */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const given = q.get("secret");
@@ -32,6 +36,11 @@ export async function GET(req: NextRequest) {
   const a = Buffer.from(given), b = Buffer.from(real ?? "");
   if (!real || a.length !== b.length || !timingSafeEqual(a, b)) return NextResponse.json({ error: "no" }, { status: 401 });
   const what = q.get("do");
+  if (what === "tick") {
+    // Home Assistant's nudge to the music brain (every few seconds while music plays, and when a speaker changes song)
+    const s = await tick({ force: q.get("force") === "1" }).catch(() => null);
+    return NextResponse.json({ ok: Boolean(s), seq: s?.seq });
+  }
   if (what !== "morning_music" && what !== "resume_music") return NextResponse.json({ error: "unknown" }, { status: 400 });
   if ((await getGuestState(true)).active) return NextResponse.json({ ok: false, skipped: "guest_mode" });
   if (what === "resume_music") { const e = await resumeMusic(); return NextResponse.json({ ok: !e, error: e }); }

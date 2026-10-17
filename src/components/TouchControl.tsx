@@ -6,7 +6,7 @@ import { TopBar } from "@/components/TopBar";
 import { ActivityPills } from "@/components/ActivityPills";
 import { FitText } from "@/components/FitText";
 import { controlSpotify, pollOnce, useEstimatedProgress, useNowPlaying, useStickyPlaying } from "@/lib/spotifyClient";
-import { useArtTheme, loadTheme, peekTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
+import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
 import { OFF_COLOR, lightColor } from "@/lib/lightColor";
@@ -17,20 +17,6 @@ import { DEFAULT_MORNING, type DeviceTimer, type HomeEntity, type HomeSnapshot, 
 
 /** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
 const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
-
-/** What the album-art lights ask of one light (see /api/home/colors). */
-interface ThemeItem {
-  id: string;
-  mode: "color" | "white" | "onoff" | "dim";
-  h?: number;
-  s?: number;
-  kelvin?: number;
-  brightness?: number;
-  on?: boolean;
-  from?: { h: number; s: number };
-  ramp?: { from: number; to: number };
-  instant?: boolean;
-}
 
 const W = 1440;
 const H = 900;
@@ -190,33 +176,6 @@ function useHome(pin: string | null, ready = true, nonce = 0) {
     } catch { /* the next refresh shows the truth */ }
   }, []);
 
-  /** The album-art lights: each light gets what suits it (a colour, a white, or plain on/off) and the server fades there. */
-  const colorMany = useCallback((items: ThemeItem[], seconds: number) => {
-    const ids = items.map((i) => i.id);
-    setSnap((s) => {
-      if (!s) return s;
-      return { ...s, entities: s.entities.map((e) => {
-        const it = items.find((i) => i.id === e.id);
-        if (!it) return e;
-        const to: HomeEntity = it.mode === "color" && it.h != null && it.s != null ? applyLocal(e, { type: "color", h: it.h, s: it.s })
-          : it.mode === "dim" ? { ...e, brightness: it.ramp?.to ?? it.brightness ?? e.brightness }
-          : it.mode === "white" && it.on === false ? { ...e, on: false }
-          : it.mode === "white" ? { ...e, on: true, hs: undefined, colorTemp: it.kelvin ?? e.colorTemp }
-          : { ...e, on: it.on !== false };
-        pending.current.set(e.id, { until: Date.now() + 6000, to });
-        return to;
-      }) };
-    });
-    markSyncing();
-    queue.current = queue.current.then(async () => {
-      try {
-        await fetch("/api/home/colors", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pinRef.current ?? "" }, body: JSON.stringify({ items, seconds }) });
-      } catch { /* the confirm loop shows the truth */ }
-    });
-    // no confirm loop for the album-art lights: they are changing constantly, and the regular refresh shows the truth
-    setTimeout(() => { const now = Date.now(); for (const id of ids) { const p = pending.current.get(id); if (p && now >= p.until) pending.current.delete(id); } markSyncing(); }, 6200);
-  }, []);
-
   /** "It's the night": everything off with no exemptions and speakers to the night volume (the server does it all at once). */
   const goNight = useCallback(async (speakerIds: string[]) => {
     setSnap((s) => (s ? { ...s, entities: s.entities.map((e) => (e.kind === "light" || e.kind === "switch" ? { ...e, on: false } : e)) } : s));
@@ -253,7 +212,7 @@ function useHome(pin: string | null, ready = true, nonce = 0) {
     [load]
   );
 
-  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer };
+  return { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, setTimer, cancelTimer };
 }
 
 /** Has the device caught up with what we asked for? */
@@ -409,41 +368,9 @@ function useNightVolume(pin: string | null) {
   };
   return { volume, save };
 }
-/** Which white suits a hue: warm covers get a warm white, cool covers a cool one. */
-const kelvinForHue = (h: number) => (h < 70 || h >= 330 ? 2700 : h < 150 ? 4000 : h < 260 ? 6000 : 5000);
-
-/** These Tuya bulbs render some hues off: on the generic "Color Light" bulbs and bars a pure yellow (60°) looks greenish,
- *  so yellows are pulled toward orange; the "100W Tune + Color" bulb needs only a little of that. Piecewise-linear. */
-const HUE_FIX: Record<string, [number, number][]> = {
-  "Color Light": [[0, 0], [20, 16], [40, 32], [60, 46], [80, 66], [120, 120], [360, 360]],
-  "100W Tune + Color": [[0, 0], [40, 36], [60, 54], [80, 76], [360, 360]],
-};
-const calibrateHue = (model: string | undefined, h: number) => {
-  const pts = model ? HUE_FIX[model] : undefined;
-  if (!pts) return h;
-  for (let i = 1; i < pts.length; i++) {
-    if (h <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return Math.round(y0 + ((h - x0) / (x1 - x0)) * (y1 - y0)); }
-  }
-  return h;
-};
-
-const hexToHs = (hex: string): [number, number] => {
-  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  let h = 0;
-  if (d > 0) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return [Math.round((h * 60 + 360) % 360), Math.round(max === 0 ? 0 : (d / max) * 100)];
-};
-
-/** Which lights follow the music, saved on this tablet. */
+/** The "Music lights" scene. The music brain (server) runs it and keeps these settings, so every screen shows the same thing. */
 type LightMode = "color" | "on" | "off";
-/** Per light in the scene: "color" follows the album art (colour lights only), "on" is plain white, "off" is off. */
-interface MusicLightsCfg { enabled: boolean; ids: string[]; modes: Record<string, LightMode>; restore: Record<string, { on: boolean; brightness?: number; colorTemp?: number; hs?: [number, number] }> }
-const ML_KEY = "hb-music-lights";
-const readMusicLights = (): MusicLightsCfg => {
-  try { const v = JSON.parse(localStorage.getItem(ML_KEY) ?? "null"); if (v) return { enabled: Boolean(v.enabled), ids: Array.isArray(v.ids) ? v.ids : [], modes: v.modes && typeof v.modes === "object" ? v.modes : {}, restore: v.restore ?? {} }; } catch { /* none saved */ }
-  return { enabled: false, ids: [], modes: {}, restore: {} };
-};
+interface MusicLightsCfg { enabled: boolean; ids: string[]; modes: Record<string, LightMode> }
 
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
@@ -849,23 +776,7 @@ function useLibrary(pin: string | null) {
 
 type MusicApi = ReturnType<typeof useLibrary>;
 
-/** The next two songs in the Spotify queue, refreshed whenever the current song changes. */
 type UpNextItem = { id: string; name: string; artists: string; art: string | null };
-function useUpNext(pin: string | null, trackId: string | undefined): UpNextItem[] {
-  const [next, setNext] = useState<UpNextItem[]>([]);
-  useEffect(() => {
-    if (!trackId) return;
-    let stopped = false;
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/spotify/queue", { cache: "no-store", headers: { "x-control-pin": pin ?? "" } });
-        if (res.ok && !stopped) setNext(((await res.json()) as { next: UpNextItem[] }).next);
-      } catch { /* leave the old list */ }
-    }, 800);
-    return () => { stopped = true; clearTimeout(t); };
-  }, [pin, trackId]);
-  return trackId ? next : [];
-}
 
 const playError = (code: string | null) =>
   code?.startsWith("no_device") ? `Spotify can’t see ${code.split(":")[1] ?? "that speaker"} right now. Nest and Cast speakers only show up in Spotify while something is already playing on them. Start a song on it from your phone once, or connect Google Assistant to Home Assistant so this button can start it by itself.` :
@@ -1401,7 +1312,7 @@ export function TouchControl() {
   const cw = useCanvasWidth(scale);
   const np = useNowPlaying();
   const { playing, artUrl } = useStickyPlaying(np);
-  const { backdrop, accent, palette, mono, url: themeUrl } = useArtTheme(artUrl);
+  const { backdrop, accent, palette, mono } = useArtTheme(artUrl);
   const color = playing ? accent : NEUTRAL_ACCENT;
 
   const [pin, setPin] = useState<string | null>(null);
@@ -1411,7 +1322,7 @@ export function TouchControl() {
     try { setPin(localStorage.getItem(PIN_KEY)); } catch { /* private mode */ }
     setPinReady(true);
   }, []);
-  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, colorMany, setTimer, cancelTimer } = useHome(pin, pinReady, pinTry);
+  const { snap, gate, error, act, load, saveScene, syncing, setAway, setKeep, goNight, setTimer, cancelTimer } = useHome(pin, pinReady, pinTry);
   useAutoUpdate();
   // ?guestPreview=1 only changes how this screen looks (to check the layout); the server still decides what is allowed.
   const previewGuest = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("guestPreview");
@@ -1444,154 +1355,30 @@ export function TouchControl() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const music = useLibrary(pin);
-  const upNext = useUpNext(pin, np?.track?.id);
-  // Album-art lights: each new song recolours the chosen lights (default: the Light Bars) from the artwork.
-  const [ml, setMl] = useState<MusicLightsCfg>(() => (typeof window === "undefined" ? { enabled: false, ids: [], modes: {}, restore: {} } : readMusicLights()));
-  const saveMl = (next: MusicLightsCfg) => { setMl(next); try { localStorage.setItem(ML_KEY, JSON.stringify(next)); } catch { /* ignore */ } };
+  const upNext = np?.next ?? [];
+  // Album-art lights: the music brain on the server plans and runs them (see lib/music/lights). This only shows the settings and sends changes.
+  const ml: MusicLightsCfg = np?.lights ?? { enabled: false, ids: [], modes: {} };
+  const [mlPending, setMlPending] = useState<Partial<MusicLightsCfg> | null>(null);
+  const mlShown: MusicLightsCfg = { ...ml, ...mlPending, modes: { ...ml.modes, ...mlPending?.modes } };
   const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light");
+  const sendMl = (patch: { enabled?: boolean; modes?: Record<string, LightMode> }) => {
+    setMlPending((c) => ({ ...c, ...patch, modes: { ...c?.modes, ...patch.modes } }));
+    fetch("/api/music/lights", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin ?? "" }, body: JSON.stringify(patch) })
+      .then(() => pollOnce())
+      .catch(() => {})
+      .finally(() => setTimeout(() => setMlPending(null), 1500));
+  };
   /** A light's state in the scene: what was chosen, else the Light Bars follow the art and everything else is off. */
   const modeOf = (l: HomeEntity): LightMode => {
-    const chosen = ml.modes[l.id];
+    const chosen = mlShown.modes[l.id];
     if (chosen && (chosen !== "color" || l.supportsColor)) return chosen;
-    const inScene = ml.ids.length ? ml.ids.includes(l.id) : /light bar/i.test(l.name) && Boolean(l.supportsColor);
+    const inScene = mlShown.ids.length ? mlShown.ids.includes(l.id) : /light bar/i.test(l.name) && Boolean(l.supportsColor);
     return inScene ? (l.supportsColor ? "color" : "on") : "off";
   };
   const cycleMode = (l: HomeEntity) => {
     const order: LightMode[] = l.supportsColor ? ["color", "on", "off"] : ["on", "off"];
-    const next = order[(order.indexOf(modeOf(l)) + 1) % order.length];
-    saveMl({ ...ml, modes: { ...ml.modes, [l.id]: next } });
-    appliedKey.current = "";
-    lastTrack.current = null; // apply whites and offs again straight away
+    sendMl({ modes: { [l.id]: order[(order.indexOf(modeOf(l)) + 1) % order.length] } });
   };
-  const appliedKey = useRef("");
-  const lastTrack = useRef<string | null>(null);
-  // How each light really renders: its model (from Home Assistant's device info), fetched once while the scene is on.
-  const [models, setModels] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (!ml.enabled || !pin) return;
-    fetch("/api/home/lights-info", { cache: "no-store", headers: { "x-control-pin": pin } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { lights: { id: string; model: string }[] } | null) => { if (j) setModels(Object.fromEntries(j.lights.map((l) => [l.id, l.model]))); })
-      .catch(() => {});
-  }, [ml.enabled, pin]);
-  // Colour shifts inside a song land on fixed points of the song (every tenth of its length, never closer than 15 seconds),
-  // worked out from Spotify's position instead of a free-running timer, so they stay evenly spaced and in step after skips,
-  // pauses and reloads. No shift happens in the last 8 seconds: the song's own dim is about to start.
-  // the shift number belongs to one song: a stale value from the previous song is ignored (no double command at a song change)
-  const [rotState, setRotState] = useState<{ track: string | null; idx: number }>({ track: null, idx: 0 });
-  const trackId = np?.track?.id;
-  const rot = rotState.track === trackId ? rotState.idx : 0;
-  useEffect(() => {
-    if (guest || !ml.enabled || !playing || !np?.track) return;
-    const track = np.track;
-    const every = Math.max(15_000, track.durationMs / 10);
-    const pos = track.progressMs + (Date.now() - (np.fetchedAt ?? Date.now()));
-    const idx = Math.floor(pos / every);
-    setRotState((cur) => (cur.track === track.id && cur.idx === idx ? cur : { track: track.id, idx }));
-    const next = (idx + 1) * every;
-    if (next > track.durationMs - 8_000) return;
-    const id = setTimeout(() => setRotState({ track: track.id, idx: idx + 1 }), Math.max(0, next - pos));
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-plans whenever Spotify's position is refreshed
-  }, [guest, ml.enabled, playing, trackId, np?.fetchedAt]);
-  /** Work out and send what every light in the scene should do for this song. `songChanged` is a new song (instant colours,
-   *  brightening from the end-of-song dim); otherwise it is a shift inside the song (colour only). Returns false if nothing was sent. */
-  const applyTheme = (track: string, pal: string[], isMono: boolean, shift: number, songChanged: boolean): boolean => {
-    const targets = colorLights.filter((l) => l.available);
-    if (!targets.length) return false;
-    const base: [number, number][] = pal.map(hexToHs); // only the colours that are really in the artwork
-    const firstApply = lastTrack.current === null;
-    // A new song switches colours instantly; unless this is the first time, the lights start dim (the end-of-song dip) and
-    // brighten over about five seconds, so a track change reads as a breath rather than a jump.
-    const lift = songChanged && !firstApply ? { ramp: { from: 25, to: 100 } } : {};
-    const items: ThemeItem[] = [];
-    let colourIndex = 0;
-    for (const l of targets) {
-      const mode = modeOf(l);
-      if (mode === "color" && l.supportsColor && !isMono && base.length) {
-        const [h0, s0] = base[(colourIndex++ + shift) % base.length];
-        if (s0 < 30 && l.supportsColorTemp) { if (songChanged) items.push({ id: l.id, mode: "white", kelvin: kelvinForHue(h0), brightness: 100, ...lift }); continue; } // a washed-out colour is really a white
-        const target = calibrateHue(models[l.id], h0);
-        const from = l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined;
-        // Inside a song only the colour changes (never the brightness). A small change glides; a big one (green to pink would
-        // sweep through yellow and red on the way) simply switches.
-        const bigJump = !from || Math.abs(((target - from.h + 540) % 360) - 180) > 50;
-        items.push({ id: l.id, mode: "color", h: target, s: s0, from, ...(songChanged ? { instant: true, ...lift } : bigJump ? { instant: true } : {}) });
-      } else if (!songChanged) {
-        continue; // whites and offs only change when the song does
-      } else if (mode === "off") {
-        if (l.on !== false) items.push({ id: l.id, mode: l.supportsColor || l.supportsColorTemp ? "white" : "onoff", on: false }); // already off: nothing to send
-      } else if (l.supportsColorTemp) {
-        items.push({ id: l.id, mode: "white", on: true, kelvin: 4000, brightness: 100, ...lift }); // "on" is the same neutral white for every song
-      } else if (l.supportsColor) {
-        items.push({ id: l.id, mode: "color", h: 0, s: 0, instant: true, from: l.hs && l.on ? { h: l.hs[0], s: l.hs[1] } : undefined, ...lift }); // a colour-only bulb: white means no colour
-      } else {
-        items.push({ id: l.id, mode: "onoff", on: true });
-      }
-    }
-    if (!items.length) return false;
-    const modesKey = targets.map((l) => `${l.id}:${modeOf(l)}`).join(",");
-    const key = `${track}|${isMono ? "mono" : pal.join(",")}|${base.length > 1 ? shift % base.length : 0}|${modesKey}`;
-    if (appliedKey.current === key) return false; // this exact look is already on the lights
-    appliedKey.current = key;
-    lastTrack.current = track;
-    const gliding = !songChanged && items.some((i) => i.mode === "color" && !i.instant);
-    // between songs: instant colours with a five-second brighten; inside a song: colour only, a twelve-second glide for small
-    // changes and an instant switch for big ones
-    colorMany(items, songChanged ? (firstApply ? 0 : 5) : gliding ? 12 : 0);
-    return true;
-  };
-
-  // The song the lights are showing, kept in step with what Spotify reports. The colours come from THIS song's artwork: while
-  // the new cover is still being analysed the old palette must not be used (that gave wrong colours at every song change).
-  useEffect(() => {
-    if (guest || !ml.enabled || !playing || !np?.track) return;
-    if (np.track.albumArtUrl && themeUrl !== np.track.albumArtUrl) return; // this song's artwork isn't analysed yet
-    if (!mono && !palette.length) return;
-    applyTheme(np.track.id, palette, mono, rot, lastTrack.current !== np.track.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-applies when the song, its colours, the shift or a light's state change
-  }, [guest, ml.enabled, ml.modes, ml.ids, playing, palette, mono, themeUrl, models, rot, np?.track?.id, colorMany]);
-
-  // Get ahead of the next song: analyse its cover while the current one plays, then switch at the moment this one ends,
-  // without waiting for the next Spotify refresh to notice. If the song turns out to be something else (a skip), the effect
-  // above simply applies the real one.
-  const nextSong = upNext[0];
-  useEffect(() => {
-    if (guest || !ml.enabled || !nextSong?.art) return;
-    loadTheme(nextSong.art);
-  }, [guest, ml.enabled, nextSong?.art]);
-  useEffect(() => {
-    if (guest || !ml.enabled || !playing || !np?.track || !nextSong?.art) return;
-    const track = np.track;
-    const msLeft = track.durationMs - (track.progressMs + (Date.now() - (np.fetchedAt ?? Date.now())));
-    const delay = msLeft - 450; // the command takes about half a second to reach the bulbs
-    if (delay < 0 || delay > 20 * 60_000) return;
-    const art = nextSong.art, id = nextSong.id;
-    const timer = setTimeout(async () => {
-      const th = peekTheme(art) ?? (await loadTheme(art));
-      if (th && (th.mono || th.palette.length)) applyTheme(id, th.palette, th.mono, 0, true);
-    }, delay);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-plans whenever Spotify's position or the queue is refreshed
-  }, [guest, ml.enabled, playing, np?.track?.id, np?.fetchedAt, nextSong?.id, nextSong?.art]);
-  // Dim into the end of each song: about five seconds before it finishes the lit lights ease down to a quarter, then the
-  // next song's colours arrive at that dim level and brighten (see the effect above). Rescheduled whenever Spotify's
-  // position is refreshed, so skips and seeks stay in step.
-  useEffect(() => {
-    if (guest || !ml.enabled || !playing || !np?.track) return;
-    const track = np.track;
-    const msLeft = track.durationMs - (track.progressMs + (Date.now() - (np.fetchedAt ?? Date.now())));
-    const delay = msLeft - 5500;
-    if (delay < 0 || delay > 20 * 60_000) return;
-    const id = setTimeout(() => {
-      const dim: ThemeItem[] = colorLights
-        .filter((l) => l.available && l.on && modeOf(l) !== "off")
-        .map((l) => ({ id: l.id, mode: "dim" as const, brightness: 25, ramp: { from: l.brightness ?? 100, to: 25 } }));
-      if (dim.length) colorMany(dim, 5);
-    }, delay);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reschedules when the song or Spotify's position changes
-  }, [guest, ml.enabled, playing, np?.track?.id, np?.fetchedAt, colorMany]);
 
   /** Plain white at full brightness (neutral 4000K where a bulb has a white temperature, otherwise colour with no saturation). */
   const resetToWhite = (targets: HomeEntity[]) => {
@@ -1607,24 +1394,11 @@ export function TouchControl() {
   };
   /** The Reset button: no theme, every light plain white at 100%. */
   const resetAllLights = () => {
-    if (ml.enabled) saveMl({ ...ml, enabled: false, restore: {} });
-    resetToWhite(devices);
+    if (mlShown.enabled) sendMl({ enabled: false });
+    else resetToWhite(devices);
   };
-  /** Switch the album-art lights on (remembering how those lights were) or off (back to plain white at 100%). */
-  const setMusicLights = (on: boolean) => {
-    if (on) {
-      const targets = colorLights;
-      const restore: MusicLightsCfg["restore"] = {};
-      for (const l of targets) restore[l.id] = { on: Boolean(l.on), brightness: l.brightness, colorTemp: l.colorTemp, hs: l.hs };
-      appliedKey.current = "";
-      lastTrack.current = null; // a fresh start: apply every light (colours, whites and offs), instantly
-      saveMl({ ...ml, enabled: true, restore });
-    } else {
-      resetToWhite(colorLights);
-      lastTrack.current = null;
-      saveMl({ ...ml, enabled: false, restore: {} });
-    }
-  };
+  /** Switch the album-art lights on or off (off puts the lights back to plain white at 100%, done by the server). */
+  const setMusicLights = (on: boolean) => sendMl({ enabled: on });
   const loadLibrary = music.load;
   useEffect(() => { if (!gate) loadLibrary(); }, [gate, loadLibrary]);
   useEffect(() => { if (sheet?.type === "music") loadLibrary(); }, [sheet?.type, loadLibrary]);
@@ -1868,7 +1642,7 @@ export function TouchControl() {
                 <div className="caps-label" style={{ fontSize: 13 }}>Scenes</div>
                 <div className="flex flex-wrap gap-3">
                   {scenes.map((s) => <SceneButton key={s.id} e={s} act={act} accent={color} />)}
-                  <MusicLightsScene accent={color} api={{ cfg: ml, set: setMusicLights, cycle: cycleMode, modeOf, lights: colorLights, palette, mono }} />
+                  <MusicLightsScene accent={color} api={{ cfg: mlShown, set: setMusicLights, cycle: cycleMode, modeOf, lights: colorLights, palette, mono }} />
                   {lights.length > 0 && (
                     <Press onClick={() => { setSheet(null); setSaving(true); }} className="flex items-center gap-3 px-6 shrink-0 text-white/70 font-semibold" style={{ height: 92, borderRadius: 30, border: "2px dashed rgba(255,255,255,0.25)", fontSize: 20 }}>
                       + Save scene

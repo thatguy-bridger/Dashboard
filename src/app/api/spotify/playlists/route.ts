@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { d1Query } from "@/lib/d1";
-import { getValidSpotifyToken } from "@/lib/spotify";
+import { spotifyFetch } from "@/lib/music/spotifyApi";
 import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
 
 const KEY = "musicDefaults";
@@ -23,22 +23,20 @@ const deny = (gate: string) => NextResponse.json({ error: gate }, { status: gate
 export async function GET(req: NextRequest) {
   const gate = checkPin(req.headers.get("x-control-pin"));
   if (gate !== "ok") return deny(gate);
-  const token = await getValidSpotifyToken();
-  if (!token) return NextResponse.json({ error: "not_connected" }, { status: 401 });
-  const h = { Authorization: `Bearer ${token}` };
   const playlists: { uri: string; name: string; image: string | null; tracks: number }[] = [];
-  let url: string | null = "https://api.spotify.com/v1/me/playlists?limit=50";
+  let url: string | null = "me/playlists?limit=50";
   for (let i = 0; url && i < 4; i++) {
-    const res: Response = await fetch(url, { headers: h, cache: "no-store" });
-    if (res.status === 403 || res.status === 401) return NextResponse.json({ error: "reconnect" }, { status: 403 });
+    const res: Response = await spotifyFetch(url);
+    if (res.status === 401) return NextResponse.json({ error: "not_connected" }, { status: 401 });
+    if (res.status === 403) return NextResponse.json({ error: "reconnect" }, { status: 403 });
     if (!res.ok) return NextResponse.json({ error: "spotify_failed", status: res.status }, { status: 502 });
     const j = await res.json();
     for (const p of j.items ?? []) if (p) playlists.push({ uri: p.uri, name: p.name, image: p.images?.[0]?.url ?? null, tracks: p.tracks?.total ?? p.items?.total ?? 0 });
-    url = j.next;
+    url = j.next ? String(j.next).replace("https://api.spotify.com/v1/", "") : null;
   }
   let devices: { id: string; name: string; active: boolean }[] = [];
   try {
-    const d = await fetch("https://api.spotify.com/v1/me/player/devices", { headers: h, cache: "no-store" });
+    const d = await spotifyFetch("me/player/devices");
     if (d.ok) devices = ((await d.json()).devices ?? []).filter((x: { id: string | null }) => x.id).map((x: { id: string; name: string; is_active: boolean }) => ({ id: x.id, name: x.name, active: x.is_active }));
   } catch { /* devices are optional */ }
   // The hidden "network" view: every speaker Home Assistant knows, joined to its Spotify device by name

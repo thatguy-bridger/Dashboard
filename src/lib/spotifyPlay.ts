@@ -1,6 +1,7 @@
 import { d1Query } from "@/lib/d1";
 import { getProvider } from "@/lib/smarthome";
-import { getValidSpotifyToken } from "@/lib/spotify";
+import { spotifyFetch } from "@/lib/music/spotifyApi";
+import { tick } from "@/lib/music/conductor";
 
 export interface MusicPrefs { uri?: string; deviceId?: string; deviceName?: string; entityId?: string }
 type Dev = { id: string; name: string; is_active: boolean };
@@ -18,10 +19,9 @@ export async function loadMusicPrefs(): Promise<MusicPrefs> {
 
 /** The Spotify device to play on: the wanted one (by id or name), waking a Home Assistant speaker that
  *  Spotify can't see yet; otherwise the active device; otherwise the first one. */
-export async function resolveDevice(token: string, want: MusicPrefs): Promise<Dev | null> {
-  const h = { Authorization: `Bearer ${token}` };
+export async function resolveDevice(want: MusicPrefs): Promise<Dev | null> {
   const devices = async (): Promise<Dev[]> => {
-    const r = await fetch("https://api.spotify.com/v1/me/player/devices", { headers: h, cache: "no-store" });
+    const r = await spotifyFetch("me/player/devices");
     return r.ok ? (await r.json()).devices ?? [] : [];
   };
   let list = await devices();
@@ -42,10 +42,9 @@ export async function resolveDevice(token: string, want: MusicPrefs): Promise<De
 /** Pick music back up: exactly where Spotify was (same playlist/album, song and position), or, if Spotify
  *  has forgotten the session, the last song it played. Returns an error code or null. */
 export async function resumeMusic(): Promise<string | null> {
-  const token = await getValidSpotifyToken();
-  if (!token) return "not_connected";
-  const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-  const stateRes = await fetch("https://api.spotify.com/v1/me/player?additional_types=track", { headers: h, cache: "no-store" });
+  const stateRes = await spotifyFetch("me/player?additional_types=track");
+  if (stateRes.status === 401) return "not_connected";
+  if (stateRes.status === 429) return "rate_limited";
   const state = stateRes.status === 200 ? await stateRes.json() : null;
   if (state?.is_playing) return null; // already playing: leave it alone
 
@@ -53,7 +52,7 @@ export async function resumeMusic(): Promise<string | null> {
   let context: { type: string; uri: string } | null = state?.context ?? null;
   let position = state?.progress_ms ?? 0;
   if (!item) {
-    const r = await fetch("https://api.spotify.com/v1/me/player/recently-played?limit=1", { headers: h, cache: "no-store" });
+    const r = await spotifyFetch("me/player/recently-played?limit=1");
     const last = r.ok ? (await r.json()).items?.[0] : null;
     if (!last?.track) return r.status === 403 ? "reconnect" : "nothing_to_resume";
     item = last.track;
@@ -62,28 +61,23 @@ export async function resumeMusic(): Promise<string | null> {
   }
   const prefs = await loadMusicPrefs();
   const want: MusicPrefs = prefs.deviceId || prefs.deviceName ? prefs : { ...prefs, deviceId: state?.device?.id };
-  const device = await resolveDevice(token, want);
+  const device = await resolveDevice(want);
   if (!device) return "no_device";
   const body = context && (context.type === "playlist" || context.type === "album")
     ? { context_uri: context.uri, offset: { uri: item!.uri }, position_ms: position }
     : { uris: [item!.uri], position_ms: position };
-  const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", headers: h, body: JSON.stringify(body), cache: "no-store" });
-  return res.ok || res.status === 204 ? null : "spotify_refused";
+  const res = await spotifyFetch(`me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", body: JSON.stringify(body) });
+  if (res.ok || res.status === 204) { await tick({ force: true }).catch(() => {}); return null; }
+  return "spotify_refused";
 }
 
 /** Start the saved default playlist on the saved default speaker (morning wake-up). Returns an error code or null. */
 export async function startDefaultPlaylist(): Promise<string | null> {
-  const token = await getValidSpotifyToken();
-  if (!token) return "not_connected";
   const prefs = await loadMusicPrefs();
   if (!prefs.uri) return "no_default";
-  const device = await resolveDevice(token, prefs);
+  const device = await resolveDevice(prefs);
   if (!device) return "no_device";
-  const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(device.id)}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ context_uri: prefs.uri }),
-    cache: "no-store",
-  });
-  return res.ok || res.status === 204 ? null : "spotify_refused";
+  const res = await spotifyFetch(`me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", body: JSON.stringify({ context_uri: prefs.uri }) });
+  if (res.ok || res.status === 204) { await tick({ force: true }).catch(() => {}); return null; }
+  return res.status === 401 ? "not_connected" : "spotify_refused";
 }

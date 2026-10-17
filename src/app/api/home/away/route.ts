@@ -3,7 +3,7 @@ import { checkPin, getProvider, haConfigured } from "@/lib/smarthome";
 import { getHomeConfig } from "@/lib/smarthome/config";
 import { bustGuest } from "@/lib/smarthome/guest";
 import { resumeMusic } from "@/lib/spotifyPlay";
-import { getValidSpotifyToken } from "@/lib/spotify";
+import { command } from "@/lib/music/conductor";
 import { installAwayScripts } from "@/lib/smarthome/homeAssistant";
 
 /** Body: { mode: "leave" | "return" }. Leave remembers what was on and turns everything off;
@@ -24,10 +24,7 @@ export async function POST(req: NextRequest) {
       // Everything at once: Home Assistant's script (one call) and Spotify's own pause (stops music fastest).
       await Promise.all([
         provider.leaveHome?.(),
-        (async () => {
-          const token = await getValidSpotifyToken().catch(() => null);
-          if (token) await fetch("https://api.spotify.com/v1/me/player/pause", { method: "PUT", headers: { Authorization: `Bearer ${token}` }, cache: "no-store" }).catch(() => {});
-        })(),
+        command("pause").catch(() => {}),
       ]);
       return NextResponse.json({ ok: true });
     }

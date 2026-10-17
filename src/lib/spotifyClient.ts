@@ -18,6 +18,13 @@ export interface NowPlaying {
   fetchedAt?: number;
   volumePercent?: number | null;
   track: SpotifyTrack | null;
+  /** the next songs in the queue, known ahead of time by the music brain */
+  next?: { id: string; name: string; artists: string; art: string | null }[];
+  /** where the music brain got this from, and its version (changes whenever anything does) */
+  source?: "spotify" | "speaker" | "estimate" | "idle";
+  seq?: number;
+  /** the "Music lights" scene as the music brain has it */
+  lights?: { enabled: boolean; ids: string[]; modes: Record<string, "color" | "on" | "off"> };
   /** set when Spotify could not be asked (rate limit, outage): the rest of the reply is empty and must not replace what's shown */
   error?: string;
   retryAfter?: number;
@@ -28,13 +35,11 @@ export interface LyricLine {
   text: string;
 }
 
-// One shared poller per page — the island and the lyrics widget both read
-// from it instead of each hitting the API (Spotify rate-limits hard).
-// Adaptive: 30s while playing (plus a poll right as the track ends), 60s when idle — the
-// progress bar is interpolated locally, so frequent polling buys nothing.
+// One shared poller per page. It reads the music brain's record (/api/music/state); the screens never ask Spotify
+// themselves. The brain is updated every few seconds by Home Assistant, so this only has to pick that up.
 // The free hosting plan allows 1M requests a month in total, so these are deliberately lazy: taps update the screen
-// instantly on their own (optimistic), and this only has to notice changes made elsewhere.
-const PLAYING_MS = 10_000;
+// instantly on their own (optimistic, and the command's reply carries the new record), and a poll lands right as a song ends.
+const PLAYING_MS = 8_000;
 const IDLE_MS = 45_000;
 /** After a tap, ignore polls that still show the old play/pause state (Spotify takes a moment to report it). */
 let hold: { isPlaying: boolean; until: number } | null = null;
@@ -48,7 +53,7 @@ export async function pollOnce() {
   if (typeof document !== "undefined" && document.hidden) return;
   try {
     const sent = Date.now();
-    const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
+    const res = await fetch("/api/music/state", { cache: "no-store" });
     if (!res.ok) return;
     const received = Date.now();
     const next = (await res.json()) as NowPlaying & { serverNow?: number };
@@ -178,7 +183,8 @@ export function useLyrics(track: SpotifyTrack | null) {
   return lines;
 }
 
-/** Playback command: the screen reacts immediately (play/pause flips, progress freezes), then confirms with quick polls. */
+/** Playback command: the screen reacts immediately (play/pause flips, progress freezes), the music brain updates the shared record
+ *  and answers with it, then a couple of quick reads confirm. */
 export async function controlSpotify(action: "play" | "pause" | "next" | "previous" | "volume", value?: number) {
   if (latest && (action === "play" || action === "pause")) {
     const playing = action === "play";
@@ -194,15 +200,23 @@ export async function controlSpotify(action: "play" | "pause" | "next" | "previo
     listeners.forEach((fn) => fn(latest!));
   }
   try {
-    await fetch("/api/spotify/control", {
+    const sent = Date.now();
+    const res = await fetch("/api/music/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, value }),
     });
+    const j = (await res.json().catch(() => null)) as { now?: NowPlaying & { serverNow?: number } } | null;
+    if (j?.now && action !== "volume") {
+      const next = j.now;
+      if (typeof next.serverNow === "number" && next.fetchedAt) next.fetchedAt = next.fetchedAt - (next.serverNow - (sent + Date.now()) / 2);
+      latest = { ...next, lights: latest?.lights ?? next.lights };
+      listeners.forEach((fn) => fn(latest!));
+    }
   } catch {
     // ignore: controls are best-effort
   }
-  for (const ms of [350, 1000, 2200, 4000]) setTimeout(pollOnce, ms);
+  for (const ms of [900, 2500]) setTimeout(pollOnce, ms);
 }
 
 /** Spotify briefly reports "nothing playing" between songs (and during ads). Reading that straight

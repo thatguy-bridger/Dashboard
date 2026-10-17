@@ -168,7 +168,7 @@ export const homeAssistantProvider: HomeProvider = {
     }
   },
   async startTimer(id: string, minutes: number, action: "on" | "off") { await startDeviceTimer(id, minutes, action); },
-  async fade(id: string, frames: Record<string, unknown>[], delaySeconds: number) { await runFade(id, frames, delaySeconds); },
+  async fade(id: string, frames: FadeFrame[], startInSeconds: number) { await runFade(id, frames, startInSeconds); },
   async stopFade(id: string) { await stopFade(id); },
   async cancelTimer(id: string) { await cancelDeviceTimer(id); },
   async returnHome() {
@@ -573,6 +573,8 @@ export interface LightInfo {
   /** can it fade between colours on its own (supported_features bit 32) */
   transition: boolean;
   effects: boolean;
+  on: boolean;
+  available: boolean;
 }
 
 /** Brand, model and colour abilities of every light, in one template call plus one states call. */
@@ -601,6 +603,8 @@ export async function lightsInfo(): Promise<LightInfo[]> {
       maxKelvin: typeof a.max_color_temp_kelvin === "number" ? a.max_color_temp_kelvin : null,
       transition: (features & 32) !== 0,
       effects: (features & 4) !== 0,
+      on: s.state === "on",
+      available: s.state !== "unavailable",
     };
   });
 }
@@ -608,9 +612,9 @@ export async function lightsInfo(): Promise<LightInfo[]> {
 const fadeName = (id: string) => `hb_fade_${id.replace(/[^a-z0-9]/gi, "_").toLowerCase()}`;
 const fadeVerified = new Set<string>();
 
-/** One restartable Home Assistant script per light that plays a list of frames (each a light.turn_on) with a pause between.
- *  Starting it again restarts it, so a new command always cancels the old fade: nothing can fight it, and the stepping runs
- *  inside Home Assistant, not on the hosting plan. */
+/** One restartable Home Assistant script per light that plays a timed list of frames: wait `start_in` seconds, then for each frame
+ *  turn the light on with its data (or off) and wait `wait` seconds. Starting it again restarts it, so a new plan always cancels
+ *  the old one: nothing can fight it, and all the timing runs inside Home Assistant, not on the hosting plan. */
 export async function installFadeScripts(): Promise<string[]> {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
   const lights = raw.filter((s) => s.entity_id.startsWith("light.")).map((s) => s.entity_id);
@@ -619,9 +623,12 @@ export async function installFadeScripts(): Promise<string[]> {
       alias: `Home Base fade: ${id}`,
       mode: "restart",
       sequence: [
+        { delay: "{{ start_in | default(0) | float(0) }}" },
         { repeat: { for_each: "{{ frames }}", sequence: [
-          { action: "light.turn_on", target: { entity_id: id }, data: "{{ repeat.item }}" },
-          { delay: "{{ delay | default(0) | float(0) }}" },
+          { if: [{ condition: "template", value_template: "{{ repeat.item.off | default(false) }}" }],
+            then: [{ action: "light.turn_off", target: { entity_id: id } }],
+            else: [{ action: "light.turn_on", target: { entity_id: id }, data: "{{ repeat.item.data | default({}) }}" }] },
+          { delay: "{{ repeat.item.wait | default(0) | float(0) }}" },
         ] } },
       ],
     };
@@ -641,15 +648,65 @@ async function ensureFade(ids: string[]) {
   else unknown.forEach((id) => fadeVerified.add(id));
 }
 
-export type FadeFrame = Record<string, unknown>;
+/** One step of a light plan: what to send (light.turn_on data, or off), then how long to wait before the next step (seconds). */
+export interface FadeFrame { data?: Record<string, unknown>; off?: boolean; wait: number }
 
-/** Play frames on a light from Home Assistant's side, replacing any fade already running on it. */
-export async function runFade(id: string, frames: FadeFrame[], delaySeconds: number) {
+/** Play a timed plan on a light from Home Assistant's side, replacing any plan already running on it. */
+export async function runFade(id: string, frames: FadeFrame[], startInSeconds: number) {
   await ensureFade([id]);
-  await call("script", "turn_on", { entity_id: `script.${fadeName(id)}`, variables: { frames, delay: delaySeconds } });
+  await call("script", "turn_on", { entity_id: `script.${fadeName(id)}`, variables: { frames, start_in: startInSeconds } });
 }
 
 /** Cancel any fade running on a light (before an instant on/off). */
 export async function stopFade(id: string) {
   try { await call("script", "turn_off", { entity_id: `script.${fadeName(id)}` }); } catch { /* no fade was running */ }
+}
+
+
+export interface SpeakerInfo {
+  id: string;
+  name: string;
+  state: string;
+  title: string;
+  artist: string;
+  /** position in the song (ms) as of `at` (server ms), when the speaker reports one */
+  positionMs: number | null;
+  at: number | null;
+  app: string;
+}
+
+/** Every speaker's state in one call. Cast speakers report their song within a second of a change: the music brain cross-checks Spotify against this. */
+export async function speakerStates(): Promise<SpeakerInfo[]> {
+  const T = "¦";
+  const template = `{% for s in states.media_player %}{{ s.entity_id }}${T}{{ s.attributes.friendly_name or '' }}${T}{{ s.state }}${T}{{ s.attributes.media_title or '' }}${T}{{ s.attributes.media_artist or '' }}${T}{{ s.attributes.media_position if s.attributes.media_position is not none else '' }}${T}{{ as_timestamp(s.attributes.media_position_updated_at) if s.attributes.media_position_updated_at else '' }}${T}{{ s.attributes.app_name or '' }}\n{% endfor %}`;
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant template failed (${res.status})`);
+  return (await res.text()).split("\n").filter(Boolean).map((line) => {
+    const [id, name, state, title, artist, pos, at, app] = line.split(T);
+    return { id, name, state, title, artist, positionMs: pos === "" ? null : Math.round(Number(pos) * 1000), at: at === "" ? null : Math.round(Number(at) * 1000), app: app ?? "" };
+  });
+}
+
+/** The Home Assistant automation that nudges the music brain: every 5 seconds while something plays (once a minute otherwise),
+ *  and at once when a speaker starts, stops or changes song. The brain, not the screens, is what talks to Spotify. */
+export async function installMusicTick(speakerIds: string[]) {
+  const body = {
+    alias: "Home Base: music tick",
+    description: "Calls the Home Base music brain so every screen and the lights stay in step with the music. Installed from the tablet.",
+    mode: "queued",
+    max: 4,
+    max_exceeded: "silent",
+    triggers: [
+      { trigger: "time_pattern", seconds: "/5", id: "tick" },
+      ...(speakerIds.length ? [
+        { trigger: "state", entity_id: speakerIds, attribute: "media_title", id: "change" },
+        { trigger: "state", entity_id: speakerIds, to: null, id: "change" },
+      ] : []),
+    ],
+    conditions: [{ condition: "template", value_template: "{{ trigger.id == 'change' or now().second < 5 or (states.media_player | selectattr('state','eq','playing') | list | count > 0) }}" }],
+    actions: [{ action: "rest_command.home_base_hook", data: { do: "tick" }, continue_on_error: true }],
+  };
+  const res = await fetch(`${URL_()}/api/config/automation/config/home_base_music_tick`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't create the music tick automation (${res.status})`);
+  await call("automation", "reload", {});
 }
