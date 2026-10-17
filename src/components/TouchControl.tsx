@@ -431,6 +431,7 @@ function lightColor(e: HomeEntity): string {
   return "#ffd27a";
 }
 
+const fmtTime = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9]/g, "");
 const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
 
@@ -747,6 +748,7 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
   const np = useNowPlaying();
   const track = np?.track ?? null;
   const upNext = useUpNext(pin, track?.id);
+  const progress = useEstimatedProgress(track, np?.isPlaying ?? false, np?.fetchedAt);
   const [starting, setStarting] = useState(false);
 
   const start = async () => {
@@ -786,6 +788,15 @@ function MusicController({ accent, music, onOpen, setMessage, height, pin }: { a
           <FitText className="text-white/60 font-medium" style={{ fontSize: 20 }}>{track.artists}</FitText>
         </div>
       </Press>
+      <div className="w-full shrink-0" style={{ padding: "0 8px" }}>
+        <div className="rounded-full overflow-hidden" style={{ height: 8, background: "rgba(255,255,255,0.18)" }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
+        </div>
+        <div className="flex justify-between num-rounded font-semibold text-white/55 mt-1.5" style={{ fontSize: 16 }}>
+          <span>{fmtTime(progress)}</span>
+          <span>{fmtTime(track.durationMs)}</span>
+        </div>
+      </div>
       {upNext.length > 0 && (
         <div className="w-full shrink-0" style={{ padding: "0 8px" }}>
           <div className="caps-label mb-1.5" style={{ fontSize: 12 }}>Up next</div>

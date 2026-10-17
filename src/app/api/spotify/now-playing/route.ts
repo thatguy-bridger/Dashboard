@@ -10,18 +10,21 @@ const CACHE_MS = 1500;
 const NO_STORE = { headers: { "Cache-Control": "no-store" } };
 
 
+/** serverNow lets the screen correct for clock differences and network delay when it estimates the song position. */
+const stamp = (body: unknown) => ({ ...(body as Record<string, unknown>), serverNow: Date.now() });
+
 export async function GET() {
   if (Date.now() < npState.blockedUntil) {
     return NextResponse.json(
-      npState.cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" },
+      stamp(npState.cache?.body ?? { connected: true, isPlaying: false, track: null, error: "rate limited by Spotify" }),
       NO_STORE
     );
   }
-  if (npState.cache && Date.now() - npState.cache.at < CACHE_MS) return NextResponse.json(npState.cache.body, NO_STORE);
+  if (npState.cache && Date.now() - npState.cache.at < CACHE_MS) return NextResponse.json(stamp(npState.cache.body), NO_STORE);
 
   const body = await fetchNowPlaying();
   npState.cache = { at: Date.now(), body };
-  return NextResponse.json(body, NO_STORE);
+  return NextResponse.json(stamp(body), NO_STORE);
 }
 
 async function fetchNowPlaying(): Promise<Record<string, unknown>> {
@@ -30,6 +33,7 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
     return ({ connected: false, isPlaying: false, track: null });
   }
 
+  const askedAt = Date.now();
   const res = await fetch("https://api.spotify.com/v1/me/player?additional_types=track", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
@@ -56,7 +60,8 @@ async function fetchNowPlaying(): Promise<Record<string, unknown>> {
   return ({
     connected: true,
     isPlaying: Boolean(data.is_playing),
-    fetchedAt: Date.now(),
+    // Spotify measured the position somewhere between asking and answering, so use the midpoint.
+    fetchedAt: Math.round((askedAt + Date.now()) / 2),
     volumePercent: data.device?.volume_percent ?? null,
     track: {
       id: item.id,

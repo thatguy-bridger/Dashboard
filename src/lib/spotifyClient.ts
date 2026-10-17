@@ -41,9 +41,14 @@ let running = false;
 export async function pollOnce() {
   if (typeof document !== "undefined" && document.hidden) return;
   try {
+    const sent = Date.now();
     const res = await fetch("/api/spotify/now-playing", { cache: "no-store" });
     if (!res.ok) return;
-    const next = (await res.json()) as NowPlaying;
+    const received = Date.now();
+    const next = (await res.json()) as NowPlaying & { serverNow?: number };
+    // Put the moment Spotify measured the position on this screen's own clock: assume the reply took half the
+    // round trip, and correct for the server's clock differing from this one.
+    if (typeof next.serverNow === "number" && next.fetchedAt) next.fetchedAt = next.fetchedAt - (next.serverNow - (sent + received) / 2);
     if (hold && Date.now() < hold.until && next.isPlaying !== hold.isPlaying) return;
     latest = next;
     listeners.forEach((fn) => fn(latest!));
@@ -114,7 +119,7 @@ export function useEstimatedProgress(track: SpotifyTrack | null, isPlaying: bool
     const id = setInterval(() => {
       const elapsed = Date.now() - start;
       setProgressMs(Math.min(track.durationMs, base + elapsed));
-    }, 200);
+    }, 100);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-runs when track/fetchedAt change, not every render
   }, [track?.id, track?.progressMs, isPlaying, fetchedAt]);
