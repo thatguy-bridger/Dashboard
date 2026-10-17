@@ -177,6 +177,25 @@ function applyLocal(e: HomeEntity, a: HomeAction): HomeEntity {
   }
 }
 
+/** True after `ms` with no touch. The first touch while asleep only wakes the screen. */
+function useIdle(ms: number) {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    const arm = () => { clearTimeout(t); t = setTimeout(() => setIdle(true), ms); };
+    const poke = () => { if (!idleRef.current) arm(); };
+    const idleRef = { current: false };
+    const sync = (v: boolean) => { idleRef.current = v; setIdle(v); };
+    t = setTimeout(() => sync(true), ms);
+    const down = () => { if (idleRef.current) return; clearTimeout(t); t = setTimeout(() => sync(true), ms); };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointermove", poke, true);
+    (window as unknown as { __wake?: () => void }).__wake = () => { sync(false); arm(); setTimeout(() => { idleRef.current = false; }, 0); };
+    return () => { clearTimeout(t); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", poke, true); };
+  }, [ms]);
+  return { idle, wake: () => (window as unknown as { __wake?: () => void }).__wake?.() };
+}
+
 function useScale() {
   const [s, setS] = useState(1);
   useEffect(() => {
@@ -839,6 +858,7 @@ export function TouchControl() {
   }, []);
   const { snap, gate, error, act, saveScene, syncing } = useHome(pin);
   useAutoUpdate();
+  const { idle, wake } = useIdle(2 * 60_000);
   const [sheet, setSheet] = useState<SheetState>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -987,6 +1007,14 @@ export function TouchControl() {
       </div>
       <TopBar />
       <ActivityPills includeMusic={false} hide={["game"]} />
+      {/* fully dim when untouched: pure black (off on OLED), a faint clock, touch to wake */}
+      <div
+        onPointerDown={wake}
+        className="absolute inset-0 z-50 bg-black flex items-center justify-center"
+        style={{ opacity: idle ? 1 : 0, pointerEvents: idle ? "auto" : "none", transition: "opacity 1.2s ease" }}
+      >
+        <div className="num-rounded font-semibold" style={{ fontSize: 120, color: "rgba(255,255,255,0.12)" }}>{time}</div>
+      </div>
     </div>
   );
 }
