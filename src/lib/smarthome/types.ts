@@ -39,6 +39,8 @@ export interface HomeSnapshot {
   /** timers still running (entity id -> end time and action) */
   timers?: Record<string, DeviceTimer>;
   /** guest mode: in force while the owner is away (unless unlocked with the PIN) */
+  /** the morning wake-up settings */
+  morning?: MorningConfig;
   guest?: { active: boolean; mode: "auto" | "on" | "off"; ownerAway: boolean; overrideUntil: number };
   /** entity ids flagged to stay on when "All lights" is turned off */
   keepOn?: string[];
@@ -73,14 +75,37 @@ export interface HomeConfig {
   keepOn: string[];
   /** running "turn off/on in N minutes" timers: entity id -> when (ms) and what */
   timers: Record<string, DeviceTimer>;
+  morning: MorningConfig;
 }
+
+/** The morning wake-up: a sunrise on the lights, then fan, music and the tablet. Home Assistant runs the schedule. */
+export interface MorningConfig {
+  enabled: boolean;
+  /** "07:00" */
+  time: string;
+  /** 0 = Sunday ... 6 = Saturday */
+  days: number[];
+  /** how long the lights take to come up */
+  minutes: number;
+  /** which lights; empty = all of them */
+  lightIds: string[];
+  music: boolean;
+  /** speaker volume when the music starts (0-100) */
+  volume: number;
+  /** fan speed (0-100) part-way through, or null to leave the fan alone */
+  fanSpeed: number | null;
+  /** wake the tablet screen at the start */
+  tablet: boolean;
+}
+
+export const DEFAULT_MORNING: MorningConfig = { enabled: false, time: "07:00", days: [1, 2, 3, 4, 5], minutes: 15, lightIds: [], music: true, volume: 25, fanSpeed: null, tablet: true };
 
 export interface DeviceTimer {
   endsAt: number;
   action: "on" | "off";
 }
 
-export const EMPTY_HOME_CONFIG: HomeConfig = { hidden: [], rooms: {}, names: {}, scenes: [], keepOn: [], timers: {} };
+export const EMPTY_HOME_CONFIG: HomeConfig = { hidden: [], rooms: {}, names: {}, scenes: [], keepOn: [], timers: {}, morning: DEFAULT_MORNING };
 
 export type HomeAction =
   | { type: "toggle" | "on" | "off" | "activate" | "play" | "pause" | "next" | "previous" }

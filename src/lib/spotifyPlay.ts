@@ -70,3 +70,20 @@ export async function resumeMusic(): Promise<string | null> {
   const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", headers: h, body: JSON.stringify(body), cache: "no-store" });
   return res.ok || res.status === 204 ? null : "spotify_refused";
 }
+
+/** Start the saved default playlist on the saved default speaker (morning wake-up). Returns an error code or null. */
+export async function startDefaultPlaylist(): Promise<string | null> {
+  const token = await getValidSpotifyToken();
+  if (!token) return "not_connected";
+  const prefs = await loadMusicPrefs();
+  if (!prefs.uri) return "no_default";
+  const device = await resolveDevice(token, prefs);
+  if (!device) return "no_device";
+  const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(device.id)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ context_uri: prefs.uri }),
+    cache: "no-store",
+  });
+  return res.ok || res.status === 204 ? null : "spotify_refused";
+}

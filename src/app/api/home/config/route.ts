@@ -22,7 +22,7 @@ export async function PUT(req: NextRequest) {
   if (gate !== "ok") return deny(gate);
   const body = await req.json();
   const current = await getHomeConfig();
-  const next = parseHomeConfig({ ...body, scenes: current.scenes, keepOn: body.keepOn ?? current.keepOn, timers: current.timers });
+  const next = parseHomeConfig({ ...body, scenes: current.scenes, keepOn: body.keepOn ?? current.keepOn, timers: current.timers, morning: current.morning });
   await saveHomeConfig(next);
   return NextResponse.json({ config: next });
 }

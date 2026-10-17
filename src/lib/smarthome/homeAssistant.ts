@@ -1,4 +1,4 @@
-import type { HomeAction, HomeEntity, HomeKind, HomeProvider, HomeSnapshot } from "./types";
+import type { HomeAction, HomeEntity, HomeKind, HomeProvider, HomeSnapshot, MorningConfig } from "./types";
 
 const URL_ = () => (process.env.HOME_ASSISTANT_URL ?? "").replace(/\/+$/, "");
 const headers = () => ({ Authorization: `Bearer ${process.env.HOME_ASSISTANT_TOKEN}`, "Content-Type": "application/json" });
@@ -424,4 +424,56 @@ export async function peopleHome(): Promise<{ name: string; home: boolean }[]> {
   const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
   if (!res.ok) throw new Error(`Home Assistant responded ${res.status}`);
   return (await res.text()).split("\n").filter(Boolean).map((l) => { const [name, state] = l.split("|"); return { name: unescapeName(name.trim()), home: state?.trim() === "home" }; });
+}
+
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Creates (or removes) the Home Assistant automation for the morning wake-up. Home Assistant counts the minutes itself, so
+ *  it runs whether or not the tablet is on. The music step calls rest_command.home_base_hook, a link back to this app. */
+export async function installMorning(m: MorningConfig, tablet: { service: string | null; awake: number }) {
+  const url = `${URL_()}/api/config/automation/config/home_base_morning`;
+  if (!m.enabled) {
+    await fetch(url, { method: "DELETE", headers: headers(), cache: "no-store" }).catch(() => {});
+    return;
+  }
+  const steps = Math.max(2, m.minutes * 2); // a step every 30 seconds
+  const target = { entity_id: m.lightIds.length ? m.lightIds : "all" };
+  const branches: unknown[] = [];
+  if (m.tablet && tablet.service) {
+    branches.push({ sequence: [
+      { action: `notify.${tablet.service}`, data: { message: "command_screen_on" } },
+      { action: `notify.${tablet.service}`, data: { message: "command_screen_brightness_level", data: { command: tablet.awake } } },
+    ] });
+  }
+  // the sunrise: brightness climbs and the white warms from candlelight to daylight, every 30 seconds
+  branches.push({ repeat: { count: steps, sequence: [
+    { action: "light.turn_on", target, data: { brightness_pct: `{{ [1, ((repeat.index / ${steps}) * 100) | round(0) | int] | max }}`, color_temp_kelvin: `{{ (2200 + (repeat.index / ${steps}) * 2300) | int }}` } },
+    { delay: { seconds: 30 } },
+  ] } });
+  if (m.fanSpeed != null) branches.push({ sequence: [{ delay: { minutes: Math.round(m.minutes / 2) } }, { action: "fan.set_percentage", target: { entity_id: "all" }, data: { percentage: m.fanSpeed } }] });
+  if (m.music) branches.push({ sequence: [{ delay: { minutes: Math.round(m.minutes * 0.6) } }, { action: "rest_command.home_base_hook", data: { do: "morning_music" }, continue_on_error: true }] });
+  const body = {
+    alias: "Home Base: morning wake-up",
+    description: "Sunrise on the lights, then fan, music and the tablet. Managed from the tablet's Morning settings.",
+    mode: "single",
+    triggers: [{ trigger: "time", at: `${m.time}:00` }],
+    conditions: m.days.length && m.days.length < 7 ? [{ condition: "time", weekday: m.days.map((d) => WEEKDAYS[d]) }] : [],
+    actions: [{ parallel: branches }],
+  };
+  const res = await fetch(url, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't create the morning automation (${res.status})`);
+}
+
+/** Run the morning routine right now (for the Test button). */
+export async function testMorning() {
+  await call("automation", "trigger", { entity_id: "automation.home_base_morning", skip_condition: true });
+}
+
+/** Speaker volume for everything that can play sound (not the TVs). */
+export async function setSpeakersVolume(volume: number) {
+  const res = await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" });
+  if (!res.ok) return;
+  const raw = (await res.json()) as HaState[];
+  const speakers = raw.filter((s) => s.entity_id.startsWith("media_player.") && s.attributes.volume_level != null && s.state !== "unavailable" && !/\b(tv|uhd|crystal)\b/i.test(s.attributes.friendly_name ?? "")).map((s) => s.entity_id);
+  if (speakers.length) await call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 });
 }

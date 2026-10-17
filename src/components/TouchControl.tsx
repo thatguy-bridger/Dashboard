@@ -10,7 +10,10 @@ import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
 import { OFF_COLOR, lightColor } from "@/lib/lightColor";
-import type { DeviceTimer, HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
+import { useFeeds } from "@/lib/liveActivities";
+import { WeatherIcon } from "@/lib/weatherVisuals";
+import { weatherLabel } from "@/lib/weatherCodes";
+import { DEFAULT_MORNING, type DeviceTimer, type HomeEntity, type HomeSnapshot, type HomeAction, type MorningConfig } from "@/lib/smarthome/types";
 
 /** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
 const withAlpha = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, transparent)`;
@@ -1203,6 +1206,133 @@ function SaveSceneSheet({ onSave, onClose }: { onSave: (name: string) => void; o
   );
 }
 
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const fmtClock = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
+const shiftTime = (hhmm: string, mins: number) => { const [h, m] = hhmm.split(":").map(Number); const t = (((h * 60 + m + mins) % 1440) + 1440) % 1440; return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+
+/** The morning wake-up: lights come up like a sunrise, then fan, music and the tablet. Home Assistant runs it on schedule. */
+function MorningSheet({ initial, lights, pin, accent, onClose, onSaved }: { initial: MorningConfig; lights: HomeEntity[]; pin: string | null; accent: string; onClose: () => void; onSaved: () => void }) {
+  const [m, setM] = useState<MorningConfig>(initial);
+  const [status, setStatus] = useState<string | null>(null);
+  const [vol, setVol] = useState<number | null>(null);
+  const post = async (body: object) => {
+    const res = await fetch("/api/home/morning", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin ?? "" }, body: JSON.stringify(body) });
+    return res.ok;
+  };
+  const chip = (on: boolean) => ({ borderRadius: 20, fontSize: 16, background: on ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.12)", color: on ? "#000" : "#fff" });
+  return (
+    <Sheet title="Morning wake-up" onClose={onClose} glow={accent}>
+      <div className="flex items-center justify-between glass-card" style={{ borderRadius: 30, padding: "16px 24px" }}>
+        <div>
+          <div className="text-white font-bold" style={{ fontSize: 22 }}>Wake me up gently</div>
+          <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>Lights rise like a sunrise, then the fan, music and screen join in.</div>
+        </div>
+        <Toggle on={m.enabled} onChange={(v) => setM({ ...m, enabled: v })} />
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Starts at</div>
+        <div className="flex items-center gap-3">
+          <Press onClick={() => setM({ ...m, time: shiftTime(m.time, -5) })} className="glass-card flex items-center justify-center text-white font-bold" style={{ width: 72, height: 64, borderRadius: 24, fontSize: 28 }}>−</Press>
+          <div className="num-rounded text-white font-bold text-center" style={{ fontSize: 44, minWidth: 190 }}>{fmtClock(m.time)}</div>
+          <Press onClick={() => setM({ ...m, time: shiftTime(m.time, 5) })} className="glass-card flex items-center justify-center text-white font-bold" style={{ width: 72, height: 64, borderRadius: 24, fontSize: 28 }}>+</Press>
+          <Press onClick={() => setM({ ...m, time: shiftTime(m.time, 60) })} className="glass-card px-4 text-white/80 font-semibold" style={{ height: 64, borderRadius: 24, fontSize: 16 }}>+1h</Press>
+        </div>
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Days</div>
+        <div className="flex gap-2">
+          {DAY_LETTERS.map((d, i) => (
+            <Press key={i} onClick={() => setM({ ...m, days: m.days.includes(i) ? m.days.filter((x) => x !== i) : [...m.days, i] })} className="font-bold" style={{ ...chip(m.days.includes(i)), width: 64, height: 56, borderRadius: 28, fontSize: 20 }}>{d}</Press>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Sunrise takes</div>
+        <div className="flex gap-2">
+          {[10, 15, 30, 45].map((n) => <Press key={n} onClick={() => setM({ ...m, minutes: n })} className="px-5 py-3 font-semibold" style={chip(m.minutes === n)}>{n} min</Press>)}
+        </div>
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Lights</div>
+        <div className="flex flex-wrap gap-2">
+          <Press onClick={() => setM({ ...m, lightIds: [] })} className="px-4 py-2 font-semibold" style={chip(m.lightIds.length === 0)}>All lights</Press>
+          {lights.map((l) => (
+            <Press key={l.id} onClick={() => setM({ ...m, lightIds: m.lightIds.includes(l.id) ? m.lightIds.filter((x) => x !== l.id) : [...m.lightIds, l.id] })} className="px-4 py-2 font-semibold" style={chip(m.lightIds.includes(l.id))}>{l.name}</Press>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 30, padding: "16px 24px" }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-white font-bold" style={{ fontSize: 20 }}>Music</div>
+            <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>Starts your default playlist partway through the sunrise.</div>
+          </div>
+          <Toggle on={m.music} onChange={(v) => setM({ ...m, music: v })} />
+        </div>
+        {m.music && (
+          <div>
+            <div className="text-white/55 font-semibold mb-1.5" style={{ fontSize: 14 }}>Speaker volume · {vol ?? m.volume}%</div>
+            <Slider value={vol ?? m.volume} onChange={setVol} onCommit={(v) => { setM({ ...m, volume: v }); setVol(null); }} accent={accent} height={44} />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="caps-label mb-2" style={{ fontSize: 13 }}>Fan</div>
+        <div className="flex flex-wrap gap-2">
+          <Press onClick={() => setM({ ...m, fanSpeed: null })} className="px-4 py-2 font-semibold" style={chip(m.fanSpeed === null)}>Leave alone</Press>
+          <Press onClick={() => setM({ ...m, fanSpeed: 0 })} className="px-4 py-2 font-semibold" style={chip(m.fanSpeed === 0)}>Off</Press>
+          {[1, 2, 3, 4, 5, 6].map((n) => { const v = Math.round((n / 6) * 100); return <Press key={n} onClick={() => setM({ ...m, fanSpeed: v })} className="px-5 py-2 num-rounded font-bold" style={chip(m.fanSpeed === v)}>{n}</Press>; })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between glass-card" style={{ borderRadius: 30, padding: "14px 24px" }}>
+        <div className="text-white font-bold" style={{ fontSize: 20 }}>Wake this tablet’s screen</div>
+        <Toggle on={m.tablet} onChange={(v) => setM({ ...m, tablet: v })} />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Press onClick={async () => { setStatus("Saving…"); const ok = await post({ morning: m }); setStatus(ok ? "Saved" : "Couldn’t save"); if (ok) onSaved(); }} className="px-8 py-4 text-black font-bold" style={{ borderRadius: 26, fontSize: 20, background: accent }}>Save</Press>
+        <Press onClick={async () => { setStatus("Saving…"); if (await post({ morning: m })) { await post({ test: true }); setStatus("Running it now — the lights start rising"); onSaved(); } else setStatus("Couldn’t save"); }} className="glass-card px-6 py-4 text-white font-semibold" style={{ borderRadius: 26, fontSize: 18 }}>Save &amp; test now</Press>
+        {status && <span className="text-white/65 font-semibold" style={{ fontSize: 16 }}>{status}</span>}
+      </div>
+    </Sheet>
+  );
+}
+
+/** A "Good morning" strip shown around the wake-up: weather and what's next. */
+function MorningBrief() {
+  const { weather, events } = useFeeds();
+  const now = useClock(30_000);
+  const next = (events ?? []).find((e) => !e.allDay && new Date(e.end ?? e.start).getTime() > now);
+  const when = next ? new Date(next.start) : null;
+  return (
+    <div className="glass-card flex items-center justify-between gap-6 shrink-0" style={{ borderRadius: 40, padding: "18px 30px", marginBottom: 18 }}>
+      <div className="text-white font-bold" style={{ fontSize: 44 }}>Good morning</div>
+      <div className="flex items-center gap-6 min-w-0">
+        {weather && (
+          <div className="flex items-center gap-3 shrink-0">
+            <WeatherIcon code={weather.weatherCode} isDay={weather.isDay} className="w-9 h-9" />
+            <span className="num-rounded font-bold text-white" style={{ fontSize: 32 }}>{Math.round(weather.tempF)}°</span>
+            <span className="text-white/60 font-semibold" style={{ fontSize: 18 }}>{weatherLabel(weather.weatherCode)}</span>
+          </div>
+        )}
+        {next && when && (
+          <div className="min-w-0">
+            <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>NEXT · {when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div>
+            <FitText className="text-white font-bold" style={{ fontSize: 22 }}>{next.summary}</FitText>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Owner unlock: the PIN is asked for again, because the tablet itself remembers it for normal use. */
 function UnlockSheet({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [bad, setBad] = useState(false);
@@ -1265,7 +1395,7 @@ function PinPad({ gate, onSubmit }: { gate: Gate; onSubmit: (pin: string) => voi
 
 // ---------- screen ----------
 
-type SheetState = null | { type: "light"; id: string } | { type: "room"; room: string } | { type: "all" } | { type: "music" };
+type SheetState = null | { type: "morning" } | { type: "light"; id: string } | { type: "room"; room: string } | { type: "all" } | { type: "music" };
 
 export function TouchControl() {
   const scale = useScale();
@@ -1439,6 +1569,15 @@ export function TouchControl() {
   // The main volume slider drives every speaker (not TVs) so it actually moves the sound.
   const speakers = media.filter((m) => m.volume != null && m.available && !/\b(tv|uhd|crystal)\b/i.test(m.name));
   const nightVol = useNightVolume(pin);
+  // Around the morning wake-up (from a minute before it starts to 90 minutes after it ends) the screen greets you.
+  const inMorning = (() => {
+    const m = snap?.morning;
+    if (!m?.enabled || !now || !m.days.includes(now.getDay())) return false;
+    const [h, mi] = m.time.split(":").map(Number);
+    const start = new Date(now); start.setHours(h, mi, 0, 0);
+    const t = now.getTime() - start.getTime();
+    return t >= -60_000 && t <= (m.minutes + 90) * 60_000;
+  })();
   const night = isNight();
   const depth = now ? nightDepth(now) : 0;
   const setVolume = (v: number) => (speakers.length ? act(speakers.map((s) => s.id), { type: "volume", value: v }) : controlSpotify("volume", v));
@@ -1474,6 +1613,7 @@ export function TouchControl() {
               </div>
               {error && !snap && <div className="glass-card px-6 py-4 text-white/70 font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>{error}</div>}
 
+              {inMorning && !guest && <MorningBrief />}
               {devices.length > 0 && (
                 <div className="relative shrink-0" style={{ height: 400, marginBottom: 28 }}>
                 <ToggleButton
@@ -1558,6 +1698,9 @@ export function TouchControl() {
                 )}
                 {snap && !guest && (
                   <div className="pb-4 flex items-center gap-4 flex-wrap">
+                    <Press onClick={() => setSheet({ type: "morning" })} className="glass-card px-6 py-4 text-white font-semibold" style={{ borderRadius: 28, fontSize: 18 }}>
+                      Morning wake-up: {snap.morning?.enabled ? `${fmtClock(snap.morning.time)} · ${snap.morning.days.length === 7 ? "daily" : snap.morning.days.join("") === "12345" ? "weekdays" : `${snap.morning.days.length} days`}` : "Off"}
+                    </Press>
                     <Press
                       onClick={() => {
                         const order = ["auto", "on", "off"] as const;
@@ -1592,6 +1735,9 @@ export function TouchControl() {
               {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>
+        )}
+        {sheet?.type === "morning" && (
+          <MorningSheet initial={snap?.morning ?? DEFAULT_MORNING} lights={lights} pin={pin} accent={color} onClose={() => setSheet(null)} onSaved={() => load()} />
         )}
         {sheet?.type === "light" && snap && (() => {
           const e = snap.entities.find((x) => x.id === sheet.id);
