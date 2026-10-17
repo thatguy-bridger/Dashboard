@@ -9,6 +9,7 @@ import { controlSpotify, pollOnce, setNowPlayingDimmed, useEstimatedProgress, us
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
+import { OFF_COLOR, lightColor } from "@/lib/lightColor";
 import type { DeviceTimer, HomeEntity, HomeSnapshot, HomeAction } from "@/lib/smarthome/types";
 
 /** Any CSS colour at a given opacity (appending hex alpha to hsl()/rgb() strings is invalid CSS and silently drops the whole gradient). */
@@ -478,25 +479,6 @@ function SceneButton({ e, act, accent }: { e: HomeEntity; act: (target: string |
 }
 
 // ---------- colour helpers ----------
-
-const OFF_COLOR = "#3b3b44";
-
-function kelvinCss(k: number): string {
-  const t = k / 100;
-  const c = (n: number) => Math.round(Math.max(0, Math.min(255, n)));
-  const r = t <= 66 ? 255 : 329.7 * Math.pow(t - 60, -0.1332);
-  const g = t <= 66 ? 99.47 * Math.log(t) - 161.12 : 288.12 * Math.pow(t - 60, -0.0755);
-  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.52 * Math.log(t - 10) - 305.04;
-  return `rgb(${c(r)}, ${c(g)}, ${c(b)})`;
-}
-
-/** The colour a light is showing right now (dark when off). */
-function lightColor(e: HomeEntity): string {
-  if (!e.on) return OFF_COLOR;
-  if (e.hs) return `hsl(${Math.round(e.hs[0])} ${Math.round(e.hs[1])}% ${Math.round(50 + (100 - e.hs[1]) * 0.25)}%)`;
-  if (e.colorTemp) return kelvinCss(e.colorTemp);
-  return "#ffd27a";
-}
 
 const fmtTime = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 /** After 9pm and before 5am (the tablet's local time). */
