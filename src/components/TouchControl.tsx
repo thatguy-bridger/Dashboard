@@ -698,15 +698,33 @@ function useLibrary(pin: string | null) {
 
 type MusicApi = ReturnType<typeof useLibrary>;
 
+/** The next two songs in the Spotify queue, refreshed whenever the current song changes. */
+function useUpNext(pin: string | null, trackId: string | undefined): { id: string; name: string; artists: string }[] {
+  const [next, setNext] = useState<{ id: string; name: string; artists: string }[]>([]);
+  useEffect(() => {
+    if (!trackId) return;
+    let stopped = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/spotify/queue", { cache: "no-store", headers: { "x-control-pin": pin ?? "" } });
+        if (res.ok && !stopped) setNext(((await res.json()) as { next: { id: string; name: string; artists: string }[] }).next);
+      } catch { /* leave the old list */ }
+    }, 800);
+    return () => { stopped = true; clearTimeout(t); };
+  }, [pin, trackId]);
+  return trackId ? next : [];
+}
+
 const playError = (code: string | null) =>
   code === "no_device" ? "Couldn't reach that speaker. Press and hold \"Play on\" in Music to pick another." :
   code === "no_default" ? "Pick a default playlist first." :
   code ? "Couldn't start it. Try again." : null;
 
 /** The front-screen music control: big, with a play/pause you can hit without looking. Tap the art or title for the rest. */
-function MusicController({ accent, music, onOpen, setMessage, height }: { accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void; height: number }) {
+function MusicController({ accent, music, onOpen, setMessage, height, pin }: { accent: string; music: MusicApi; onOpen: () => void; setMessage: (m: string | null) => void; height: number; pin: string | null }) {
   const np = useNowPlaying();
   const track = np?.track ?? null;
+  const upNext = useUpNext(pin, track?.id);
   const [starting, setStarting] = useState(false);
 
   const start = async () => {
@@ -746,6 +764,17 @@ function MusicController({ accent, music, onOpen, setMessage, height }: { accent
           <FitText className="text-white/60 font-medium" style={{ fontSize: 20 }}>{track.artists}</FitText>
         </div>
       </Press>
+      {upNext.length > 0 && (
+        <div className="w-full shrink-0" style={{ padding: "0 8px" }}>
+          <div className="caps-label mb-1.5" style={{ fontSize: 12 }}>Up next</div>
+          {upNext.map((u) => (
+            <div key={u.id} className="flex items-baseline gap-2 min-w-0" style={{ lineHeight: 1.5 }}>
+              <span className="text-white font-semibold truncate" style={{ fontSize: 18 }}>{u.name}</span>
+              <span className="text-white/45 font-medium truncate" style={{ fontSize: 15 }}>{u.artists}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex items-center justify-center gap-6 shrink-0 text-white">
         <Press onClick={() => controlSpotify("previous")} className="flex items-center justify-center" style={{ width: 96, height: 96 }}><Icon d={PREV} size={52} /></Press>
         <Press onClick={() => controlSpotify(np.isPlaying ? "pause" : "play")} className="flex items-center justify-center text-black" style={{ width: 150, height: 150, borderRadius: 75, background: "#fff", boxShadow: "0 10px 40px rgba(0,0,0,0.4)" }}>
@@ -1116,14 +1145,14 @@ export function TouchControl() {
                   glow={groupGlow(devices)}
                   onTap={() => act(devices.map((d) => d.id), { type: anyOn ? "off" : "on" })}
                   onLong={() => setSheet({ type: "all" })}
-                  style={{ width: "100%", height: 250, padding: "0 56px", borderRadius: 56, marginBottom: 20, flexShrink: 0 }}
+                  style={{ width: "100%", height: 400, padding: "0 64px", borderRadius: 64, marginBottom: 18, flexShrink: 0 }}
                 >
-                  <div className="flex items-center gap-10">
-                    <SegmentBulb lights={lights.length ? lights : devices} size={150} />
+                  <div className="flex items-center gap-14">
+                    <SegmentBulb lights={lights.length ? lights : devices} size={230} />
                     <div>
-                      <div className="text-white font-bold" style={{ fontSize: 64, lineHeight: 1.05 }}>All lights</div>
-                      <div className="text-white/65 font-semibold" style={{ fontSize: 26 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}</div>
-                      <div className="text-white/35 font-semibold" style={{ fontSize: 17 }}>Hold for color &amp; scenes</div>
+                      <div className="text-white font-bold" style={{ fontSize: 88, lineHeight: 1.02 }}>All lights</div>
+                      <div className="text-white/65 font-semibold mt-2" style={{ fontSize: 30 }}>{anyOn ? `${devices.filter((d) => d.on).length} of ${devices.length} on · tap to turn off` : "Off · tap to turn on"}</div>
+                      <div className="text-white/35 font-semibold mt-1" style={{ fontSize: 19 }}>Hold for color &amp; scenes</div>
                     </div>
                   </div>
                 </ToggleButton>
@@ -1131,17 +1160,17 @@ export function TouchControl() {
 
               <div className="flex-1 min-h-0 overflow-y-auto pr-2" style={{ scrollbarWidth: "none" }}>
                 <div style={{ minHeight: "100%" }}>
-                  <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))" }}>
+                  <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
                     {rooms.map((room) => {
                       const inRoom = devices.filter((d) => d.room === room);
                       const roomOn = inRoom.some((d) => d.on);
                       return (
-                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={() => setSheet({ type: "room", room })} style={{ height: 150, padding: "0 28px" }}>
-                          <div className="flex items-center gap-4">
-                            <SegmentBulb lights={inRoom} size={64} />
+                        <ToggleButton key={room} on={roomOn} glow={groupGlow(inRoom)} onTap={() => act(inRoom.map((d) => d.id), { type: roomOn ? "off" : "on" })} onLong={() => setSheet({ type: "room", room })} style={{ height: 88, padding: "0 22px", borderRadius: 30 }}>
+                          <div className="flex items-center gap-3">
+                            <SegmentBulb lights={inRoom} size={40} />
                             <div className="min-w-0 flex-1">
-                              <FitText className="text-white font-bold" style={{ fontSize: 28 }}>{room}</FitText>
-                              <div className="text-white/60 font-semibold" style={{ fontSize: 17 }}>{inRoom.filter((d) => d.on).length} of {inRoom.length} on</div>
+                              <FitText className="text-white font-bold" style={{ fontSize: 21 }}>{room}</FitText>
+                              <div className="text-white/60 font-semibold" style={{ fontSize: 14 }}>{inRoom.filter((d) => d.on).length} of {inRoom.length} on</div>
                             </div>
                           </div>
                         </ToggleButton>
@@ -1183,7 +1212,7 @@ export function TouchControl() {
 
             {/* right: music, as tall as the screen allows */}
             <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 90, width: rightW }}>
-              <MusicController accent={color} music={music} onOpen={() => setSheet({ type: "music" })} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
+              <MusicController accent={color} music={music} pin={pin} onOpen={() => setSheet({ type: "music" })} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
               {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>
