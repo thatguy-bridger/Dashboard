@@ -931,10 +931,17 @@ export function TouchControl() {
   const [wakeCam, setWakeCam] = useState(() => {
     try { return typeof window !== "undefined" && localStorage.getItem("hb-wake-camera") === "1"; } catch { return false; }
   });
+  const [camAsk, setCamAsk] = useState<null | "denied">(null);
   const toggleWakeCam = () => {
     const next = !wakeCam;
     setWakeCam(next);
+    setCamAsk(null);
     try { localStorage.setItem("hb-wake-camera", next ? "1" : "0"); } catch { /* ignore */ }
+    // Ask for the camera right now, from this tap, so the permission prompt shows while you're looking at the screen.
+    if (next) {
+      navigator.mediaDevices?.getUserMedia({ video: true }).then((st) => st.getTracks().forEach((t) => t.stop())).catch(() => setCamAsk("denied"));
+      if (!navigator.mediaDevices) setCamAsk("denied");
+    }
   };
   const away = Boolean(snap?.away);
   // Away from home: lights are off, waiting for you. Give the departure a minute before a face counts as "back".
@@ -1070,7 +1077,7 @@ export function TouchControl() {
                       Wake on approach: {wakeCam ? "On" : "Off"}
                     </Press>
                     <div className="text-white/45 font-semibold" style={{ fontSize: 15 }}>
-                      {camStatus === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
+                      {camStatus === "denied" || camAsk === "denied" ? "Camera blocked — allow it for this app in Android settings" : camStatus === "error" ? "Couldn’t start face detection" : "Uses the camera on this tablet only while it’s dimmed or you’re away. Nothing is saved or sent."}
                     </div>
                   </div>
                 )}
