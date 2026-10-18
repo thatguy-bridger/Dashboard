@@ -741,3 +741,26 @@ export async function installBatteryLog() {
   if (!res.ok) throw new Error(`couldn't create the battery log automation (${res.status})`);
   await call("automation", "reload", {});
 }
+
+
+/** How much of the last `windowMs` the tablet's screen was most likely on, 0 to 1. The Home Assistant app doesn't report the screen
+ *  state, but the screen is driven by the motion sensor (on at movement, off about 20 seconds after the last one), so the sensor's
+ *  history says when it was lit. Touches that wake the screen aren't counted. */
+export async function screenOnFraction(windowMs: number, entity = "binary_sensor.tablet_camera_motion"): Promise<number | null> {
+  const now = Date.now(), start = now - windowMs, TAIL = 17_000;
+  const res = await fetch(`${URL_()}/api/history/period/${new Date(start).toISOString()}?filter_entity_id=${entity}&minimal_response&no_attributes`, { headers: headers(), cache: "no-store" });
+  if (!res.ok) return null;
+  const rows = ((await res.json()) as { state: string; last_changed?: string; last_updated?: string }[][])[0] ?? [];
+  if (!rows.length) return null;
+  const spans: [number, number][] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].state !== "on") continue;
+    const from = Math.max(start, new Date(rows[i].last_changed ?? rows[i].last_updated ?? start).getTime());
+    const to = Math.min(now, (i + 1 < rows.length ? new Date(rows[i + 1].last_changed ?? rows[i + 1].last_updated ?? now).getTime() : now) + TAIL);
+    if (to > from) spans.push([from, to]);
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  let total = 0, curEnd = start;
+  for (const [a, b] of spans) { const from = Math.max(a, curEnd); if (b > from) { total += b - from; curEnd = b; } }
+  return Math.min(1, total / windowMs);
+}

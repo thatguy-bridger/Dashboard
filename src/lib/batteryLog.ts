@@ -1,6 +1,6 @@
 import { d1Query } from "@/lib/d1";
 import { haConfigured } from "@/lib/smarthome";
-import { motionState, tabletDeviceStates } from "@/lib/smarthome/homeAssistant";
+import { motionState, screenOnFraction, tabletDeviceStates } from "@/lib/smarthome/homeAssistant";
 import { loadState } from "@/lib/music/state";
 
 /** The tablet's battery, written down every few minutes together with what was going on, so the biggest drains can be found
@@ -10,7 +10,7 @@ let ready = false;
 async function ensureTable() {
   if (ready) return;
   await d1Query(`CREATE TABLE IF NOT EXISTS battery_log (
-    ts INTEGER PRIMARY KEY, level REAL, charging INTEGER, screen INTEGER, temp REAL, motion INTEGER, music INTEGER, extra TEXT
+    ts INTEGER PRIMARY KEY, level REAL, charging INTEGER, screen REAL, temp REAL, motion INTEGER, music INTEGER, extra TEXT
   )`);
   ready = true;
 }
@@ -21,10 +21,11 @@ const KEEP = /^(battery_state|charger_type|battery_health|battery_power|wifi_sig
 
 export async function logBattery(device: string): Promise<{ level: number | null }> {
   await ensureTable();
-  const [dev, motion, music] = await Promise.all([
+  const [dev, motion, music, lit] = await Promise.all([
     haConfigured() ? tabletDeviceStates(device).catch(() => ({} as Record<string, string>)) : Promise.resolve({} as Record<string, string>),
     motionState().catch(() => null),
     loadState().catch(() => null),
+    haConfigured() ? screenOnFraction(3.2 * 60_000).catch(() => null) : Promise.resolve(null),
   ]);
   const level = num(dev.battery_level);
   if (level == null) return { level: null };
@@ -33,17 +34,18 @@ export async function logBattery(device: string): Promise<{ level: number | null
   for (const [k, v] of Object.entries(dev)) if (KEEP.test(k)) extra[k] = v;
   await d1Query(
     "INSERT OR REPLACE INTO battery_log (ts, level, charging, screen, temp, motion, music, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [Date.now(), level, state === "charging" || state === "full" || dev.is_charging === "on" ? 1 : 0, dev.interactive === "on" ? 1 : dev.interactive === "off" ? 0 : null, num(dev.battery_temperature), motion?.active ? 1 : 0, music?.isPlaying ? 1 : 0, JSON.stringify(extra)]
+    [Date.now(), level, state === "charging" || state === "full" || dev.is_charging === "on" ? 1 : 0, dev.interactive === "on" ? 1 : dev.interactive === "off" ? 0 : lit, num(dev.battery_temperature), motion?.active ? 1 : 0, music?.isPlaying ? 1 : 0, JSON.stringify(extra)]
   );
   await d1Query("DELETE FROM battery_log WHERE ts < ?", [Date.now() - 30 * 86_400_000]).catch(() => {});
   return { level };
 }
 
+/** `screen` is the share of the 3 minutes before the reading that the screen was on (0 to 1) */
 interface Row { ts: number; level: number; charging: number; screen: number | null; temp: number | null; motion: number; music: number; extra: string | null }
 
 interface Bucket { label: string; hours: number; change: number; perHour: number | null }
 
-/** Percent per hour between consecutive samples, grouped by what was going on at the start of each interval. Gaps over
+/** Percent per hour between consecutive samples, grouped by what was going on during each interval (the later reading describes the minutes before it). Gaps over
  *  15 minutes are skipped (the tablet or the log was offline). `charging` picks drain (unplugged) or net change (plugged in). */
 function rates(rows: Row[], charging: 0 | 1, key: (r: Row) => string | null): Bucket[] {
   const acc = new Map<string, { hours: number; change: number }>();
@@ -51,7 +53,7 @@ function rates(rows: Row[], charging: 0 | 1, key: (r: Row) => string | null): Bu
     const a = rows[i - 1], b = rows[i];
     const dt = (b.ts - a.ts) / 3_600_000;
     if (dt <= 0 || dt > 0.25 || a.charging !== charging || b.charging !== charging) continue;
-    const k = key(a);
+    const k = key(b);
     if (k == null) continue;
     const cur = acc.get(k) ?? { hours: 0, change: 0 };
     cur.hours += dt; cur.change += b.level - a.level;
@@ -63,7 +65,7 @@ function rates(rows: Row[], charging: 0 | 1, key: (r: Row) => string | null): Bu
 export async function batteryReport(days = 7) {
   await ensureTable();
   const rows = await d1Query<Row>("SELECT * FROM battery_log WHERE ts > ? ORDER BY ts", [Date.now() - days * 86_400_000]);
-  const screen = (r: Row) => (r.screen == null ? null : r.screen ? "Screen on" : "Screen off");
+  const screen = (r: Row) => (r.screen == null ? null : r.screen >= 0.5 ? "Screen mostly on" : "Screen mostly off");
   const music = (r: Row) => (r.music ? "Music playing" : "No music");
   const motion = (r: Row) => (r.motion ? "Someone in front" : "Nobody in front");
   const hour = (r: Row) => String(new Date(r.ts).getHours()).padStart(2, "0") + ":00";
@@ -71,7 +73,7 @@ export async function batteryReport(days = 7) {
   return {
     samples: rows.length,
     since: rows[0]?.ts ?? null,
-    now: last ? { level: last.level, charging: Boolean(last.charging), temp: last.temp, screen: last.screen, extra: last.extra ? JSON.parse(last.extra) : {} } : null,
+    now: last ? { level: last.level, charging: Boolean(last.charging), temp: last.temp, screen: last.screen == null ? null : last.screen >= 0.5 ? 1 : 0, extra: last.extra ? JSON.parse(last.extra) : {} } : null,
     /** unplugged: how fast the battery falls, per situation (the numbers to look at) */
     drain: { overall: rates(rows, 0, () => "All"), screen: rates(rows, 0, screen), music: rates(rows, 0, music), motion: rates(rows, 0, motion), hour: rates(rows, 0, hour) },
     /** plugged in: how much the battery still gains per hour; a busy tablet gains slower */
