@@ -110,8 +110,7 @@ function useSelfBattery(enabled: boolean, pin: string | null) {
       }).catch(fromHa);
     } else {
       fromHa();
-      const id = setInterval(fromHa, 2 * 60_000);
-      cleanup = () => clearInterval(id);
+      cleanup = pollEvery(fromHa, 2 * 60_000);
     }
     return () => { off = true; cleanup(); };
   }, [enabled, pin]);

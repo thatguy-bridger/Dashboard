@@ -8,6 +8,7 @@ import { ScreenBackground } from "@/components/ScreenBackground";
 import { StandBy } from "@/components/StandBy";
 import { TouchControl } from "@/components/TouchControl";
 import { useCalmMode } from "@/lib/useCalm";
+import { pollEvery } from "@/lib/poll";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import type { ActivityKind } from "@/lib/liveActivities";
 import { useLayoutMode } from "@/lib/useLayoutMode";
@@ -60,10 +61,10 @@ function usePreviewDevice(deviceId: string | null) {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 2 * 60 * 1000);
+    const stop = pollEvery(load, 2 * 60 * 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [deviceId]);
   return device;
@@ -95,10 +96,10 @@ function usePreset(presetId: string | null | undefined, enabled: boolean) {
     }
 
     load();
-    const id = setInterval(load, 5 * 60 * 1000);
+    const stop = pollEvery(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [presetId, enabled]);
 
@@ -133,10 +134,10 @@ function useVisibilityContext(widgets: PresetWidget[]): VisibilityContext {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 10 * 60 * 1000);
+    const stop = pollEvery(load, 10 * 60 * 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [needsWeather]);
 
@@ -157,10 +158,10 @@ function useVisibilityContext(widgets: PresetWidget[]): VisibilityContext {
         .catch(() => {});
     }
     load();
-    const id = setInterval(load, 5 * 60 * 1000);
+    const stop = pollEvery(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
-      clearInterval(id);
+      stop();
     };
   }, [needsCalendar]);
 

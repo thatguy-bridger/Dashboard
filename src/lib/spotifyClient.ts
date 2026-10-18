@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { isDormant, onWake } from "@/lib/dormant";
 
 export interface SpotifyTrack {
   id: string;
@@ -48,9 +49,10 @@ const listeners = new Set<(d: NowPlaying) => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
 let backoffUntil = 0;
+let unwake: () => void = () => {};
 
 export async function pollOnce() {
-  if (typeof document !== "undefined" && document.hidden) return;
+  if (isDormant()) return; // nobody is using the screen: no questions to the server until it wakes
   try {
     const sent = Date.now();
     const res = await fetch("/api/music/state", { cache: "no-store" });
@@ -79,16 +81,9 @@ export async function pollOnce() {
   }
 }
 
-/** While the screen is dimmed nobody is watching the music card: check far less often. */
-let dimmed = false;
-export function setNowPlayingDimmed(v: boolean) {
-  dimmed = v;
-  if (!v) pollOnce(); // catch up the moment the screen wakes
-}
 
 function nextDelay(): number {
   if (Date.now() < backoffUntil) return Math.max(15_000, backoffUntil - Date.now());
-  if (dimmed) return 20_000;
   const d = latest;
   if (!d?.connected || !d.isPlaying || !d.track) return IDLE_MS;
   const elapsed = Date.now() - (d.fetchedAt ?? Date.now());
@@ -105,7 +100,7 @@ function loop() {
 
 // A tab that was hidden skips polls; catch up the moment it's visible again.
 function onVisible() {
-  if (!document.hidden && running) {
+  if (!isDormant() && running) {
     if (timer) clearTimeout(timer);
     loop();
   }
@@ -120,6 +115,7 @@ export function useNowPlaying() {
     if (!running) {
       running = true;
       document.addEventListener("visibilitychange", onVisible);
+      unwake = onWake(onVisible);
       loop();
     }
     return () => {
@@ -129,6 +125,7 @@ export function useNowPlaying() {
         if (timer) clearTimeout(timer);
         timer = null;
         document.removeEventListener("visibilitychange", onVisible);
+        unwake();
       }
     };
   }, []);
