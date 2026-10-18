@@ -1,5 +1,6 @@
 import { d1Query } from "@/lib/d1";
-import { getProvider } from "@/lib/smarthome";
+import { getProvider, haConfigured } from "@/lib/smarthome";
+import { assistantAvailable, assistantCommand } from "@/lib/smarthome/homeAssistant";
 import { spotifyFetch } from "@/lib/music/spotifyApi";
 import { tick } from "@/lib/music/conductor";
 
@@ -71,13 +72,37 @@ export async function resumeMusic(): Promise<string | null> {
   return "spotify_refused";
 }
 
+/** Play a playlist on a speaker. If Spotify can't see the speaker (Nest and Cast speakers only show up in Spotify while a Spotify session
+ *  is already running on them), Google Assistant is asked to start Spotify there first. Assistant hears a playlist's NAME as a request
+ *  for whatever matches best, which can be a song with the same name, so it is only used to wake Spotify up on the speaker: as soon as
+ *  Spotify can see the speaker, the playlist itself is started through Spotify, replacing whatever Assistant picked. */
+export async function startPlaylist(uri: string, want: MusicPrefs, name?: string | null): Promise<{ ok: true; via: "spotify" | "assistant" } | { error: string; status?: number; speaker?: string | null }> {
+  let via: "spotify" | "assistant" = "spotify";
+  let device = await resolveDevice(want);
+  if (!device) {
+    const speaker = want.deviceName ?? null;
+    if (haConfigured() && speaker && (await assistantAvailable())) {
+      try {
+        await assistantCommand(`play ${name ?? "music"} on Spotify on ${speaker}`);
+        via = "assistant";
+        device = await resolveDevice({ ...want, entityId: undefined }); // Spotify should list the speaker now
+        for (let i = 0; i < 6 && !device; i++) { await new Promise((r) => setTimeout(r, 1500)); device = await resolveDevice({ ...want, entityId: undefined }); }
+      } catch { /* fall through to the error */ }
+    }
+    if (!device) return { error: "no_device", speaker };
+  }
+  const res = await spotifyFetch(`me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", body: JSON.stringify({ context_uri: uri }) });
+  if (res.status === 401) return { error: "not_connected", status: 401 };
+  if (!res.ok && res.status !== 204) return { error: res.status === 429 ? "rate_limited" : "spotify_refused", status: res.status };
+  return { ok: true, via };
+}
+
 /** Start the saved default playlist on the saved default speaker (morning wake-up). Returns an error code or null. */
 export async function startDefaultPlaylist(): Promise<string | null> {
   const prefs = await loadMusicPrefs();
   if (!prefs.uri) return "no_default";
-  const device = await resolveDevice(prefs);
-  if (!device) return "no_device";
-  const res = await spotifyFetch(`me/player/play?device_id=${encodeURIComponent(device.id)}`, { method: "PUT", body: JSON.stringify({ context_uri: prefs.uri }) });
-  if (res.ok || res.status === 204) { await tick({ force: true }).catch(() => {}); return null; }
-  return res.status === 401 ? "not_connected" : "spotify_refused";
+  const r = await startPlaylist(prefs.uri, prefs, (prefs as { name?: string }).name);
+  if ("error" in r) return r.error;
+  await tick({ force: true }).catch(() => {});
+  return null;
 }
