@@ -17,6 +17,7 @@ import { GridEditor } from "@/components/GridEditor";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { pollEvery } from "@/lib/poll";
 import { SmartHomeSetup } from "@/components/SmartHomeSetup";
+import { BatteryLog } from "@/components/BatteryLog";
 import { CommutePicker } from "@/components/CommutePicker";
 import { CalendarPicker } from "@/components/CalendarPicker";
 import { RulesEditor } from "@/components/RulesEditor";
@@ -773,6 +774,11 @@ export default function ControlPage() {
       <section className="glass-panel p-6">
         <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">Smart home (touch screen)</h2>
         <SmartHomeSetup />
+      </section>
+
+      <section className="glass-panel p-6">
+        <h2 className="text-sm uppercase tracking-widest text-[var(--muted)] mb-4">Tablet battery</h2>
+        <BatteryLog />
       </section>
 
       <section className="glass-panel p-6">

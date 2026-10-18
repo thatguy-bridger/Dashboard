@@ -710,3 +710,34 @@ export async function installMusicTick(speakerIds: string[]) {
   if (!res.ok) throw new Error(`couldn't create the music tick automation (${res.status})`);
   await call("automation", "reload", {});
 }
+
+
+/** Everything the Home Assistant app reports about the tablet, as { entity suffix: state } (e.g. battery_level, battery_state,
+ *  interactive, battery_temperature, wifi_signal_strength...), in one template call. */
+export async function tabletDeviceStates(device: string): Promise<Record<string, string>> {
+  const T = "¦";
+  const template = `{% set d = device_id('sensor.${device}_battery_level') %}{% if d %}{% for e in device_entities(d) %}{{ e }}${T}{{ states(e) }}\n{% endfor %}{% endif %}`;
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant template failed (${res.status})`);
+  const out: Record<string, string> = {};
+  for (const line of (await res.text()).split("\n").filter(Boolean)) {
+    const [id, state] = line.split(T);
+    const key = id.replace(/^[a-z_]+\./, "").replace(`${device}_`, "");
+    if (state && state !== "unknown" && state !== "unavailable") out[key] = state.slice(0, 40);
+  }
+  return out;
+}
+
+/** Home Assistant calls the dashboard every few minutes so the tablet's battery is logged together with what was going on. */
+export async function installBatteryLog() {
+  const body = {
+    alias: "Home Base: log the tablet battery",
+    description: "Every 3 minutes the dashboard records the tablet's battery with what was going on (screen, motion, music), to find what drains it.",
+    mode: "single",
+    triggers: [{ trigger: "time_pattern", minutes: "/3" }],
+    actions: [{ action: "rest_command.home_base_hook", data: { do: "battery" }, continue_on_error: true }],
+  };
+  const res = await fetch(`${URL_()}/api/config/automation/config/home_base_battery_log`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+  if (!res.ok) throw new Error(`couldn't create the battery log automation (${res.status})`);
+  await call("automation", "reload", {});
+}

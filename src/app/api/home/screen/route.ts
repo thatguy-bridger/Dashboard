@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { d1Query } from "@/lib/d1";
+import { loadTabletCfg, saveTabletCfg } from "@/lib/tabletConfig";
 import { checkPin, haConfigured } from "@/lib/smarthome";
-import { installMotionWake, mobileAppServices, tabletBattery, tabletCommand } from "@/lib/smarthome/homeAssistant";
-
-const KEY = "tabletScreen";
-interface Cfg { service: string | null; awake: number }
-
-async function load(): Promise<Cfg> {
-  try {
-    const rows = await d1Query<{ value: string | null }>("SELECT value FROM settings WHERE key = ?", [KEY]);
-    const v = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    return { service: typeof v.service === "string" ? v.service : null, awake: typeof v.awake === "number" ? v.awake : 110 };
-  } catch {
-    return { service: null, awake: 110 };
-  }
-}
-const save = (c: Cfg) => d1Query(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [KEY, JSON.stringify(c)]);
+import { installBatteryLog, installMotionWake, mobileAppServices, tabletBattery, tabletCommand } from "@/lib/smarthome/homeAssistant";
 
 const deny = (gate: string) => NextResponse.json({ error: gate }, { status: gate === "pin_not_configured" ? 403 : 401 });
 
@@ -25,12 +11,12 @@ export async function GET(req: NextRequest) {
   if (gate !== "ok") return deny(gate);
   // ?battery=1 -> this tablet's battery as Home Assistant's app reports it (for browsers without the Battery API)
   if (req.nextUrl.searchParams.get("battery") === "1") {
-    const cfg = await load();
+    const cfg = await loadTabletCfg();
     if (!haConfigured() || !cfg.service) return NextResponse.json({ level: null });
     return NextResponse.json(await tabletBattery(cfg.service.replace(/^mobile_app_/, "")), { headers: { "Cache-Control": "no-store" } });
   }
-  if (!haConfigured()) return NextResponse.json({ services: [], config: await load() });
-  return NextResponse.json({ services: await mobileAppServices(), config: await load() });
+  if (!haConfigured()) return NextResponse.json({ services: [], config: await loadTabletCfg() });
+  return NextResponse.json({ services: await mobileAppServices(), config: await loadTabletCfg() });
 }
 
 /** Body: { mode: "dim" | "wake" } or { service, awake? } to choose the tablet / its normal brightness (0-255). */
@@ -39,11 +25,15 @@ export async function POST(req: NextRequest) {
   if (gate !== "ok") return deny(gate);
   if (!haConfigured()) return NextResponse.json({ ok: false, error: "no_home_assistant" });
   const b = await req.json().catch(() => ({}));
-  let cfg = await load();
+  let cfg = await loadTabletCfg();
   if (typeof b.service === "string" || typeof b.awake === "number") {
     cfg = { service: typeof b.service === "string" ? b.service.replace(/^notify\./, "") : cfg.service, awake: typeof b.awake === "number" ? Math.max(10, Math.min(255, Math.round(b.awake))) : cfg.awake };
-    await save(cfg);
+    await saveTabletCfg(cfg);
     if (!b.mode) return NextResponse.json({ ok: true, config: cfg });
+  }
+  if (b.install === "battery_log") {
+    try { await installBatteryLog(); return NextResponse.json({ ok: true }); }
+    catch (err) { return NextResponse.json({ ok: false, error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
   if (b.install === "motion_wake") {
     if (!cfg.service) return NextResponse.json({ ok: false, error: "no_tablet" });
