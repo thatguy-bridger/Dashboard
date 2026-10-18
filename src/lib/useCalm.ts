@@ -1,0 +1,42 @@
+"use client";
+
+import { useEffect } from "react";
+import { setNowPlayingDimmed } from "@/lib/spotifyClient";
+
+const MIN = 60_000;
+
+/** Calm mode: saves the tablet's battery (and heat) while nobody is using it. Two levels, switched on the page's root element
+ *  and applied by globals.css:
+ *   calm      nothing touched for 2 minutes: every animation and transition pauses, drifting text slows right down.
+ *   calm-deep nothing touched for 10 minutes, the screen is hidden, or it is night and nothing was touched for 30 seconds:
+ *             the frosted-glass blur (the most expensive thing the graphics chip draws here) is off as well, and the music
+ *             reads become less frequent.
+ *  Any touch brings everything back at once. */
+export function useCalmMode() {
+  useEffect(() => {
+    const root = document.documentElement;
+    let last = Date.now();
+    let deepNow = false;
+    const apply = () => {
+      const idle = Date.now() - last;
+      const h = new Date().getHours();
+      const night = h >= 21 || h < 5;
+      const deep = document.hidden || idle > 10 * MIN || (night && idle > 30_000);
+      root.classList.toggle("calm", deep || idle > 2 * MIN);
+      root.classList.toggle("calm-deep", deep);
+      if (deep !== deepNow) { deepNow = deep; setNowPlayingDimmed(deep); }
+    };
+    const touch = () => { last = Date.now(); apply(); };
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    for (const e of events) window.addEventListener(e, touch, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", apply);
+    const id = setInterval(apply, 15_000);
+    apply();
+    return () => {
+      for (const e of events) window.removeEventListener(e, touch, true);
+      document.removeEventListener("visibilitychange", apply);
+      clearInterval(id);
+      root.classList.remove("calm", "calm-deep");
+    };
+  }, []);
+}

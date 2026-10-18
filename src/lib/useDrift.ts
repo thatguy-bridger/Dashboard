@@ -16,7 +16,8 @@ export function useDrift(box: RefObject<HTMLElement | null>, content: RefObject<
     startRef.current = null;
     function frame(ts: number) {
       raf = requestAnimationFrame(frame);
-      if (ts - last < 33) return;
+      // 30 frames a second normally; in calm mode (nobody is touching the screen) it only needs to stay roughly in place
+      if (ts - last < (document.documentElement.classList.contains("calm") ? 1000 : 33)) return;
       last = ts;
       const b = box.current, c = content.current;
       if (!b || !c) return;

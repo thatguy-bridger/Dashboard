@@ -7,6 +7,7 @@ import { WidgetRenderer } from "@/components/WidgetRenderer";
 import { ScreenBackground } from "@/components/ScreenBackground";
 import { StandBy } from "@/components/StandBy";
 import { TouchControl } from "@/components/TouchControl";
+import { useCalmMode } from "@/lib/useCalm";
 import { TopBar, type TopBarHide } from "@/components/TopBar";
 import type { ActivityKind } from "@/lib/liveActivities";
 import { useLayoutMode } from "@/lib/useLayoutMode";
@@ -276,6 +277,7 @@ function UnapprovedNotice({ deviceId, status }: { deviceId: string | null; statu
 }
 
 function ScreenPageInner() {
+  useCalmMode();
   const searchParams = useSearchParams();
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");

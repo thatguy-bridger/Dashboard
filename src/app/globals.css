@@ -231,3 +231,17 @@ body {
 [data-design="glass"] .num-rounded {
   letter-spacing: -0.035em;
 }
+
+/* Calm mode (see lib/useCalm.ts): nothing is being touched, so stop spending battery on effects. */
+html.calm *,
+html.calm *::before,
+html.calm *::after {
+  animation-play-state: paused !important;
+  transition-duration: 0s !important;
+}
+html.calm-deep .glass-card,
+html.calm-deep .glass-panel {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background: rgba(40, 40, 46, 0.78) !important;
+}
