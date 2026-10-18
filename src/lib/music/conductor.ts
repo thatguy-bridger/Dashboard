@@ -12,6 +12,7 @@ import { loadState, positionNow, saveState, type MusicState, type MusicTrack, ty
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 const QUEUE_EVERY_MS = 45_000;
 const IDLE_ASK_MS = 30_000;
+const REUSE_MS = 30_000;
 
 interface SpotifyPlayer {
   is_playing?: boolean;
@@ -73,7 +74,17 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
   const spotifyMayKnow = prev.isPlaying && prev.source !== "speaker" || playing.some((x) => isSpotify(x.app) || !x.app) || (!playing.length && now - prev.spotifyAt > IDLE_ASK_MS);
   let asked = false;
   let spotifyPlaying = false;
-  if ((opts.force || spotifyMayKnow) && blocked <= now) {
+  // While a speaker confirms the same Spotify song is still playing, Spotify's answer from the last few seconds is still true:
+  // the speaker supplies the position, and Spotify is only asked again on a song change or every 30 seconds. (Spotify
+  // locks the app out for hours when asked too often, and it is the speaker that notices a song change first anyway.)
+  const heardNow = pickHeard(playing, prev.device?.name ?? null);
+  const reused = !opts.force && prev.source === "spotify" && prev.isPlaying && Boolean(prev.track) && Boolean(heardNow)
+    && isSpotify(heardNow!.app) && norm(heardNow!.title) === norm(prev.track!.name) && now - prev.spotifyAt < REUSE_MS;
+  if (reused) {
+    spotifyPlaying = true;
+    if (heardNow!.positionMs != null && heardNow!.at != null) { s.progressMs = heardNow!.positionMs + (now - heardNow!.at); s.positionAt = now; }
+  }
+  if (!reused && (opts.force || spotifyMayKnow) && blocked <= now) {
     const sent = Date.now();
     const res = await spotifyFetch("me/player?additional_types=track");
     asked = true;
@@ -147,9 +158,9 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
     s.track = prev.track; s.progressMs = prev.progressMs; s.isPlaying = prev.isPlaying;
   }
   // Spotify couldn't be asked (locked out / failed) and no speaker explains it: keep going from an estimate.
-  if (!fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track && !heard && speakers.length) {
+  if (!reused && !fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track && !heard && speakers.length) {
     s.isPlaying = false; s.source = "speaker"; // the speakers say nothing plays any more
-  } else if (!fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track) {
+  } else if (!reused && !fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track) {
     const pos = positionNow(prev, now);
     if (prev.track.durationMs > 0 && pos >= prev.track.durationMs - 300 && prev.next[0]) {
       const n = prev.next[0];
