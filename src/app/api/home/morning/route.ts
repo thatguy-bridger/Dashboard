@@ -10,9 +10,9 @@ async function tabletCfg(): Promise<{ service: string | null; awake: number }> {
   try {
     const rows = await d1Query<{ value: string | null }>("SELECT value FROM settings WHERE key = ?", ["tabletScreen"]);
     const v = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    return { service: typeof v.service === "string" ? v.service : null, awake: typeof v.awake === "number" ? v.awake : 170 };
+    return { service: typeof v.service === "string" ? v.service : null, awake: typeof v.awake === "number" ? v.awake : 110 };
   } catch {
-    return { service: null, awake: 170 };
+    return { service: null, awake: 110 };
   }
 }
 

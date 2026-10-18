@@ -376,13 +376,13 @@ export async function installMotionWake(service: string, awake: number) {
     const res = await fetch(`${URL_()}/api/config/${kind}/config/${id}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
     if (!res.ok) throw new Error(`couldn't create ${kind} ${id} (${res.status})`);
   };
-  // the dimming sequence: starts at 130, steps down every 3s, screen off at the end (20s after the last movement)
+  // the dimming sequence: starts a little under the awake level and steps down every 3s (the same proportions as before: 76%, 56%, 35%, 18%), screen off at the end (20s after the last movement)
   await post("script", "home_base_dim", {
     alias: "Home Base: dim the tablet",
     mode: "restart",
     sequence: [
       n("command_auto_screen_brightness", { command: "turn_off" }),
-      ...[130, 95, 60, 30, 1].flatMap((level) => [n("command_screen_brightness_level", { command: level }), { delay: { seconds: 3 } }]),
+      ...[0.76, 0.56, 0.35, 0.18].map((r) => Math.max(2, Math.round(awake * r))).concat(1).flatMap((level) => [n("command_screen_brightness_level", { command: level }), { delay: { seconds: 3 } }]),
       n("command_screen_off"),
     ],
   });

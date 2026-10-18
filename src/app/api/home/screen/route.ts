@@ -10,9 +10,9 @@ async function load(): Promise<Cfg> {
   try {
     const rows = await d1Query<{ value: string | null }>("SELECT value FROM settings WHERE key = ?", [KEY]);
     const v = rows[0]?.value ? JSON.parse(rows[0].value) : {};
-    return { service: typeof v.service === "string" ? v.service : null, awake: typeof v.awake === "number" ? v.awake : 170 };
+    return { service: typeof v.service === "string" ? v.service : null, awake: typeof v.awake === "number" ? v.awake : 110 };
   } catch {
-    return { service: null, awake: 170 };
+    return { service: null, awake: 110 };
   }
 }
 const save = (c: Cfg) => d1Query(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [KEY, JSON.stringify(c)]);
