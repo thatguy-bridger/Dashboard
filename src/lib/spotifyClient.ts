@@ -19,6 +19,8 @@ export interface NowPlaying {
   fetchedAt?: number;
   volumePercent?: number | null;
   track: SpotifyTrack | null;
+  /** what is playing it: Spotify on a speaker, or another app straight from the speaker */
+  origin?: { app: string; speaker: string; entity: string | null } | null;
   /** the next songs in the queue, known ahead of time by the music brain */
   next?: { id: string; name: string; artists: string; art: string | null }[];
   /** where the music brain got this from, and its version (changes whenever anything does) */
@@ -66,7 +68,7 @@ export async function pollOnce() {
       // Spotify couldn't be asked: keep showing the last song (until its estimated end) instead of blanking every screen
       backoffUntil = Date.now() + Math.min(Math.max(next.retryAfter ?? 30, 30), 300) * 1000;
       const l = latest;
-      if (l?.track && l.isPlaying && l.fetchedAt && l.fetchedAt + (l.track.durationMs - l.track.progressMs) + 5000 < Date.now()) {
+      if (l?.track && l.track.durationMs > 0 && l.isPlaying && l.fetchedAt && l.fetchedAt + (l.track.durationMs - l.track.progressMs) + 5000 < Date.now()) {
         latest = { ...l, isPlaying: false, track: null };
         listeners.forEach((fn) => fn(latest!));
       }
@@ -86,6 +88,7 @@ function nextDelay(): number {
   if (Date.now() < backoffUntil) return Math.max(15_000, backoffUntil - Date.now());
   const d = latest;
   if (!d?.connected || !d.isPlaying || !d.track) return IDLE_MS;
+  if (d.track.durationMs <= 0) return PLAYING_MS; // no known end (radio, streams)
   const elapsed = Date.now() - (d.fetchedAt ?? Date.now());
   const untilEnd = d.track.durationMs - d.track.progressMs - elapsed + 1500;
   return Math.max(3000, Math.min(PLAYING_MS, untilEnd));
@@ -146,7 +149,7 @@ export function useEstimatedProgress(track: SpotifyTrack | null, isPlaying: bool
     const start = fetchedAt ?? Date.now();
     const id = setInterval(() => {
       const elapsed = Date.now() - start;
-      setProgressMs(Math.min(track.durationMs, base + elapsed));
+      setProgressMs(track.durationMs > 0 ? Math.min(track.durationMs, base + elapsed) : base + elapsed);
     }, 100);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-runs when track/fetchedAt change, not every render
@@ -191,7 +194,7 @@ export async function controlSpotify(action: "play" | "pause" | "next" | "previo
       ...latest,
       isPlaying: playing,
       fetchedAt: Date.now(),
-      track: t ? { ...t, progressMs: Math.min(t.durationMs, t.progressMs + elapsed) } : t,
+      track: t ? { ...t, progressMs: t.durationMs > 0 ? Math.min(t.durationMs, t.progressMs + elapsed) : t.progressMs + elapsed } : t,
     };
     hold = { isPlaying: playing, until: Date.now() + 3500 };
     listeners.forEach((fn) => fn(latest!));

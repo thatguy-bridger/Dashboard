@@ -833,15 +833,16 @@ function MusicController({ guest, accent, music, onOpen, setMessage, height, upN
         <div className="w-full min-w-0 text-center">
           <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 32 }}>{track.name}</FitText>
           <FitText className="text-white/60 font-medium" style={{ fontSize: 20 }}>{track.artists}</FitText>
+          {np?.origin && <div className="text-white/40 font-semibold truncate" style={{ fontSize: 15 }}>{np.origin.app}{np.origin.speaker ? ` · ${np.origin.speaker}` : ""}</div>}
         </div>
       </Press>
       <div className="w-full shrink-0" style={{ padding: "0 8px" }}>
         <div className="rounded-full overflow-hidden" style={{ height: 8, background: "rgba(255,255,255,0.18)" }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
+          <div className="h-full rounded-full" style={{ width: `${track.durationMs > 0 ? Math.min(100, (progress / track.durationMs) * 100) : 0}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
         </div>
         <div className="flex justify-between num-rounded font-semibold text-white/55 mt-1.5" style={{ fontSize: 16 }}>
           <span>{fmtTime(progress)}</span>
-          <span>{fmtTime(track.durationMs)}</span>
+          <span>{track.durationMs > 0 ? fmtTime(track.durationMs) : "live"}</span>
         </div>
       </div>
       {upNext.length > 0 && (
@@ -920,13 +921,14 @@ function MusicSheet({ nightVolume, accent, music, media, speakers, setVolume, ac
             <div className="min-w-0 flex-1">
               <FitText lines={2} className="text-white font-bold leading-tight" style={{ fontSize: 30 }}>{track.name}</FitText>
               <FitText className="text-white/60 font-medium" style={{ fontSize: 20 }}>{track.artists}</FitText>
+          {np?.origin && <div className="text-white/40 font-semibold truncate" style={{ fontSize: 15 }}>{np.origin.app}{np.origin.speaker ? ` · ${np.origin.speaker}` : ""}</div>}
             </div>
           </div>
           <div>
             <div className="rounded-full overflow-hidden" style={{ height: 6, background: "rgba(255,255,255,0.18)" }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (progress / track.durationMs) * 100)}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
+              <div className="h-full rounded-full" style={{ width: `${track.durationMs > 0 ? Math.min(100, (progress / track.durationMs) * 100) : 0}%`, background: `linear-gradient(90deg, ${withAlpha(accent, 65)}, ${accent})` }} />
             </div>
-            <div className="flex justify-between num-rounded font-semibold text-white/45 mt-1.5" style={{ fontSize: 14 }}><span>{fmt(progress)}</span><span>{fmt(track.durationMs)}</span></div>
+            <div className="flex justify-between num-rounded font-semibold text-white/45 mt-1.5" style={{ fontSize: 14 }}><span>{fmt(progress)}</span><span>{track.durationMs > 0 ? fmt(track.durationMs) : "live"}</span></div>
           </div>
           <div className="flex items-center justify-center gap-10 text-white">
             <Press onClick={() => controlSpotify("previous")} className="p-3"><Icon d={PREV} size={44} /></Press>

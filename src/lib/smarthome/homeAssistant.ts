@@ -669,22 +669,50 @@ export interface SpeakerInfo {
   state: string;
   title: string;
   artist: string;
+  album: string;
+  /** length of what is playing in ms, 0 when the speaker doesn't know (live radio, streams) */
+  durationMs: number;
   /** position in the song (ms) as of `at` (server ms), when the speaker reports one */
   positionMs: number | null;
   at: number | null;
+  /** the app playing on it: "Spotify", "YouTube Music", "Google Podcasts"... */
   app: string;
+  /** the speaker has cover art for what it is playing */
+  hasPicture: boolean;
+  volume: number | null;
 }
 
-/** Every speaker's state in one call. Cast speakers report their song within a second of a change: the music brain cross-checks Spotify against this. */
+/** Every speaker's state in one call. Cast speakers report what they play within a second of a change, whatever the app is:
+ *  the music brain cross-checks Spotify against this, and uses it as the source when the music isn't coming from Spotify. */
 export async function speakerStates(): Promise<SpeakerInfo[]> {
   const T = "¦";
-  const template = `{% for s in states.media_player %}{{ s.entity_id }}${T}{{ s.attributes.friendly_name or '' }}${T}{{ s.state }}${T}{{ s.attributes.media_title or '' }}${T}{{ s.attributes.media_artist or '' }}${T}{{ s.attributes.media_position if s.attributes.media_position is not none else '' }}${T}{{ as_timestamp(s.attributes.media_position_updated_at) if s.attributes.media_position_updated_at else '' }}${T}{{ s.attributes.app_name or '' }}\n{% endfor %}`;
+  const a = (k: string) => `{{ s.attributes.${k} if s.attributes.${k} is not none else '' }}`;
+  const template = `{% for s in states.media_player %}{{ s.entity_id }}${T}{{ s.attributes.friendly_name or '' }}${T}{{ s.state }}${T}${a("media_title")}${T}${a("media_artist")}${T}${a("media_album_name")}${T}${a("media_duration")}${T}${a("media_position")}${T}{{ as_timestamp(s.attributes.media_position_updated_at) if s.attributes.media_position_updated_at else '' }}${T}{{ s.attributes.app_name or '' }}${T}{{ '1' if s.attributes.entity_picture else '' }}${T}${a("volume_level")}\n{% endfor %}`;
   const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
   if (!res.ok) throw new Error(`Home Assistant template failed (${res.status})`);
+  const n = (v: string | undefined) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
   return (await res.text()).split("\n").filter(Boolean).map((line) => {
-    const [id, name, state, title, artist, pos, at, app] = line.split(T);
-    return { id, name, state, title, artist, positionMs: pos === "" ? null : Math.round(Number(pos) * 1000), at: at === "" ? null : Math.round(Number(at) * 1000), app: app ?? "" };
+    const [id, name, state, title, artist, album, dur, pos, at, app, pic, vol] = line.split(T);
+    return {
+      id, name, state, title, artist, album,
+      durationMs: Math.round((n(dur) ?? 0) * 1000),
+      positionMs: n(pos) == null ? null : Math.round(n(pos)! * 1000),
+      at: n(at) == null ? null : Math.round(n(at)! * 1000),
+      app: app ?? "", hasPicture: pic === "1", volume: n(vol) == null ? null : Math.round(n(vol)! * 100),
+    };
   });
+}
+
+/** The cover art a speaker is showing (Home Assistant serves it behind its own login, so the dashboard fetches it for the screens). */
+export async function speakerPicture(entityId: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+  if (!entityId.startsWith("media_player.")) return null;
+  const st = await fetch(`${URL_()}/api/states/${entityId}`, { headers: headers(), cache: "no-store" });
+  if (!st.ok) return null;
+  const path = ((await st.json()) as HaState).attributes.entity_picture as string | undefined;
+  if (!path) return null;
+  const img = await fetch(path.startsWith("http") ? path : `${URL_()}${path}`, { headers: headers(), cache: "no-store" });
+  if (!img.ok) return null;
+  return { body: await img.arrayBuffer(), type: img.headers.get("content-type") ?? "image/jpeg" };
 }
 
 /** The Home Assistant automation that nudges the music brain: every 5 seconds while something plays (once a minute otherwise),

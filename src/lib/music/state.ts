@@ -52,6 +52,10 @@ export interface MusicState {
   source: "spotify" | "speaker" | "estimate" | "idle";
   /** the speakers disagreed with Spotify about playing on the last update (needs two in a row to count) */
   doubt?: boolean;
+  /** a speaker plays something Spotify doesn't show (needs two updates in a row before the speaker is believed) */
+  mismatch?: boolean;
+  /** what is playing it, and where: Spotify on a speaker, or another app straight from the speaker (`entity` is Home Assistant's id for it) */
+  origin?: { app: string; speaker: string; entity: string | null } | null;
   error?: string;
   blockedUntil?: number;
   updatedAt: number;
@@ -82,8 +86,12 @@ export async function saveState(s: MusicState): Promise<MusicState> {
 }
 
 /** Where the song is right now, from the last measurement. */
-export const positionNow = (s: MusicState, now = Date.now()): number =>
-  s.track ? Math.max(0, Math.min(s.track.durationMs, s.progressMs + (s.isPlaying ? now - s.positionAt : 0))) : 0;
+export const positionNow = (s: MusicState, now = Date.now()): number => {
+  if (!s.track) return 0;
+  const p = s.progressMs + (s.isPlaying ? now - s.positionAt : 0);
+  // a length of 0 means the speaker doesn't know it (live radio, streams): the position just keeps counting
+  return Math.max(0, s.track.durationMs > 0 ? Math.min(s.track.durationMs, p) : p);
+};
 
 /** The shape the screens already understand. */
 export function toNowPlaying(s: MusicState) {
@@ -95,6 +103,7 @@ export function toNowPlaying(s: MusicState) {
     track: s.track ? { ...s.track, progressMs: s.progressMs } : null,
     next: s.next.slice(0, 3).map((n) => ({ id: n.id, name: n.name, artists: n.artists, art: n.art })),
     source: s.source,
+    origin: s.isPlaying ? s.origin ?? null : null,
     ...(s.error ? { error: s.error } : {}),
     ...(s.blockedUntil && s.blockedUntil > Date.now() ? { retryAfter: Math.ceil((s.blockedUntil - Date.now()) / 1000) } : {}),
     seq: s.seq,

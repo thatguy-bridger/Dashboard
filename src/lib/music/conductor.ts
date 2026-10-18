@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { haConfigured } from "@/lib/smarthome";
+import { getProvider, haConfigured } from "@/lib/smarthome";
 import { speakerStates, type SpeakerInfo } from "@/lib/smarthome/homeAssistant";
 import { artPalette, loadLightsCfg, syncLights } from "@/lib/music/lights";
 import { spotifyBlockedUntil, spotifyFetch } from "@/lib/music/spotifyApi";
@@ -34,10 +34,28 @@ async function readQueue(): Promise<NextTrack[] | null> {
   }));
 }
 
-/** Speakers that are playing Spotify right now. */
-const spotifySpeakers = (sp: SpeakerInfo[]) => sp.filter((s) => s.state === "playing" && (!s.app || /spotify/i.test(s.app)) && s.title);
+const isSpotify = (app: string) => /spotify/i.test(app);
+/** Speakers playing something right now (any app) that say what it is. */
+const playingSpeakers = (sp: SpeakerInfo[]) => sp.filter((x) => x.state === "playing" && x.title);
 
-/** Asks Spotify and fuses the answer with the speakers. `force` skips the idle shortcut. */
+/** The speaker to believe about what is playing: the one Spotify says it plays on, else one with cover art, else the first. */
+function pickHeard(playing: SpeakerInfo[], spotifyDevice: string | null): SpeakerInfo | undefined {
+  const byDevice = spotifyDevice ? playing.find((x) => norm(x.name) === norm(spotifyDevice)) : undefined;
+  return byDevice ?? playing.find((x) => x.hasPicture) ?? playing[0];
+}
+
+/** A song as a speaker describes it: no Spotify id, and often no length (live radio, streams). */
+function speakerTrack(h: SpeakerInfo, prev: MusicState): MusicTrack {
+  const id = `ha:${h.id}:${norm(h.title)}`;
+  return {
+    id, name: h.title, artists: h.artist, album: h.album || h.app,
+    albumArtUrl: h.hasPicture ? `/api/music/art?e=${encodeURIComponent(h.id)}&v=${encodeURIComponent(norm(h.title).slice(0, 40))}` : null,
+    durationMs: h.durationMs || (prev.track?.id === id ? prev.track.durationMs : 0),
+  };
+}
+
+/** Asks Spotify and fuses the answer with the speakers: the speakers are a source of their own, so music that doesn't come
+ *  from Spotify (another app cast to a speaker, a radio stream, the TV) shows up too. `force` skips the idle shortcut. */
 export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> {
   const now = Date.now();
   const prev = await loadState();
@@ -47,21 +65,21 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
     spotifyBlockedUntil(),
     loadLightsCfg(),
   ]);
-  const playingNow = spotifySpeakers(speakers);
+  const playing = playingSpeakers(speakers);
   const s: MusicState = { ...prev, blockedUntil: blocked > now ? blocked : undefined, error: undefined };
 
-  const shouldAsk = opts.force || prev.isPlaying || playingNow.length > 0 || now - prev.spotifyAt > IDLE_ASK_MS;
+  // Only ask Spotify when it could know something: it is playing, a speaker plays Spotify, or nothing plays anywhere (and it has been a while).
+  // Music from another app doesn't need Spotify's answer.
+  const spotifyMayKnow = prev.isPlaying && prev.source !== "speaker" || playing.some((x) => isSpotify(x.app) || !x.app) || (!playing.length && now - prev.spotifyAt > IDLE_ASK_MS);
   let asked = false;
-  if (shouldAsk && blocked <= now) {
+  let spotifyPlaying = false;
+  if ((opts.force || spotifyMayKnow) && blocked <= now) {
     const sent = Date.now();
     const res = await spotifyFetch("me/player?additional_types=track");
     asked = true;
     if (res.status === 401) { s.connected = false; s.isPlaying = false; s.track = null; s.source = "idle"; }
     else if (res.status === 429) { s.error = "rate limited by Spotify"; s.blockedUntil = await spotifyBlockedUntil(); }
-    else if (res.status === 204 || res.status === 404) { s.connected = true; s.spotifyAt = Date.now(); s.isPlaying = false; s.source = "idle";
-      // between songs Spotify can briefly say "nothing"; only a lasting nothing clears the song
-      if (!(prev.isPlaying && now - prev.spotifyAt < 20_000)) { s.track = null; s.next = []; s.progressMs = 0; }
-    }
+    else if (res.status === 204 || res.status === 404) { s.connected = true; s.spotifyAt = Date.now(); s.isPlaying = false; s.source = "idle"; }
     else if (!res.ok) s.error = "spotify request failed";
     else {
       const d = (await res.json()) as SpotifyPlayer;
@@ -75,55 +93,89 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
         s.device = d.device ? { id: d.device.id, name: d.device.name } : null;
         s.volumePercent = d.device?.volume_percent ?? s.volumePercent;
         s.source = "spotify";
+        spotifyPlaying = s.isPlaying;
       } else { s.isPlaying = false; s.source = "idle"; }
     }
   }
 
   // ---- cross-checks against the speakers ----
-  if (s.track) {
+  const heard = pickHeard(playing, s.device?.name ?? null);
+  let fromSpeaker = false;
+  s.doubt = false;
+  s.mismatch = false;
+  if (spotifyPlaying && s.track) {
     const mine = s.device ? speakers.filter((x) => norm(x.name) === norm(s.device!.name)) : [];
-    const heard = mine.find((x) => x.state === "playing") ?? playingNow[0];
-    if (asked && s.source === "spotify") {
-      // 1. Spotify says playing, the speaker it plays on says it stopped: the speaker knows first (Spotify lags a few seconds after a pause).
-      //    (It has to be true on two updates in a row, so a speaker that is just slow to start after Play doesn't make the screens flicker.)
-      s.doubt = false;
-      if (s.isPlaying && mine.length && mine.every((x) => ["paused", "idle", "off", "standby"].includes(x.state))) {
-        if (prev.doubt) { s.isPlaying = false; s.source = "speaker"; } else s.doubt = true;
-      }
-      // 2. The speaker already moved on to the song that was queued next, but Spotify still shows the old one: take the queued song.
-      if (heard && s.isPlaying && norm(heard.title) !== norm(s.track.name) && s.track.id === prev.track?.id) {
-        const q = prev.next.find((n) => norm(n.name) === norm(heard.title));
-        if (q) {
-          s.track = { id: q.id, name: q.name, artists: q.artists, album: s.track.album, albumArtUrl: q.art, durationMs: q.durationMs };
-          s.progressMs = heard.positionMs != null && heard.at != null ? heard.positionMs + (now - heard.at) : 0;
-          s.positionAt = now;
-          s.source = "speaker";
-        }
-      }
+    // 1. Spotify says playing, the speaker it plays on says it stopped: the speaker knows first (Spotify lags a few seconds after a pause).
+    //    (It has to be true on two updates in a row, so a speaker that is just slow to start after Play doesn't make the screens flicker.)
+    if (mine.length && mine.every((x) => ["paused", "idle", "off", "standby"].includes(x.state))) {
+      if (prev.doubt) { s.isPlaying = false; s.source = "speaker"; } else s.doubt = true;
     }
-    // Spotify couldn't be asked (locked out / failed): keep going from an estimate, corrected by what the speakers report.
-    if (!asked || s.error) {
-      if (prev.isPlaying && prev.track) {
-        const stillPlaying = !speakers.length || playingNow.some((x) => norm(x.title) === norm(prev.track!.name) || prev.next.some((n) => norm(n.name) === norm(x.title)));
-        if (!stillPlaying) { s.isPlaying = false; s.source = "speaker"; }
-        else {
-          const pos = positionNow(prev, now);
-          if (pos >= prev.track.durationMs - 300 && prev.next[0]) {
-            const n = prev.next[0];
-            s.track = { id: n.id, name: n.name, artists: n.artists, album: prev.track.album, albumArtUrl: n.art, durationMs: n.durationMs };
-            s.progressMs = 0; s.positionAt = now; s.next = prev.next.slice(1);
-          }
-          if (s.error || !asked) s.source = "estimate";
-        }
-      }
+    // 2. The speaker already moved on to the song that was queued next, but Spotify still shows the old one: take the queued song.
+    // 3. The speaker plays something Spotify knows nothing about (another app took over): after two updates in a row, believe the speaker.
+    if (heard && s.isPlaying && norm(heard.title) !== norm(s.track.name)) {
+      const q = s.track.id === prev.track?.id ? prev.next.find((n) => norm(n.name) === norm(heard.title)) : undefined;
+      if (q) {
+        s.track = { id: q.id, name: q.name, artists: q.artists, album: s.track.album, albumArtUrl: q.art, durationMs: q.durationMs };
+        s.progressMs = heard.positionMs != null && heard.at != null ? heard.positionMs + (now - heard.at) : 0;
+        s.positionAt = now;
+        s.source = "speaker";
+      } else if (prev.mismatch) fromSpeaker = true;
+      else s.mismatch = true;
     }
+  } else if (heard) {
+    // Spotify has nothing playing (or couldn't be asked, or isn't what is playing): the speaker is the source.
+    fromSpeaker = true;
   }
+  if (fromSpeaker && heard) {
+    const t = speakerTrack(heard, prev);
+    s.track = t;
+    s.isPlaying = true;
+    s.progressMs = heard.positionMs != null && heard.at != null ? heard.positionMs + (now - heard.at) : prev.track?.id === t.id ? positionNow(prev, now) : 0;
+    s.positionAt = now;
+    s.device = null;
+    s.volumePercent = heard.volume ?? s.volumePercent;
+    s.source = "speaker";
+    s.next = [];
+    s.palette = prev.palette && prev.palette.trackId === t.id ? prev.palette : null;
+  } else if (prev.source === "speaker" && s.source === "speaker" && !heard && !spotifyPlaying) {
+    // what the speaker was playing has stopped
+    s.isPlaying = false; s.track = null; s.next = []; s.progressMs = 0; s.source = "idle";
+  } else if (asked && s.source === "idle" && !(prev.isPlaying && now - prev.spotifyAt < 20_000)) {
+    // between songs Spotify can briefly say "nothing"; only a lasting nothing clears the song
+    s.track = null; s.next = []; s.progressMs = 0;
+  } else if (asked && s.source === "idle") {
+    s.track = prev.track; s.progressMs = prev.progressMs; s.isPlaying = prev.isPlaying;
+  }
+  // Spotify couldn't be asked (locked out / failed) and no speaker explains it: keep going from an estimate.
+  if (!fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track && !heard && speakers.length) {
+    s.isPlaying = false; s.source = "speaker"; // the speakers say nothing plays any more
+  } else if (!fromSpeaker && (!asked || s.error) && prev.isPlaying && prev.track && s.track) {
+    const pos = positionNow(prev, now);
+    if (prev.track.durationMs > 0 && pos >= prev.track.durationMs - 300 && prev.next[0]) {
+      const n = prev.next[0];
+      s.track = { id: n.id, name: n.name, artists: n.artists, album: prev.track.album, albumArtUrl: n.art, durationMs: n.durationMs };
+      s.progressMs = 0; s.positionAt = now; s.next = prev.next.slice(1);
+    }
+    s.source = "estimate";
+  }
+
+  // who is playing it, and on what
+  if (s.track && s.isPlaying) {
+    if (s.source === "speaker" && heard) s.origin = { app: heard.app || "Speaker", speaker: heard.name, entity: heard.id };
+    else {
+      const dev = s.device?.name;
+      const ent = dev ? speakers.find((x) => norm(x.name) === norm(dev)) : undefined;
+      s.origin = { app: "Spotify", speaker: dev ?? "", entity: ent?.id ?? null };
+    }
+  } else s.origin = null;
+
   // ---- queue and covers, ahead of time ----
   const songChanged = s.track?.id !== prev.track?.id;
-  if (s.track && s.isPlaying && blocked <= now && (songChanged || (asked && now - s.queueAt > QUEUE_EVERY_MS) || (!s.next.length && now - s.queueAt > 20_000))) {
+  const spotifyTrack = Boolean(s.track && !s.track.id.startsWith("ha:"));
+  if (spotifyTrack && s.isPlaying && blocked <= now && (songChanged || (asked && now - s.queueAt > QUEUE_EVERY_MS) || (!s.next.length && now - s.queueAt > 20_000))) {
     const q = await readQueue();
     if (q) { s.next = q; s.queueAt = now; }
-  } else if (songChanged) {
+  } else if (songChanged && spotifyTrack) {
     // promote what we already knew was next
     s.next = prev.next.filter((n) => n.id !== s.track?.id);
   }
@@ -167,6 +219,19 @@ export async function command(action: Command, value?: number): Promise<{ state:
     s.volumePercent = Math.max(0, Math.min(100, Math.round(value)));
   }
   await saveState(s);
+
+  // Music that comes straight from a speaker (not Spotify) is controlled on that speaker.
+  const entity = prev.source === "speaker" && prev.origin?.entity ? prev.origin.entity : null;
+  if (entity) {
+    let ok = true;
+    try {
+      const p = getProvider();
+      if (action === "volume") await p.act(entity, { type: "volume", value: Math.max(0, Math.min(100, Math.round(value ?? 0))) });
+      else await p.act(entity, { type: action });
+    } catch { ok = false; }
+    after(async () => { await new Promise((r) => setTimeout(r, 700)); await tick({ force: true }).catch(() => {}); });
+    return { state: s, ok };
+  }
 
   let path = "me/player/play", method = "PUT";
   if (action === "pause") path = "me/player/pause";

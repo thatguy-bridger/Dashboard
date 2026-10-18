@@ -532,7 +532,7 @@ function NowPlayingCard({ accent }: { accent: string }) {
   if (lyrics) for (let i = 0; i < lyrics.length; i++) if (lyrics[i].timeMs <= progress) active = i;
   const cur = lyrics && active >= 0 ? lyrics[active].text : "";
   const nxt = lyrics && lyrics[active + 1] ? lyrics[active + 1].text : "";
-  const pct = Math.min(100, (progress / track.durationMs) * 100);
+  const pct = track.durationMs > 0 ? Math.min(100, (progress / track.durationMs) * 100) : 0;
   const fmt = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
 
   return (
@@ -575,7 +575,7 @@ function NowPlayingCard({ accent }: { accent: string }) {
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${accent}a6, ${accent})` }} />
         </div>
         <div className="flex justify-between num-rounded font-semibold text-white/45 mt-2" style={{ fontSize: 17 }}>
-          <span>{fmt(progress)}</span><span>{fmt(track.durationMs)}</span>
+          <span>{fmt(progress)}</span><span>{track.durationMs > 0 ? fmt(track.durationMs) : "live"}</span>
         </div>
       </div>
     </div>

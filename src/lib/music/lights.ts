@@ -3,7 +3,7 @@ import { d1Query } from "@/lib/d1";
 import { analysePixels } from "@/lib/palette";
 import { getProvider } from "@/lib/smarthome";
 import { getGuestState } from "@/lib/smarthome/guest";
-import { lightsInfo, type LightInfo } from "@/lib/smarthome/homeAssistant";
+import { lightsInfo, speakerPicture, type LightInfo } from "@/lib/smarthome/homeAssistant";
 import { positionNow, type LightsRun, type MusicState } from "@/lib/music/state";
 
 /** The "Music lights" scene, run by the music brain. The whole song is planned ahead and handed to Home Assistant, which plays
@@ -48,9 +48,18 @@ export async function artPalette(url: string): Promise<{ colors: string[]; mono:
   const hit = paletteCache.get(url);
   if (hit) return hit;
   try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
-    const { data } = await sharp(Buffer.from(await res.arrayBuffer())).resize(160, 160, { fit: "fill" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    let bytes: ArrayBuffer;
+    if (url.startsWith("/api/music/art")) {
+      // a cover that comes from a speaker: fetch it from Home Assistant
+      const pic = await speakerPicture(new URL(url, "http://x").searchParams.get("e") ?? "");
+      if (!pic) return null;
+      bytes = pic.body;
+    } else {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      bytes = await res.arrayBuffer();
+    }
+    const { data } = await sharp(Buffer.from(bytes)).resize(160, 160, { fit: "fill" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const p = analysePixels(data);
     const out = { colors: p.palette, mono: p.mono };
     paletteCache.set(url, out);
@@ -138,7 +147,8 @@ function startSteps(l: Bulb, mode: LightMode, look: Look, ci: number, t: number,
 }
 
 /** Everything one light does for the current song (from its start) and into the start of the next one. */
-export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: Look | null, durationMs: number, rampStart: boolean): Step[] {
+/** `live`: the length is unknown (radio, streams): the plan covers ten minutes of colour shifts and has no end-of-song dip or next-song switch. */
+export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: Look | null, durationMs: number, rampStart: boolean, live = false): Step[] {
   const steps: Step[] = [...startSteps(l, mode, cur, ci, 0, rampStart, l.on)];
   const colourful = mode === "color" && l.supportsColor && !cur.mono && cur.colors.length > 1;
   if (colourful) {
@@ -155,8 +165,8 @@ export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: 
       prevHue = target;
     }
   }
-  if (mode !== "off" && l.dimmable) for (let k = 0; k < 3; k++) steps.push({ t: durationMs - DIP_MS + Math.round(((k + 1) * 5000) / 3), data: { brightness_pct: Math.round(lerp(100, 25, (k + 1) / 3)) } });
-  if (next) {
+  if (!live && mode !== "off" && l.dimmable) for (let k = 0; k < 3; k++) steps.push({ t: durationMs - DIP_MS + Math.round(((k + 1) * 5000) / 3), data: { brightness_pct: Math.round(lerp(100, 25, (k + 1) / 3)) } });
+  if (next && !live) {
     const tN = durationMs - NEXT_LEAD_MS;
     const kept = steps.filter((s) => s.t < tN);
     steps.length = 0;
@@ -229,7 +239,8 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
     const nextTrack = state.next[0];
     const nextLook = nextTrack?.palette ? toLook(nextTrack.palette, Boolean(nextTrack.mono)) : null;
     const pos = positionNow(state, now);
-    const key = `${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
+    const live = track.durationMs <= 0;
+    const key = `${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
     const expected = run ? run.pos0 + (now - run.at) : 0;
     const drifted = run?.active && run.trackId === track.id && Math.abs(pos - expected) > 3500;
     if (run?.active && run.trackId === track.id && run.key === key && !drifted) return run;
@@ -243,7 +254,7 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
     await Promise.all(bulbs.map((l) => {
       const mode = modeOf(l, cfg);
       const idx = mode === "color" && l.supportsColor ? ci++ : 0;
-      const plan = frames(timeline(l, mode, idx, look, nextLook, track.durationMs, rampStart), pos);
+      const plan = frames(timeline(l, mode, idx, look, nextLook, live ? 10 * 60_000 : track.durationMs, rampStart, live), pos);
       if (!plan) return null;
       ids.push(l.id);
       return (p.fade ? p.fade(l.id, plan.frames, plan.startIn) : Promise.resolve()).catch(() => {});
