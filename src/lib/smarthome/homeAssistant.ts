@@ -792,3 +792,19 @@ export async function screenOnFraction(windowMs: number, entity = "binary_sensor
   for (const [a, b] of spans) { const from = Math.max(a, curEnd); if (b > from) { total += b - from; curEnd = b; } }
   return Math.min(1, total / windowMs);
 }
+
+
+/** How long the tablet's motion sensor has been quiet, in ms (0 while it sees movement). Measured on Home Assistant's own clock, so the
+ *  screen's dimming (which Home Assistant starts 5 seconds after the movement stops and finishes by about 20) can be matched exactly.
+ *  null when there is no such sensor. */
+let idleCache: { at: number; ms: number | null } | null = null;
+export async function tabletIdleMs(entity = "binary_sensor.tablet_camera_motion"): Promise<number | null> {
+  if (idleCache && Date.now() - idleCache.at < 1000) return idleCache.ms;
+  const template = `{% set e = states['${entity}'] %}{% if e == none or e.state in ['unavailable','unknown'] %}none{% elif e.state == 'on' %}0{% else %}{{ ((as_timestamp(now()) - as_timestamp(e.last_changed)) * 1000) | round(0) }}{% endif %}`;
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant template failed (${res.status})`);
+  const t = (await res.text()).trim();
+  const ms = t === "none" || !Number.isFinite(Number(t)) ? null : Math.max(0, Number(t));
+  idleCache = { at: Date.now(), ms };
+  return ms;
+}

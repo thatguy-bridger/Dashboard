@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { setDormant } from "@/lib/dormant";
+import { presenceIdleMs, setDormant } from "@/lib/dormant";
 
 const MIN = 60_000;
 
@@ -19,7 +19,9 @@ export function useCalmMode(enabled: boolean) {
     const root = document.documentElement;
     let last = Date.now();
     const apply = () => {
-      const idle = Date.now() - last;
+      // nobody is using it = no touch AND nobody in front of it (when the motion sensor says; else touch alone)
+      const p = presenceIdleMs();
+      const idle = Math.min(Date.now() - last, p ?? Infinity);
       const h = new Date().getHours();
       const night = h >= 21 || h < 5;
       const deep = document.hidden || idle > 10 * MIN || (night && idle > 30_000);
@@ -31,11 +33,13 @@ export function useCalmMode(enabled: boolean) {
     const events = ["pointerdown", "keydown", "touchstart"] as const;
     for (const e of events) window.addEventListener(e, touch, { capture: true, passive: true });
     document.addEventListener("visibilitychange", apply);
+    window.addEventListener("hb-presence", apply);
     const id = setInterval(apply, 15_000);
     apply();
     return () => {
       for (const e of events) window.removeEventListener(e, touch, true);
       document.removeEventListener("visibilitychange", apply);
+      window.removeEventListener("hb-presence", apply);
       clearInterval(id);
       root.classList.remove("calm", "calm-deep");
       setDormant(false);

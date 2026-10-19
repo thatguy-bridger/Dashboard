@@ -9,6 +9,7 @@ import { controlSpotify, pollOnce, useEstimatedProgress, useNowPlaying, useStick
 import { useArtTheme, NEUTRAL_ACCENT } from "@/lib/useArtTheme";
 import { pollEvery } from "@/lib/poll";
 import { useAutoUpdate } from "@/lib/useAutoUpdate";
+import { usePresenceDim } from "@/lib/usePresenceDim";
 import { OFF_COLOR, lightColor } from "@/lib/lightColor";
 import { useFeeds } from "@/lib/liveActivities";
 import { WeatherIcon } from "@/lib/weatherVisuals";
@@ -1330,6 +1331,8 @@ export function TouchControl() {
   const previewGuest = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("guestPreview");
   const guest = previewGuest === "1" ? true : previewGuest === "0" ? false : Boolean(snap?.guest?.active);
   const { level: dimLevel, idle, activity, sleep } = useDimmer();
+  // the backlight is dimmed by Home Assistant when nobody is in front of the tablet; the content dims with it
+  const presenceDim = usePresenceDim(!gate, pin);
   // Guest mode pauses whatever is playing (Spotify and any speaker) once, as soon as it starts.
   const guestPaused = useRef(false);
   useEffect(() => {
@@ -1680,6 +1683,8 @@ export function TouchControl() {
           <span className="text-white/65 font-semibold" style={{ fontSize: 30 }}>Tap anywhere to turn your lights on and resume your music</span>
         </button>
       )}
+      {/* nobody in front of the tablet: the content dims in step with the backlight (see usePresenceDim) */}
+      <div className="absolute inset-0 z-[55] bg-black pointer-events-none" style={{ opacity: presenceDim, transition: "opacity 0.8s linear" }} />
       {/* fully dim when untouched: pure black (off on OLED), a faint clock, touch to wake */}
       <div
         onPointerDown={() => { if (away && !guest) setAway("return"); wake(); }}
