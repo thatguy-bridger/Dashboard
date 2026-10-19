@@ -1207,7 +1207,7 @@ function MusicLightsScene({ api, accent }: { api: MusicLightsApi; accent: string
       {on && (
         <div className="glass-card flex flex-col gap-3" style={{ borderRadius: 30, padding: "16px 22px" }}>
           <div className="flex items-center gap-2 flex-wrap">
-            {api.mono ? <span className="text-white/60 font-semibold" style={{ fontSize: 14 }}>Black-and-white art: lights go white</span> : api.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 26, height: 26, background: c, boxShadow: `0 0 12px ${withAlpha(c, 70)}` }} />)}
+            {api.mono ? <span className="text-white/60 font-semibold" style={{ fontSize: 14 }}>Black-and-white art: the lights pick a colour of their own</span> : api.palette.map((c) => <span key={c} className="rounded-full" style={{ width: 26, height: 26, background: c, boxShadow: `0 0 12px ${withAlpha(c, 70)}` }} />)}
           </div>
           <div className="text-white/45 font-semibold" style={{ fontSize: 13 }}>Tap a light to change what it does: colour (follows the art) · on (white) · off. White-only lights are just on or off.</div>
           <div className="flex flex-wrap gap-2">

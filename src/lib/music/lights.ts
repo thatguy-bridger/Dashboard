@@ -70,9 +70,6 @@ export async function artPalette(url: string): Promise<{ colors: string[]; mono:
   }
 }
 
-/** Which white suits a hue: warm covers get a warm white, cool covers a cool one. */
-const kelvinForHue = (h: number) => (h < 70 || h >= 330 ? 2700 : h < 150 ? 4000 : h < 260 ? 6000 : 5000);
-
 /** These Tuya bulbs render some hues off: on the generic "Color Light" bulbs and bars a pure yellow (60 degrees) looks greenish,
  *  so yellows are pulled toward orange; the "100W Tune + Color" bulb needs only a little of that. Piecewise-linear. */
 const HUE_FIX: Record<string, [number, number][]> = {
@@ -135,7 +132,6 @@ function startSteps(l: Bulb, mode: LightMode, look: Look, ci: number, t: number,
   if (mode === "off") return wasOn ? [{ t, off: true }] : [];
   if (mode === "color" && l.supportsColor && !look.mono && look.colors.length) {
     const [h0, s0] = look.colors[ci % look.colors.length];
-    if (s0 < 30 && l.supportsColorTemp) return bri({ color_temp_kelvin: kelvinForHue(h0) }); // a washed-out colour is really a white
     const hs_color = [calibrateHue(l.model, h0), s0];
     if (!ramp || !l.dimmable) return [{ t, data: { hs_color } }];
     return RAMP.map(([dt, b], i) => ({ t: t + dt, data: { ...(i === 0 ? { hs_color } : {}), brightness_pct: b } }));
@@ -157,7 +153,6 @@ export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: 
     let prevHue = calibrateHue(l.model, cur.colors[ci % cur.colors.length][0]);
     for (let k = 1; k * every <= durationMs - NO_SHIFT_MS; k++) {
       const [h, s] = cur.colors[(ci + k) % cur.colors.length];
-      if (s < 30 && l.supportsColorTemp) continue;
       const target = calibrateHue(l.model, h);
       const t = Math.round(k * every);
       if (hueGap(prevHue, target) > 50) steps.push({ t, data: { hs_color: [target, s] } }); // a big jump would sweep through other hues: just switch
@@ -195,7 +190,16 @@ export function frames(steps: Step[], pos: number): { frames: { data?: Record<st
   };
 }
 
-const toLook = (colors: string[], mono: boolean): Look => ({ colors: colors.map(hexToHs), mono });
+/** Covers with no colour of their own (black and white) still get a colour, never a white: white lights are far brighter than colours on
+ *  these bulbs. The colour is picked from the song, so the same song always looks the same and different songs differ. */
+const FALLBACK_HUES = [350, 25, 200, 270, 160];
+function fallbackColor(seed: string): [number, number] {
+  let h = 0;
+  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return [FALLBACK_HUES[h % FALLBACK_HUES.length], 70];
+}
+const toLook = (colors: string[], mono: boolean, seed: string): Look =>
+  mono || !colors.length ? { colors: [fallbackColor(seed)], mono: false } : { colors: colors.map(hexToHs), mono: false };
 
 async function stopAll(ids: string[]) {
   const p = getProvider();
@@ -237,7 +241,7 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
     const cur = state.palette && state.palette.trackId === track.id ? state.palette : null;
     if (!cur) return run; // this song's cover isn't analysed yet (the next update plans it)
     const nextTrack = state.next[0];
-    const nextLook = nextTrack?.palette ? toLook(nextTrack.palette, Boolean(nextTrack.mono)) : null;
+    const nextLook = nextTrack?.palette ? toLook(nextTrack.palette, Boolean(nextTrack.mono), nextTrack.id) : null;
     const pos = positionNow(state, now);
     const live = track.durationMs <= 0;
     const key = `${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
@@ -247,7 +251,7 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
 
     const bulbs = (await lightsInfo()).filter((l) => l.available).map(toBulb);
     const rampStart = Boolean(run?.active) && run!.trackId !== track.id;
-    const look = toLook(cur.colors, cur.mono);
+    const look = toLook(cur.colors, cur.mono, track.id);
     const p = getProvider();
     let ci = 0;
     const ids: string[] = [];
