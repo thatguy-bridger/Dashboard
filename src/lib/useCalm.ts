@@ -5,7 +5,7 @@ import { setDormant } from "@/lib/dormant";
 
 const MIN = 60_000;
 
-/** Calm mode: saves the tablet's battery (and heat) while nobody is using it. Two levels, switched on the page's root element
+/** Calm mode (touch controller only; a standby display is never touched but is in use, so it must never go calm or dormant): saves the tablet's battery (and heat) while nobody is using it. Two levels, switched on the page's root element
  *  and applied by globals.css:
  *   calm      nothing touched for 2 minutes: every animation and transition pauses, drifting text slows right down.
  *   calm-deep nothing touched for 10 minutes, the screen is hidden, or it is night and nothing was touched for 30 seconds:
@@ -13,8 +13,9 @@ const MIN = 60_000;
  *  Separately, after 3 minutes without a touch (or whenever the screen is hidden) the screen is "dormant": nothing polls the
  *  server at all (see lib/dormant.ts). Any touch, or the screen coming back on, brings everything back at once and every
  *  poller catches up immediately. */
-export function useCalmMode() {
+export function useCalmMode(enabled: boolean) {
   useEffect(() => {
+    if (!enabled) return;
     const root = document.documentElement;
     let last = Date.now();
     const apply = () => {
@@ -37,6 +38,7 @@ export function useCalmMode() {
       document.removeEventListener("visibilitychange", apply);
       clearInterval(id);
       root.classList.remove("calm", "calm-deep");
+      setDormant(false);
     };
-  }, []);
+  }, [enabled]);
 }

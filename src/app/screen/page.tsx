@@ -278,7 +278,6 @@ function UnapprovedNotice({ deviceId, status }: { deviceId: string | null; statu
 }
 
 function ScreenPageInner() {
-  useCalmMode();
   const searchParams = useSearchParams();
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");
@@ -301,6 +300,8 @@ function ScreenPageInner() {
   const usesPreset = !isDraft && !device?.layout;
   // Per-screen override wins over the global setting; ?layout= wins over both.
   const layoutMode = forcedMode ?? device?.viewMode ?? storedLayout;
+  // Calm mode and dormancy are for the touch controller (nobody has to touch a standby display for it to be in use).
+  useCalmMode(!isDraft && layoutMode === "touch");
   const preset = usePreset(usesPreset ? device?.presetId ?? null : null, layoutMode === "grid");
   const widgets = isDraft ? draft!.widgets : (device?.layout?.widgets ?? preset?.widgets ?? DEFAULT_WIDGETS);
   const background = isDraft
