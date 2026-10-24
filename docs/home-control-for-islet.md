@@ -130,3 +130,20 @@ Spotify rate-limits the whole app (HTTP 429 `QUOTA_EXCEEDED`, lock-outs of 1.5+ 
 3. Music: read Spotify and the speakers directly (no serverless limits, so poll the speakers over HA's websocket subscription for instant changes),
    keep the single-poller + cross-check + look-ahead ideas, and run the lights plan as HA scripts exactly as above.
 4. Skip everything tablet-specific (dimming, calm mode, battery log, camera motion).
+
+## 10. Shared controls in Home Assistant (for any app, including Islet)
+
+The things both apps must agree on live in Home Assistant, not in either app:
+
+- **`input_boolean.home_base_music_lights`**: the music lights on/off. Read its state (or subscribe over the websocket) to show it; flip it with
+  `input_boolean.turn_on` / `turn_off` / `toggle`. Flipping it anywhere (tablet, Islet, HA's own dashboard, a voice command) makes an HA automation
+  ping the dashboard's music brain, which starts or stops the lights within about a second. The dashboard runs the lights engine (palette, plans,
+  fade scripts), so **Islet should not run its own music-lights engine**: just show and flip this switch.
+- **`input_boolean.home_base_music_lights_suggestion`**: "offer the music lights". HA turns it on in the evening (after 17:00 until 01:00), when a
+  speaker starts playing, a light is on and the music lights are off (at most once every 30 minutes; it turns itself off after 2 minutes).
+  Show an offer while it is on and the music lights are off. **Accept** = turn the music lights switch on, then the suggestion off. **Decline** = turn the
+  suggestion off. Neither app turns the lights on by itself.
+- **`script.home_base_night`** ("It's the night"): stops any light plans, turns every light and switch off, sets the given speakers to the night
+  volume, waits 4 seconds, then turns the music lights switch (and the suggestion) off. Variables: `volume` (0-100, default 20) and `speakers` (a list of
+  media_player ids; empty = leave volumes alone). Call with `script.turn_on` and `variables`.
+- Install/repair everything with `POST /api/music/lights {"install": true}` (PIN header). It keeps the current on/off.
