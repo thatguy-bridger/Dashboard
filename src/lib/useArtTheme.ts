@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { NEUTRAL_ACCENT, analysePixels } from "@/lib/palette";
 
 export interface ArtTheme {
-  /** Pre-blurred 160px data URL, shown scaled up — computed once per song. */
+  /** Pre-blurred data URL, shown scaled up — computed once per song. */
   backdrop: string | null;
   /** Vivid accent that reads on black. */
   accent: string;
@@ -29,12 +29,13 @@ function analyse(img: HTMLImageElement): ArtTheme {
   sctx.drawImage(img, 0, 0, 160, 160);
   const { accent, palette, mono, lum } = analysePixels(sctx.getImageData(0, 0, 160, 160).data);
 
-  // 240px with a ~6% blur (was 160px at ~9%): the artwork stays a little more legible.
+  // 360px with a ~2.7% blur (it was 240px at ~5.4%: half as blurred, so the artwork reads clearly). The bigger canvas keeps it
+  // from looking blocky when it is stretched over the screen; the picture is drawn slightly oversize so the blur's edges are cropped.
   const blur = document.createElement("canvas");
-  blur.width = blur.height = 240;
+  blur.width = blur.height = 360;
   const bctx = blur.getContext("2d")!;
-  bctx.filter = "blur(13px) saturate(1.5)";
-  bctx.drawImage(img, -16, -16, 272, 272);
+  bctx.filter = "blur(9.75px) saturate(1.5)";
+  bctx.drawImage(img, -24, -24, 408, 408);
   return { backdrop: blur.toDataURL("image/jpeg", 0.8), accent, palette, mono, lum, url: null };
 }
 
