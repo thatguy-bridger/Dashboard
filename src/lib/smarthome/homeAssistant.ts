@@ -839,10 +839,14 @@ export async function setMusicLightsEnabled(on: boolean) { await call("input_boo
 export async function setMusicLightsSuggestion(on: boolean) { await call("input_boolean", on ? "turn_on" : "turn_off", { entity_id: MUSIC_LIGHTS_SUGGESTION }); }
 
 /** Creates the two switches (if missing), the night script and the automations that tie the apps together. */
-export async function installMusicLightsShared(speakerIds: string[]) {
+export async function installMusicLightsShared(speakerIds: string[], currentlyOn = false) {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
   const have = new Set(raw.map((x) => x.entity_id));
-  if (!have.has(MUSIC_LIGHTS)) await wsRequest({ type: "input_boolean/create", name: "Home Base music lights", icon: "mdi:palette" });
+  if (!have.has(MUSIC_LIGHTS)) {
+    await wsRequest({ type: "input_boolean/create", name: "Home Base music lights", icon: "mdi:palette" });
+    // a switch that is new starts off: carry over what the dashboard had, so installing doesn't switch the music lights off
+    if (currentlyOn) { await new Promise((r) => setTimeout(r, 800)); await call("input_boolean", "turn_on", { entity_id: MUSIC_LIGHTS }).catch(() => {}); }
+  }
   if (!have.has(MUSIC_LIGHTS_SUGGESTION)) await wsRequest({ type: "input_boolean/create", name: "Home Base music lights suggestion", icon: "mdi:lightbulb-question" });
   const fades = raw.filter((x) => x.entity_id.startsWith("light.")).map((x) => `script.${fadeName(x.entity_id)}`);
   const post = async (kind: "automation" | "script", id: string, body: unknown) => {

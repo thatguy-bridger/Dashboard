@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       const lights = await installFadeScripts();
       const speakers = (await speakerStates()).map((s) => s.id);
       await installMusicTick(speakers);
-      await installMusicLightsShared(speakers);
+      await installMusicLightsShared(speakers, (await loadLightsCfg(true)).enabled);
       return NextResponse.json({ ok: true, lights, speakers });
     } catch (err) { return NextResponse.json({ error: "install_failed", detail: String(err) }, { status: 502 }); }
   }
