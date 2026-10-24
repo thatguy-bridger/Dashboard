@@ -27,7 +27,7 @@ export interface NowPlaying {
   source?: "spotify" | "speaker" | "estimate" | "idle";
   seq?: number;
   /** the "Music lights" scene as the music brain has it */
-  lights?: { enabled: boolean; ids: string[]; modes: Record<string, "color" | "on" | "off"> };
+  lights?: { enabled: boolean; ids: string[]; modes: Record<string, "color" | "on" | "off">; /** the apps are offering to turn the music lights on (evening, music just started, lights on) */ suggest?: boolean };
   /** set when Spotify could not be asked (rate limit, outage): the rest of the reply is empty and must not replace what's shown */
   error?: string;
   retryAfter?: number;

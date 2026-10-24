@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   }
   if (cache && Date.now() - cache.at < 1000) return NextResponse.json({ ...cache.body, serverNow: Date.now() }, NO_STORE);
   const [state, lights] = await Promise.all([loadState(), loadLightsCfg()]);
-  const body = { ...toNowPlaying(state), lights: { enabled: lights.enabled, ids: lights.ids, modes: lights.modes } };
+  const body = { ...toNowPlaying(state), lights: { enabled: state.lightsEnabled ?? lights.enabled, ids: lights.ids, modes: lights.modes, suggest: Boolean(state.suggestLights) } };
   cache = { at: Date.now(), body };
   return NextResponse.json(body, NO_STORE);
 }

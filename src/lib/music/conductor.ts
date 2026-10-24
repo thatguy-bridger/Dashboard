@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { getProvider, haConfigured } from "@/lib/smarthome";
-import { speakerStates, type SpeakerInfo } from "@/lib/smarthome/homeAssistant";
+import { musicLightsFlags, speakerStates, type SpeakerInfo } from "@/lib/smarthome/homeAssistant";
 import { artPalette, loadLightsCfg, syncLights } from "@/lib/music/lights";
 import { spotifyBlockedUntil, spotifyFetch } from "@/lib/music/spotifyApi";
 import { loadState, positionNow, saveState, type MusicState, type MusicTrack, type NextTrack } from "@/lib/music/state";
@@ -61,11 +61,15 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
   const now = Date.now();
   const prev = await loadState();
   if (!opts.force && now - prev.updatedAt < 900) return prev; // several speakers change at once: one update is enough
-  const [speakers, blocked, cfg] = await Promise.all([
+  const [speakers, blocked, savedCfg, flags] = await Promise.all([
     haConfigured() ? speakerStates().catch(() => [] as SpeakerInfo[]) : Promise.resolve([] as SpeakerInfo[]),
     spotifyBlockedUntil(),
     loadLightsCfg(),
+    haConfigured() ? musicLightsFlags().catch(() => null) : Promise.resolve(null),
   ]);
+  // whether the music lights are on is the shared switch in Home Assistant (so the tablet and the Mac app always agree);
+  // the saved copy is only the fallback when Home Assistant can't say
+  const cfg = { ...savedCfg, enabled: flags?.enabled ?? savedCfg.enabled };
   const playing = playingSpeakers(speakers);
   const s: MusicState = { ...prev, blockedUntil: blocked > now ? blocked : undefined, error: undefined };
 
@@ -204,6 +208,8 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
   }
 
   // ---- the lights ----
+  s.lightsEnabled = cfg.enabled;
+  s.suggestLights = Boolean(flags?.suggest);
   s.lights = await syncLights(s, cfg, now);
   return saveState(s);
 }

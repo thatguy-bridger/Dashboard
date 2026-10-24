@@ -209,7 +209,7 @@ async function stopAll(ids: string[]) {
 /** Plain white at full brightness for the given lights (neutral 4000K where a bulb has a white temperature). */
 export async function resetToWhite(onlyIds?: string[]) {
   const p = getProvider();
-  const all = (await lightsInfo()).filter((l) => l.available).map(toBulb).filter((l) => !onlyIds || onlyIds.includes(l.id));
+  const all = (await lightsInfo()).filter((l) => l.available && l.on).map(toBulb).filter((l) => !onlyIds || onlyIds.includes(l.id));
   await stopAll(all.map((l) => l.id));
   const group = (f: (l: Bulb) => boolean) => all.filter(f).map((l) => l.id);
   const ct = group((l) => l.supportsColorTemp), colourOnly = group((l) => !l.supportsColorTemp && l.supportsColor), plain = group((l) => !l.supportsColorTemp && !l.supportsColor);
@@ -229,7 +229,12 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
   try {
     const guest = (await getGuestState().catch(() => ({ active: false }))).active;
     if (!cfg.enabled || guest) {
-      if (run?.active) await stopAll(run.ids);
+      if (run) {
+        await stopAll(run.ids);
+        // switched off while the lights were following the music: back to plain white, but only the lights that are on
+        // (after "It's the night" they are all off and must stay off)
+        if (!cfg.enabled && !guest) await resetToWhite();
+      }
       return null;
     }
     const track = state.track;

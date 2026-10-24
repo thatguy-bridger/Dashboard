@@ -24,7 +24,7 @@ async function secret(create: boolean): Promise<string | null> {
 }
 
 /** With the Control PIN: returns the link secret (made on first use) to put in Home Assistant's rest_command.
- *  With ?secret=...&do=morning_music|resume_music|tick|battery (called by Home Assistant): starts the morning music, picks music back up,
+ *  With ?secret=...&do=morning_music|resume_music|tick|battery|lights (called by Home Assistant): starts the morning music, picks music back up,
  *  or updates the music brain. Only those things. */
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
@@ -42,6 +42,11 @@ export async function GET(req: NextRequest) {
     // Home Assistant's nudge to the music brain (every few seconds while music plays, and when a speaker changes song)
     const s = await tick({ force: q.get("force") === "1" }).catch(() => null);
     return NextResponse.json({ ok: Boolean(s), seq: s?.seq });
+  }
+  if (what === "lights") {
+    // the shared music lights switch was flipped (by any app): apply it at once
+    const s = await tick({ force: true }).catch(() => null);
+    return NextResponse.json({ ok: Boolean(s) });
   }
   if (what === "battery") {
     const cfg = await loadTabletCfg();

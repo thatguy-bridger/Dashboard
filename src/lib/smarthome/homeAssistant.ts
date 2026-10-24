@@ -516,9 +516,13 @@ export async function setSpeakersVolume(volume: number) {
   if (speakers.length) await call("media_player", "volume_set", { entity_id: speakers, volume_level: Math.max(0, Math.min(100, volume)) / 100 });
 }
 
-/** "It's the night": every light and switch off (no exemptions), speakers to the night volume, all in one go. */
+/** "It's the night": every light and switch off (no exemptions), speakers to the night volume, music lights off, all in one go.
+ *  It is one Home Assistant script (`script.home_base_night`, installed with the music lights helpers) so the tablet and the Mac app
+ *  run exactly the same thing; the direct calls are the fallback before that is installed. */
 export async function nightMode(volume: number, speakerIds: string[]) {
   const speakers = speakerIds.filter((id) => id.startsWith("media_player."));
+  const have = await fetch(`${URL_()}/api/states/script.${NIGHT_SCRIPT}`, { headers: headers(), cache: "no-store" }).then((r) => r.ok).catch(() => false);
+  if (have) { await call("script", "turn_on", { entity_id: `script.${NIGHT_SCRIPT}`, variables: { volume, speakers } }); return; }
   await Promise.all([
     call("light", "turn_off", { entity_id: "all" }),
     call("switch", "turn_off", { entity_id: "all" }),
@@ -807,4 +811,96 @@ export async function tabletIdleMs(entity = "binary_sensor.tablet_camera_motion"
   const ms = t === "none" || !Number.isFinite(Number(t)) ? null : Math.max(0, Number(t));
   idleCache = { at: Date.now(), ms };
   return ms;
+}
+
+
+// ---------- the music lights switch, shared by every app ----------
+//
+// Whether the album-art lights are on is ONE switch in Home Assistant, `input_boolean.home_base_music_lights`. The tablet, the Mac app
+// and Home Assistant itself all read and flip that same switch, so each shows the truth and turning it off anywhere turns it off
+// everywhere. The dashboard's music brain runs the lights whenever the switch is on. A second switch,
+// `input_boolean.home_base_music_lights_suggestion`, means "offer the music lights" (any app can show the offer; accepting turns
+// the first switch on, declining turns the second off).
+export const MUSIC_LIGHTS = "input_boolean.home_base_music_lights";
+export const MUSIC_LIGHTS_SUGGESTION = "input_boolean.home_base_music_lights_suggestion";
+const NIGHT_SCRIPT = "home_base_night";
+
+/** The two switches' states (null = the switch doesn't exist yet), in one template call. */
+export async function musicLightsFlags(): Promise<{ enabled: boolean | null; suggest: boolean | null }> {
+  const f = (id: string) => `{{ states('${id}') }}`;
+  const res = await fetch(`${URL_()}/api/template`, { method: "POST", headers: headers(), body: JSON.stringify({ template: `${f(MUSIC_LIGHTS)}|${f(MUSIC_LIGHTS_SUGGESTION)}` }), cache: "no-store" });
+  if (!res.ok) throw new Error(`Home Assistant template failed (${res.status})`);
+  const [a, b] = (await res.text()).trim().split("|");
+  const v = (x: string) => (x === "on" ? true : x === "off" ? false : null);
+  return { enabled: v(a), suggest: v(b) };
+}
+
+export async function setMusicLightsEnabled(on: boolean) { await call("input_boolean", on ? "turn_on" : "turn_off", { entity_id: MUSIC_LIGHTS }); }
+export async function setMusicLightsSuggestion(on: boolean) { await call("input_boolean", on ? "turn_on" : "turn_off", { entity_id: MUSIC_LIGHTS_SUGGESTION }); }
+
+/** Creates the two switches (if missing), the night script and the automations that tie the apps together. */
+export async function installMusicLightsShared(speakerIds: string[]) {
+  const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
+  const have = new Set(raw.map((x) => x.entity_id));
+  if (!have.has(MUSIC_LIGHTS)) await wsRequest({ type: "input_boolean/create", name: "Home Base music lights", icon: "mdi:palette" });
+  if (!have.has(MUSIC_LIGHTS_SUGGESTION)) await wsRequest({ type: "input_boolean/create", name: "Home Base music lights suggestion", icon: "mdi:lightbulb-question" });
+  const fades = raw.filter((x) => x.entity_id.startsWith("light.")).map((x) => `script.${fadeName(x.entity_id)}`);
+  const post = async (kind: "automation" | "script", id: string, body: unknown) => {
+    const res = await fetch(`${URL_()}/api/config/${kind}/config/${id}`, { method: "POST", headers: headers(), body: JSON.stringify(body), cache: "no-store" });
+    if (!res.ok) throw new Error(`couldn't create ${kind} ${id} (${res.status})`);
+  };
+
+  // "It's the night" for every app: stop any light plans (they would turn lights back on), everything off, quiet speakers, and only
+  // then the music lights switch (so the music brain doesn't see lights still on and put them back to white).
+  await post("script", NIGHT_SCRIPT, {
+    alias: "Home Base: it's the night",
+    description: "Every light and switch off, speakers to the night volume, music lights off. Optional variables: volume (0-100), speakers (a list of media players).",
+    mode: "single",
+    fields: {
+      volume: { description: "Night volume 0-100", example: 20 },
+      speakers: { description: "Media players to set to that volume", example: "[]" },
+    },
+    sequence: [
+      ...(fades.length ? [{ action: "script.turn_off", target: { entity_id: fades }, continue_on_error: true }] : []),
+      { parallel: [
+        { action: "light.turn_off", target: { entity_id: "all" }, continue_on_error: true },
+        { action: "switch.turn_off", target: { entity_id: "all" }, continue_on_error: true },
+        { if: [{ condition: "template", value_template: "{{ speakers is defined and speakers | count > 0 }}" }],
+          then: [{ action: "media_player.volume_set", target: { entity_id: "{{ speakers }}" }, data: { volume_level: "{{ (volume | default(20) | float(20)) / 100 }}" }, continue_on_error: true }] },
+      ] },
+      { delay: { seconds: 4 } },
+      { action: "input_boolean.turn_off", target: { entity_id: [MUSIC_LIGHTS, MUSIC_LIGHTS_SUGGESTION] } },
+    ],
+  });
+
+  // Any app (or Home Assistant's own dashboard) flipping the switch: the music brain starts or stops the lights at once.
+  await post("automation", "home_base_music_lights_changed", {
+    alias: "Home Base: music lights switch changed",
+    description: "Whenever the music lights switch is flipped, anywhere, the dashboard's music brain applies it straight away.",
+    mode: "queued", max: 3, max_exceeded: "silent",
+    triggers: [{ trigger: "state", entity_id: MUSIC_LIGHTS, to: ["on", "off"] }],
+    actions: [{ action: "rest_command.home_base_hook", data: { do: "lights" }, continue_on_error: true }],
+  });
+
+  // Music starts in the evening with lights on and the music lights off: offer them (at most once every 30 minutes; the offer
+  // lapses after two minutes). The apps show the offer; they don't turn anything on by themselves.
+  await post("automation", "home_base_music_lights_suggest", {
+    alias: "Home Base: suggest the music lights",
+    description: "In the evening, when music starts while lights are on, offers to turn on the music lights.",
+    mode: "single", max_exceeded: "silent",
+    triggers: speakerIds.length ? [{ trigger: "state", entity_id: speakerIds, to: "playing", from: ["paused", "idle", "off", "standby", "unknown"] }] : [],
+    conditions: [
+      { condition: "template", value_template: "{{ now().hour >= 17 or now().hour < 1 }}" },
+      { condition: "state", entity_id: MUSIC_LIGHTS, state: "off" },
+      { condition: "state", entity_id: MUSIC_LIGHTS_SUGGESTION, state: "off" },
+      { condition: "template", value_template: "{{ states.light | selectattr('state','eq','on') | list | count > 0 }}" },
+      { condition: "template", value_template: "{{ this.attributes.last_triggered is none or (now() - this.attributes.last_triggered).total_seconds() > 1800 }}" },
+    ],
+    actions: [
+      { action: "input_boolean.turn_on", target: { entity_id: MUSIC_LIGHTS_SUGGESTION } },
+      { delay: { seconds: 120 } },
+      { action: "input_boolean.turn_off", target: { entity_id: MUSIC_LIGHTS_SUGGESTION } },
+    ],
+  });
+  await call("automation", "reload", {});
 }

@@ -62,6 +62,10 @@ export interface MusicState {
   spotifyAt: number;
   seq: number;
   lights: LightsRun | null;
+  /** the shared music lights switch in Home Assistant, as of the last update (see smarthome/homeAssistant.ts) */
+  lightsEnabled?: boolean;
+  /** the shared "offer the music lights" switch */
+  suggestLights?: boolean;
 }
 
 export const EMPTY_STATE: MusicState = {

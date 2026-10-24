@@ -1365,9 +1365,15 @@ export function TouchControl() {
   const ml: MusicLightsCfg = np?.lights ?? { enabled: false, ids: [], modes: {} };
   const [mlPending, setMlPending] = useState<Partial<MusicLightsCfg> | null>(null);
   const mlShown: MusicLightsCfg = { ...ml, ...mlPending, modes: { ...ml.modes, ...mlPending?.modes } };
+  // the offer to turn the music lights on (made by Home Assistant in the evening when music starts with lights on): it is one shared switch, so
+  // answering it here also clears it in the Mac app
+  const [offerAnswered, setOfferAnswered] = useState(false);
+  const offering = Boolean(np?.lights?.suggest) && !mlShown.enabled && !offerAnswered && !guest;
+  useEffect(() => { if (!np?.lights?.suggest) setOfferAnswered(false); }, [np?.lights?.suggest]);
+  const answerOffer = (accept: boolean) => { setOfferAnswered(true); sendMl({ suggest: accept ? "accept" : "dismiss" }); };
   const colorLights = (snap?.entities ?? []).filter((e) => e.kind === "light");
-  const sendMl = (patch: { enabled?: boolean; modes?: Record<string, LightMode> }) => {
-    setMlPending((c) => ({ ...c, ...patch, modes: { ...c?.modes, ...patch.modes } }));
+  const sendMl = (patch: { enabled?: boolean; modes?: Record<string, LightMode>; suggest?: "accept" | "dismiss" }) => {
+    setMlPending((c) => ({ ...c, ...(patch.suggest === "accept" ? { enabled: true } : {}), ...(patch.suggest ? {} : patch), modes: { ...c?.modes, ...patch.modes } }));
     fetch("/api/music/lights", { method: "POST", headers: { "Content-Type": "application/json", "x-control-pin": pin ?? "" }, body: JSON.stringify(patch) })
       .then(() => pollOnce())
       .catch(() => {})
@@ -1620,7 +1626,18 @@ export function TouchControl() {
 
             {/* right: music, as tall as the screen allows */}
             <div className="absolute flex flex-col gap-3" style={{ left: cw - rightW - 50, top: 90, width: rightW }}>
-              <MusicController guest={guest} accent={color} music={music} upNext={upNext} onOpen={() => { if (!guest) setSheet({ type: "music" }); }} setMessage={setMessage} height={message && sheet?.type !== "music" ? 690 : 770} />
+              <MusicController guest={guest} accent={color} music={music} upNext={upNext} onOpen={() => { if (!guest) setSheet({ type: "music" }); }} setMessage={setMessage} height={(message && sheet?.type !== "music" ? 690 : 770) - (offering ? 96 : 0)} />
+              {offering && (
+                <div className="glass-card flex items-center gap-4" style={{ borderRadius: 30, padding: "14px 20px", boxShadow: `0 0 0 2px ${color}` }}>
+                  <Sparkle />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-white font-bold" style={{ fontSize: 20 }}>Turn on music lights?</div>
+                    <div className="text-white/55 font-semibold" style={{ fontSize: 14 }}>The lights can follow the album art</div>
+                  </div>
+                  <Press onClick={() => answerOffer(true)} className="px-5 py-3 text-black font-bold" style={{ borderRadius: 22, background: color, fontSize: 18 }}>Turn on</Press>
+                  <Press onClick={() => answerOffer(false)} className="px-4 py-3 text-white/70 font-semibold" style={{ fontSize: 16 }}>Not now</Press>
+                </div>
+              )}
               {message && sheet?.type !== "music" && <div className="glass-card text-white/80 font-semibold" style={{ borderRadius: 24, padding: "12px 20px", fontSize: 16 }}>{message}</div>}
             </div>
           </>
