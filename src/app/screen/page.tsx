@@ -278,6 +278,10 @@ function UnapprovedNotice({ deviceId, status }: { deviceId: string | null; statu
 }
 
 function ScreenPageInner() {
+  useEffect(() => {
+    document.documentElement.classList.add("no-select");
+    return () => document.documentElement.classList.remove("no-select");
+  }, []);
   const searchParams = useSearchParams();
   const draftParam = searchParams.get("draft");
   const previewId = searchParams.get("preview");

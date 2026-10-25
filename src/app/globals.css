@@ -245,3 +245,17 @@ html.calm-deep .glass-panel {
   backdrop-filter: none !important;
   background: rgba(40, 40, 46, 0.78) !important;
 }
+
+/* Screens (standby and touch controller) are for looking at and tapping: nothing on them is ever selected or copied. */
+html.no-select,
+html.no-select * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+html.no-select input,
+html.no-select textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
