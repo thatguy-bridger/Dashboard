@@ -93,7 +93,6 @@ const hexToHs = (hex: string): [number, number] => {
   return [Math.round((h * 60 + 360) % 360), Math.round(max === 0 ? 0 : (d / max) * 100)];
 };
 
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpHue = (a: number, b: number, t: number) => { const d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; };
 const hueGap = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
 
@@ -118,7 +117,22 @@ export function modeOf(l: Pick<Bulb, "id" | "name" | "supportsColor">, cfg: Ligh
 interface Step { t: number; data?: Record<string, unknown>; off?: boolean }
 export interface Look { colors: [number, number][]; mono: boolean }
 
-const RAMP: [number, number][] = [[0, 25], [1667, 50], [3333, 75], [5000, 100]];
+/** Brightness changes are many small steps (one about every 0.7 seconds; the bulbs can't fade by themselves) that are even to the eye:
+ *  the steps are equal in perceived brightness (gamma 2.2), not in percent, because the eye notices a drop from 30% to 20% far more than
+ *  from 90% to 80%. Returns [ms from the start of the ramp, brightness %]. */
+const STEP_MS = 700;
+const GAMMA = 2.2;
+function rampPoints(from: number, to: number, ms: number, includeStart: boolean): [number, number][] {
+  const n = Math.max(2, Math.round(ms / STEP_MS));
+  const a = (from / 100) ** GAMMA, b = (to / 100) ** GAMMA;
+  const out: [number, number][] = [];
+  for (let k = includeStart ? 0 : 1; k <= n; k++) {
+    const p = k / n;
+    out.push([Math.round(ms * p), Math.max(1, Math.round((a + (b - a) * p) ** (1 / GAMMA) * 100))]);
+  }
+  return out;
+}
+const RAMP = rampPoints(25, 100, 5000, true);
 const NEXT_LEAD_MS = 450; // the command takes about half a second to reach the bulbs
 const DIP_MS = 5500;
 const NO_SHIFT_MS = 8000;
@@ -160,7 +174,7 @@ export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: 
       prevHue = target;
     }
   }
-  if (!live && mode !== "off" && l.dimmable) for (let k = 0; k < 3; k++) steps.push({ t: durationMs - DIP_MS + Math.round(((k + 1) * 5000) / 3), data: { brightness_pct: Math.round(lerp(100, 25, (k + 1) / 3)) } });
+  if (!live && mode !== "off" && l.dimmable) for (const [dt, b] of rampPoints(100, 25, 5000, false)) steps.push({ t: durationMs - DIP_MS + dt, data: { brightness_pct: b } });
   if (next && !live) {
     const tN = durationMs - NEXT_LEAD_MS;
     const kept = steps.filter((s) => s.t < tN);
@@ -171,8 +185,8 @@ export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: 
 }
 
 /** Folds every step up to `pos` into one catch-up step at `pos` (so a plan made mid-song starts from the right look), and
- *  turns the rest into frames with the pause after each. */
-export function frames(steps: Step[], pos: number): { frames: { data?: Record<string, unknown>; off?: boolean; wait: number }[]; startIn: number } | null {
+ *  turns the rest into frames with their time in seconds after the plan starts. */
+export function frames(steps: Step[], pos: number): { data?: Record<string, unknown>; off?: boolean; at: number }[] | null {
   const past = steps.filter((s) => s.t <= pos);
   const future = steps.filter((s) => s.t > pos);
   const list: Step[] = [];
@@ -184,10 +198,7 @@ export function frames(steps: Step[], pos: number): { frames: { data?: Record<st
   }
   list.push(...future);
   if (!list.length) return null;
-  return {
-    startIn: Math.max(0, (list[0].t - pos) / 1000),
-    frames: list.map((s, i) => ({ ...(s.off ? { off: true } : { data: s.data ?? {} }), wait: i + 1 < list.length ? Math.max(0, (list[i + 1].t - s.t) / 1000) : 0 })),
-  };
+  return list.map((s) => ({ ...(s.off ? { off: true } : { data: s.data ?? {} }), at: Math.round(Math.max(0, s.t - pos)) / 1000 }));
 }
 
 /** Covers with no colour of their own (black and white) still get a colour, never a white: white lights are far brighter than colours on
@@ -266,7 +277,7 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
       const plan = frames(timeline(l, mode, idx, look, nextLook, live ? 10 * 60_000 : track.durationMs, rampStart, live), pos);
       if (!plan) return null;
       ids.push(l.id);
-      return (p.fade ? p.fade(l.id, plan.frames, plan.startIn) : Promise.resolve()).catch(() => {});
+      return (p.fade ? p.fade(l.id, plan) : Promise.resolve()).catch(() => {});
     }));
     // lights that are no longer part of the plan must not keep running an old one
     if (run?.ids.length) await stopAll(run.ids.filter((id) => !ids.includes(id)));

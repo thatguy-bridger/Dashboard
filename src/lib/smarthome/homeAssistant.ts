@@ -168,7 +168,7 @@ export const homeAssistantProvider: HomeProvider = {
     }
   },
   async startTimer(id: string, minutes: number, action: "on" | "off") { await startDeviceTimer(id, minutes, action); },
-  async fade(id: string, frames: FadeFrame[], startInSeconds: number) { await runFade(id, frames, startInSeconds); },
+  async fade(id: string, frames: FadeFrame[]) { await runFade(id, frames); },
   async stopFade(id: string) { await stopFade(id); },
   async cancelTimer(id: string) { await cancelDeviceTimer(id); },
   async returnHome() {
@@ -616,8 +616,9 @@ export async function lightsInfo(): Promise<LightInfo[]> {
 const fadeName = (id: string) => `hb_fade_${id.replace(/[^a-z0-9]/gi, "_").toLowerCase()}`;
 const fadeVerified = new Set<string>();
 
-/** One restartable Home Assistant script per light that plays a timed list of frames: wait `start_in` seconds, then for each frame
- *  turn the light on with its data (or off) and wait `wait` seconds. Starting it again restarts it, so a new plan always cancels
+/** One restartable Home Assistant script per light that plays a timed list of frames: for each frame, wait until `at` seconds after the
+ *  script started, then turn the light on with its data (or off). Waiting for an absolute time (not "a pause after the last one") matters:
+ *  every command takes a few tenths of a second to reach a bulb, and pauses would add that up, so a fade would drift later and later. Starting it again restarts it, so a new plan always cancels
  *  the old one: nothing can fight it, and all the timing runs inside Home Assistant, not on the hosting plan. */
 export async function installFadeScripts(): Promise<string[]> {
   const raw = (await (await fetch(`${URL_()}/api/states`, { headers: headers(), cache: "no-store" })).json()) as HaState[];
@@ -627,12 +628,12 @@ export async function installFadeScripts(): Promise<string[]> {
       alias: `Home Base fade: ${id}`,
       mode: "restart",
       sequence: [
-        { delay: "{{ start_in | default(0) | float(0) }}" },
+        { variables: { t0: "{{ as_timestamp(now()) }}" } },
         { repeat: { for_each: "{{ frames }}", sequence: [
+          { delay: "{{ [ (repeat.item.at | float(0)) - (as_timestamp(now()) - t0), 0 ] | max }}" },
           { if: [{ condition: "template", value_template: "{{ repeat.item.off | default(false) }}" }],
             then: [{ action: "light.turn_off", target: { entity_id: id } }],
             else: [{ action: "light.turn_on", target: { entity_id: id }, data: "{{ repeat.item.data | default({}) }}" }] },
-          { delay: "{{ repeat.item.wait | default(0) | float(0) }}" },
         ] } },
       ],
     };
@@ -652,13 +653,13 @@ async function ensureFade(ids: string[]) {
   else unknown.forEach((id) => fadeVerified.add(id));
 }
 
-/** One step of a light plan: what to send (light.turn_on data, or off), then how long to wait before the next step (seconds). */
-export interface FadeFrame { data?: Record<string, unknown>; off?: boolean; wait: number }
+/** One step of a light plan: what to send (light.turn_on data, or off) and when, in seconds after the plan starts. */
+export interface FadeFrame { data?: Record<string, unknown>; off?: boolean; at: number }
 
 /** Play a timed plan on a light from Home Assistant's side, replacing any plan already running on it. */
-export async function runFade(id: string, frames: FadeFrame[], startInSeconds: number) {
+export async function runFade(id: string, frames: FadeFrame[]) {
   await ensureFade([id]);
-  await call("script", "turn_on", { entity_id: `script.${fadeName(id)}`, variables: { frames, start_in: startInSeconds } });
+  await call("script", "turn_on", { entity_id: `script.${fadeName(id)}`, variables: { frames } });
 }
 
 /** Cancel any fade running on a light (before an instant on/off). */
