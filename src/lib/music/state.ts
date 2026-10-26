@@ -30,6 +30,8 @@ export interface LightsRun {
   /** where the song was (ms) at `at` (server clock), to tell whether playback drifted from the plan (skip, seek) */
   pos0: number;
   at: number;
+  /** the song's length, to tell a song that ended by itself (the lights are dim) from one that was skipped (they are not) */
+  durationMs?: number;
   /** the lights the plan drives */
   ids: string[];
 }

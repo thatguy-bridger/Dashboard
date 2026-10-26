@@ -84,10 +84,9 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
   const heardNow = pickHeard(playing, prev.device?.name ?? null);
   const reused = !opts.force && prev.source === "spotify" && prev.isPlaying && Boolean(prev.track) && Boolean(heardNow)
     && isSpotify(heardNow!.app) && norm(heardNow!.title) === norm(prev.track!.name) && now - prev.spotifyAt < REUSE_MS;
-  if (reused) {
-    spotifyPlaying = true;
-    if (heardNow!.positionMs != null && heardNow!.at != null) { s.progressMs = heardNow!.positionMs + (now - heardNow!.at); s.positionAt = now; }
-  }
+  // (the position stays Spotify's own, extended by the clock: a Cast speaker's reported position is sometimes stale or reset to 0,
+  // which restarted the music lights in the middle of songs)
+  if (reused) spotifyPlaying = true;
   if (!reused && (opts.force || spotifyMayKnow) && blocked <= now) {
     const sent = Date.now();
     const res = await spotifyFetch("me/player?additional_types=track");
@@ -145,7 +144,9 @@ export async function tick(opts: { force?: boolean } = {}): Promise<MusicState> 
     const t = speakerTrack(heard, prev);
     s.track = t;
     s.isPlaying = true;
-    s.progressMs = heard.positionMs != null && heard.at != null ? heard.positionMs + (now - heard.at) : prev.track?.id === t.id ? positionNow(prev, now) : 0;
+    // a speaker's position is only trusted when it was refreshed recently; for the same song the clock-extended old one is as good
+    const fresh = heard.positionMs != null && heard.at != null && now - heard.at < 20_000;
+    s.progressMs = prev.track?.id === t.id && !fresh ? positionNow(prev, now) : fresh ? heard.positionMs! + (now - heard.at!) : 0;
     s.positionAt = now;
     s.device = null;
     s.volumePercent = heard.volume ?? s.volumePercent;
