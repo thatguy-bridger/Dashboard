@@ -72,12 +72,12 @@ Spotify rate-limits the whole app (HTTP 429 `QUOTA_EXCEEDED`, lock-outs of 1.5+ 
   (never white: white is much brighter on these bulbs).
 - **Per light mode:** `color` (follows art; colour bulbs only), `on` (neutral 4000K white), `off`. Default: Light Bars colour, the rest off.
 - **Per-model hue calibration** (Tuya "Color Light" renders yellow greenish: pull 60° toward 46°, etc.).
-- **Sequence:** a song keeps its colours; every light switches colour at the same instant (never stepped, never touching brightness) a few times
-  inside the song (every tenth of its length, at least 15s apart, none in the last 8s; light N takes palette colour N+k). In the last 5 seconds every light
-  dims to 20% in steps of 5%; at the very end (song length − 450ms, the time a command takes to reach a bulb) every light switches ONCE to the next
-  song's colour while dim (colour first), then the brightness climbs to 100% in steps of 5% over about 5.5s. A plan made mid-song folds everything already
-  passed into one catch-up step. The position used is Spotify's own measurement extended by the clock; a Cast speaker's reported position is not
-  trusted (it can be stale or reset to 0, which restarted the lights in the middle of songs).
+- **Sequence:** a song keeps its colours; a few times inside the song every light switches colour at the same instant (one command each, colour only,
+  brightness untouched; every tenth of the song, at least 15s apart, none in the last 8s; light N takes palette colour N+k). Between songs it is exactly
+  three commands per light, no stepping: dim to 20% (2.5s before the end), the next song's colour (sent 450ms before the end, so it lands at the end),
+  then brightness 100% half a second later. After a skip (lights still bright) the first command is colour + 20% together, then 100%. A plan made
+  mid-song folds everything already passed into one catch-up step. The position used is Spotify's own measurement extended by the clock; a Cast
+  speaker's reported position is not trusted (it can be stale or reset to 0, which restarted the lights in the middle of songs).
 - **Execution is inside HA:** one restartable script per light (`hb_fade_<light>`, mode `restart`) takes `frames: [{data|off, at}]` (`at` = seconds after the script starts; it waits until that absolute time, so command delays don't add up); starting it again cancels the old plan, so nothing can fight. Tuya has no transition support, so fades are stepped frames.
 - **Re-plan** when the song, light modes or next song change, or the position drifts >3.5s from the plan (skip/seek); paused = stop plans.
   Works with every screen asleep. Disable = stop plans + plain white 100%.

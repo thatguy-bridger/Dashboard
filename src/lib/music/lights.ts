@@ -116,20 +116,13 @@ export function modeOf(l: Pick<Bulb, "id" | "name" | "supportsColor">, cfg: Ligh
 interface Step { t: number; data?: Record<string, unknown>; off?: boolean }
 export interface Look { colors: [number, number][]; mono: boolean }
 
-/** Brightness moves in steps of 5%, evenly spaced over `ms` (the bulbs can't fade by themselves). Returns [ms from the start of the ramp,
- *  brightness %]; `includeStart` includes the first value (at 0 ms). */
-const STEP_PCT = 5;
-function rampPoints(from: number, to: number, ms: number, includeStart: boolean): [number, number][] {
-  const n = Math.max(1, Math.round(Math.abs(to - from) / STEP_PCT));
-  const out: [number, number][] = [];
-  for (let k = includeStart ? 0 : 1; k <= n; k++) out.push([Math.round((ms * k) / n), Math.round(from + ((to - from) * k) / n)]);
-  return out;
-}
-/** Between songs the lights dim to this, the new colours land once while they are dim, and they brighten back to 100%. */
+/** Between songs it is exactly three commands per light, no stepping (the bulbs can't fade by themselves): dim to 20%, the colour change, then
+ *  back to 100%. The dim lands DIM_LEAD_MS before the song ends, the colour at the very end (a command takes about half a second to reach a
+ *  bulb, so it is sent NEXT_LEAD_MS early), and the brightening goes out just after the colour has landed. */
 const LOW_PCT = 20;
-const RAMP = rampPoints(LOW_PCT, 100, 5500, true);
-const NEXT_LEAD_MS = 450; // the command takes about half a second to reach the bulbs
-const DIP_MS = 5500;
+const DIM_LEAD_MS = 2500;
+const NEXT_LEAD_MS = 450;
+const BRIGHTEN_AFTER_MS = 500;
 
 /** How a song's look starts: `false` plainly (colour only, brightness untouched); "natural" after the end-of-song dip (the lights are
  *  already at 20%: colour first, THEN the brightness climbs); "skip" when the song changed with the lights at full brightness
@@ -141,8 +134,8 @@ function startSteps(l: Bulb, mode: LightMode, look: Look, ci: number, t: number,
   const climb = (first: Record<string, unknown>): Step[] => {
     if (!l.dimmable) return [{ t, data: first }];
     if (!start) return [{ t, data: { ...first, ...(mode === "color" ? {} : { brightness_pct: 100 }) } }];
-    const [, ...rest] = RAMP; // RAMP[0] is the dim level itself
-    return [{ t, data: { ...first, ...(start === "skip" ? { brightness_pct: LOW_PCT } : {}) } }, ...rest.map(([dt, b]) => ({ t: t + dt, data: { brightness_pct: b } }))];
+    // the colour first (already dim after a song that ended by itself; dim and colour together after a skip), then the brightening
+    return [{ t, data: { ...first, ...(start === "skip" ? { brightness_pct: LOW_PCT } : {}) } }, { t: t + BRIGHTEN_AFTER_MS, data: { brightness_pct: 100 } }];
   };
   if (mode === "off") return wasOn ? [{ t, off: true }] : [];
   if (mode === "color" && l.supportsColor && !look.mono && look.colors.length) {
@@ -161,8 +154,8 @@ const NO_SHIFT_MS = 8000;
  *   - its colour from the start (instant), then the brightness climbing from the dim of the last song's end when there was one;
  *   - inside the song, now and then, every light switches colour at the same moment (instant, colour only, brightness untouched):
  *     every tenth of the song, never closer than 15 seconds, none in the last 8 seconds;
- *   - the last 5 seconds: a dip to 20% in steps of 5%;
- *   - at the very end the next song's colour lands once on every light, instantly, THEN the brightness climbs in steps of 5%.
+ *   - shortly before the end: one command, dim to 20%;
+ *   - at the very end the next song's colour lands once on every light, THEN one command, back to 100%.
  *  `live`: the length is unknown (radio, streams): the colour and the shifts only, no dip and no next-song switch. */
 export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: Look | null, durationMs: number, start: Start, live = false): Step[] {
   const steps: Step[] = [...startSteps(l, mode, cur, ci, 0, start, l.on)];
@@ -173,7 +166,7 @@ export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: 
       steps.push({ t: Math.round(k * every), data: { hs_color: [calibrateHue(l.model, h), sat] } });
     }
   }
-  if (!live && mode !== "off" && l.dimmable) for (const [dt, b] of rampPoints(100, LOW_PCT, DIP_MS - NEXT_LEAD_MS - 50, false)) steps.push({ t: durationMs - DIP_MS + dt, data: { brightness_pct: b } });
+  if (!live && mode !== "off" && l.dimmable) steps.push({ t: durationMs - DIM_LEAD_MS, data: { brightness_pct: LOW_PCT } });
   if (next && !live) {
     const tN = durationMs - NEXT_LEAD_MS;
     const kept = steps.filter((s) => s.t < tN);
@@ -261,7 +254,7 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
     const live = track.durationMs <= 0;
     // the "v3" makes every plan made by an older version of this code get replaced at once (they had colour shifts inside songs)
     // everything about the plan except what comes next; a change here (the song, the modes, the shifting window of a stream) means a new plan
-    const core = `v4|${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}`;
+    const core = `v5|${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}`;
     const key = `${core}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
     const expected = run ? run.pos0 + (now - run.at) : 0;
     const drifted = run?.active && run.trackId === track.id && Math.abs(pos - expected) > 3500;
