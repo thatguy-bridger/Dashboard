@@ -242,7 +242,8 @@ export async function syncLights(state: MusicState, cfg: LightsCfg, now = Date.n
     const nextLook = nextTrack?.palette ? toLook(nextTrack.palette, Boolean(nextTrack.mono), nextTrack.id) : null;
     const pos = positionNow(state, now);
     const live = track.durationMs <= 0;
-    const key = `${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
+    // the "v3" makes every plan made by an older version of this code get replaced at once (they had colour shifts inside songs)
+    const key = `v3|${live ? Math.floor(pos / (8 * 60_000)) : ""}|${track.id}|${JSON.stringify(cfg.modes)}|${cfg.ids.join(",")}|${nextTrack?.id ?? ""}:${nextLook ? "p" : ""}`;
     const expected = run ? run.pos0 + (now - run.at) : 0;
     const drifted = run?.active && run.trackId === track.id && Math.abs(pos - expected) > 3500;
     if (run?.active && run.trackId === track.id && run.key === key && !drifted) return run;
