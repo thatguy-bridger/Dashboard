@@ -72,12 +72,10 @@ Spotify rate-limits the whole app (HTTP 429 `QUOTA_EXCEEDED`, lock-outs of 1.5+ 
   (never white: white is much brighter on these bulbs).
 - **Per light mode:** `color` (follows art; colour bulbs only), `on` (neutral 4000K white), `off`. Default: Light Bars colour, the rest off.
 - **Per-model hue calibration** (Tuya "Color Light" renders yellow greenish: pull 60° toward 46°, etc.).
-- **The whole song is planned ahead** (`src/lib/music/lights.ts`): song start (instant colour, brightening 25→100% over 5s when coming from
-  the previous song's dip), colour-only shifts every max(15s, length/10) (never in the last 8s; small hue changes glide in 4 steps over 12s,
-  jumps >50° switch instantly), a dip to 25% starting 5.5s before the end, and the **next song's colours at length − 450ms**
-  (the command takes ~0.5s to reach a bulb). A plan made mid-song folds everything already passed into one catch-up step.
-- **Execution is inside HA:** one restartable script per light (`hb_fade_<light>`, mode `restart`) takes `frames: [{data|off, wait}]` and
-  `start_in`; starting it again cancels the old plan, so nothing can fight. Tuya has no transition support, so fades are stepped frames.
+- **Deliberately simple:** a song keeps its colours the whole way through (no shifting inside a song). In the last 5 seconds every light dims
+  to 20% in steps of 5%; at the very end (song length − 450ms, the time a command takes to reach a bulb) every light switches ONCE to the next
+  song's colour while dim, then brightens to 100% in steps of 5% over about 5.5s. A plan made mid-song folds everything already passed into one catch-up step.
+- **Execution is inside HA:** one restartable script per light (`hb_fade_<light>`, mode `restart`) takes `frames: [{data|off, at}]` (`at` = seconds after the script starts; it waits until that absolute time, so command delays don't add up); starting it again cancels the old plan, so nothing can fight. Tuya has no transition support, so fades are stepped frames.
 - **Re-plan** when the song, light modes or next song change, or the position drifts >3.5s from the plan (skip/seek); paused = stop plans.
   Works with every screen asleep. Disable = stop plans + plain white 100%.
 

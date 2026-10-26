@@ -6,10 +6,11 @@ import { getGuestState } from "@/lib/smarthome/guest";
 import { lightsInfo, speakerPicture, type LightInfo } from "@/lib/smarthome/homeAssistant";
 import { positionNow, type LightsRun, type MusicState } from "@/lib/music/state";
 
-/** The "Music lights" scene, run by the music brain. The whole song is planned ahead and handed to Home Assistant, which plays
- *  it on its own clock: a colour at the start of the song (brightening from the dim at the end of the last one), colour-only
- *  shifts along the way, a dip before the end, and the NEXT song's colours at the exact moment this one finishes. So the lights
- *  follow the music even with every screen asleep, and a song change doesn't wait for anyone to notice it. */
+/** The "Music lights" scene, run by the music brain. It is deliberately simple: a song keeps its colours the whole way through; in the
+ *  last 5 seconds the lights dim to 20% in steps of 5%; at the end of the song every light switches to the NEXT song's colour at the
+ *  same moment (once), then brightens back to 100% in steps of 5%. The plan is made ahead and handed to Home Assistant, which plays
+ *  it on its own clock, so the lights follow the music even with every screen asleep and a song change doesn't wait for anyone to
+ *  notice it. */
 
 export type LightMode = "color" | "on" | "off";
 export interface LightsCfg {
@@ -93,8 +94,6 @@ const hexToHs = (hex: string): [number, number] => {
   return [Math.round((h * 60 + 360) % 360), Math.round(max === 0 ? 0 : (d / max) * 100)];
 };
 
-const lerpHue = (a: number, b: number, t: number) => { const d = ((b - a + 540) % 360) - 180; return (a + d * t + 360) % 360; };
-const hueGap = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
 
 // ---------- planning ----------
 
@@ -117,25 +116,20 @@ export function modeOf(l: Pick<Bulb, "id" | "name" | "supportsColor">, cfg: Ligh
 interface Step { t: number; data?: Record<string, unknown>; off?: boolean }
 export interface Look { colors: [number, number][]; mono: boolean }
 
-/** Brightness changes are many small steps (one about every 0.7 seconds; the bulbs can't fade by themselves) that are even to the eye:
- *  the steps are equal in perceived brightness (gamma 2.2), not in percent, because the eye notices a drop from 30% to 20% far more than
- *  from 90% to 80%. Returns [ms from the start of the ramp, brightness %]. */
-const STEP_MS = 700;
-const GAMMA = 2.2;
+/** Brightness moves in steps of 5%, evenly spaced over `ms` (the bulbs can't fade by themselves). Returns [ms from the start of the ramp,
+ *  brightness %]; `includeStart` includes the first value (at 0 ms). */
+const STEP_PCT = 5;
 function rampPoints(from: number, to: number, ms: number, includeStart: boolean): [number, number][] {
-  const n = Math.max(2, Math.round(ms / STEP_MS));
-  const a = (from / 100) ** GAMMA, b = (to / 100) ** GAMMA;
+  const n = Math.max(1, Math.round(Math.abs(to - from) / STEP_PCT));
   const out: [number, number][] = [];
-  for (let k = includeStart ? 0 : 1; k <= n; k++) {
-    const p = k / n;
-    out.push([Math.round(ms * p), Math.max(1, Math.round((a + (b - a) * p) ** (1 / GAMMA) * 100))]);
-  }
+  for (let k = includeStart ? 0 : 1; k <= n; k++) out.push([Math.round((ms * k) / n), Math.round(from + ((to - from) * k) / n)]);
   return out;
 }
-const RAMP = rampPoints(25, 100, 5000, true);
+/** Between songs the lights dim to this, the new colours land once while they are dim, and they brighten back to 100%. */
+const LOW_PCT = 20;
+const RAMP = rampPoints(LOW_PCT, 100, 5500, true);
 const NEXT_LEAD_MS = 450; // the command takes about half a second to reach the bulbs
 const DIP_MS = 5500;
-const NO_SHIFT_MS = 8000;
 
 /** Steps that put a light into a song's look, starting at `t`. `ramp`: start dim and brighten over five seconds. */
 function startSteps(l: Bulb, mode: LightMode, look: Look, ci: number, t: number, ramp: boolean, wasOn: boolean): Step[] {
@@ -156,25 +150,13 @@ function startSteps(l: Bulb, mode: LightMode, look: Look, ci: number, t: number,
   return [{ t, data: {} }];
 }
 
-/** Everything one light does for the current song (from its start) and into the start of the next one. */
-/** `live`: the length is unknown (radio, streams): the plan covers ten minutes of colour shifts and has no end-of-song dip or next-song switch. */
+/** Everything one light does for the current song: its colour from the start (brightening from the dim of the last song's end when
+ *  there was one), then nothing at all until the last seconds: a dip to 20% in steps of 5%, and, at the very end, the next song's
+ *  colour landing once on every light at the same moment, brightening again from there. No colour changes inside a song.
+ *  `live`: the length is unknown (radio, streams): just the song's colour, no dip and no next-song switch. */
 export function timeline(l: Bulb, mode: LightMode, ci: number, cur: Look, next: Look | null, durationMs: number, rampStart: boolean, live = false): Step[] {
   const steps: Step[] = [...startSteps(l, mode, cur, ci, 0, rampStart, l.on)];
-  const colourful = mode === "color" && l.supportsColor && !cur.mono && cur.colors.length > 1;
-  if (colourful) {
-    // colour-only shifts at fixed points of the song: every tenth of its length, never closer than 15 seconds, none in the last 8 seconds
-    const every = Math.max(15_000, durationMs / 10);
-    let prevHue = calibrateHue(l.model, cur.colors[ci % cur.colors.length][0]);
-    for (let k = 1; k * every <= durationMs - NO_SHIFT_MS; k++) {
-      const [h, s] = cur.colors[(ci + k) % cur.colors.length];
-      const target = calibrateHue(l.model, h);
-      const t = Math.round(k * every);
-      if (hueGap(prevHue, target) > 50) steps.push({ t, data: { hs_color: [target, s] } }); // a big jump would sweep through other hues: just switch
-      else for (let j = 0; j < 4; j++) steps.push({ t: t + 3000 * (j + 1), data: { hs_color: [Math.round(lerpHue(prevHue, target, (j + 1) / 4)), s] } });
-      prevHue = target;
-    }
-  }
-  if (!live && mode !== "off" && l.dimmable) for (const [dt, b] of rampPoints(100, 25, 5000, false)) steps.push({ t: durationMs - DIP_MS + dt, data: { brightness_pct: b } });
+  if (!live && mode !== "off" && l.dimmable) for (const [dt, b] of rampPoints(100, LOW_PCT, DIP_MS - NEXT_LEAD_MS - 50, false)) steps.push({ t: durationMs - DIP_MS + dt, data: { brightness_pct: b } });
   if (next && !live) {
     const tN = durationMs - NEXT_LEAD_MS;
     const kept = steps.filter((s) => s.t < tN);
