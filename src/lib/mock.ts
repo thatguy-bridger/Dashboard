@@ -2,7 +2,7 @@
 import type { Home } from "./ha";
 import type { ScreenData } from "./types";
 
-export type Scenario = "idle" | "music" | "paused" | "soon" | "morning" | "night" | "away" | "offline" | "nightmusic" | "day" | "calm" | "takeover" | "busy";
+export type Scenario = "idle" | "music" | "paused" | "soon" | "morning" | "night" | "away" | "offline" | "nightmusic" | "day" | "calm" | "takeover" | "busy" | "bare";
 const LONG_EVENT = "Alta Service Club: save Tiny Tim's headcount, hours, thank-you, and photos in one folder";
 const LONG_SONG = "Popular (with Playboi Carti & Madonna) - From The Idol Vol. 1 (Music from the HBO Original Series)";
 
@@ -29,13 +29,13 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
         car: { fuelPct: s === "busy" ? 9 : 62, rangeMi: 240, locked: s === "busy" ? false : true, lastDrive: { miles: 11.2, minutes: 24 } }, battery: { pct: s === "busy" ? 14 : 80, charging: false } }
     : {};
   const lyricsNext = withLyrics ? { id: "mock2", lines: [[2, "Another song begins to play"], [8, "Soft light on the water"], [14, "Carry me home"]] as [number, string][] } : null;
-  const lights = { on: s !== "idle" && s !== "paused", lights: [{ id: "light.bar1", name: "Light bar 1", mode: "art", color: "#e8943a" }, { id: "light.bar2", name: "Light bar 2", mode: "art", color: "#5b6fb5" }, { id: "light.lamp", name: "Desk lamp", mode: "white", color: "#fff1d6" }, { id: "light.x", name: "Hall", mode: "leave", color: "#ffffff" }] };
+  const lights = { on: s !== "idle" && s !== "paused" && s !== "bare", lights: [{ id: "light.bar1", name: "Light bar 1", mode: "art", color: "#e8943a" }, { id: "light.bar2", name: "Light bar 2", mode: "art", color: "#5b6fb5" }, { id: "light.lamp", name: "Desk lamp", mode: "white", color: "#fff1d6" }, { id: "light.x", name: "Hall", mode: "leave", color: "#ffffff" }] };
   const info = s === "takeover" ? [{ id: "garage", zone: "takeover", title: "Garage door has been open for 20 minutes", detail: "Tap to close it from Permuta", icon: "alert", priority: 90 }] : [];
   const dayEvents = [ev("English 11", -170, 50, "#7c8cff"), ev("Seminary", -110, 50, "#ffd60a"), ev("Chemistry", -20, 50, "#b48cff", { location: "Room 214", kind: "school" }), ev("Pre-Calculus", 35, 50, "#7c8cff", { kind: "school" }), ev("US History", 125, 50, "#7c8cff", { kind: "school" }), ev("Basketball practice", 240, 90, "#ff8a65")];
   const hr = new Date(now).getHours();
   return {
     screen: { widgets: ["clock", "weather", "agenda", "music"], calmAfterSec: 0, pageSec: 6, minDwellSec: 0, ...(pulseMin ? { pulseMin } : {}) }, theme: null,
-    agenda: { events: (s === "day" || s === "busy" ? dayEvents : events).filter((e) => e.end > sec) },
+    agenda: { events: s === "bare" ? [] : (s === "day" || s === "busy" ? dayEvents : events).filter((e) => e.end > sec) },
     music: s === "music" || s === "nightmusic" ? music(true) : s === "paused" ? music(false) : null,
     lyrics, lyricsNext, lights, info: info as never, extra,
     status: { away: s === "away", at: s === "offline" ? sec - 900 : sec - 5 },
@@ -45,7 +45,7 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
 }
 
 /** Fake Home Assistant state for the control panel preview. */
-export function mockHome(): Home {
+export function mockHome(bare = false): Home {
   const L = (id: string, name: string, room: string, on: boolean, b: number, extra = {}) => ({ id: `light.${id}`, name, kind: "light" as const, room, on, brightness: b, dimmable: true, ...extra });
   const devices: Home["devices"] = [
     L("bed_lamp", "Bedside lamp", "Bedroom", true, 0.6, { kelvinRange: [2200, 6500] as [number, number], kelvin: 3000 }), L("bed_bar", "Light bar", "Bedroom", true, 0.9, { supportsColor: true, color: [24, 80] as [number, number] }), L("bed_led", "LED strip", "Bedroom", false, 0.5),
@@ -55,5 +55,5 @@ export function mockHome(): Home {
     { id: "media_player.speakers", name: "Bridger's Speakers", kind: "media", room: "Speakers", on: true, dimmable: false, playing: true, volume: 0.4, title: "NEW DROP", artist: "Don Toliver" },
     { id: "media_player.mini", name: "Nest Mini", kind: "media", room: "Speakers", on: false, dimmable: false, playing: false, volume: 0.2 },
   ] as Home["devices"];
-  return { configured: true, reachable: true, devices, away: false, musicLights: true, rooms: ["Bedroom", "Kitchen", "Living room"] };
+  return { configured: true, reachable: true, devices: bare ? devices.map((d) => ({ ...d, on: false })) : devices, away: false, musicLights: !bare, rooms: ["Bedroom", "Kitchen", "Living room"] };
 }

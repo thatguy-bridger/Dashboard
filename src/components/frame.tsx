@@ -1,16 +1,16 @@
 "use client";
 // The page frame: a strict grid with named areas (rail | header / hero / foot). Nothing is positioned over anything else, so nothing can overlap.
 import type { SceneId } from "@/lib/scenes";
-import type { SlotItem, Slots } from "@/lib/slots";
+import type { Slots } from "@/lib/slots";
 import { Icon, type IconName } from "./Icon";
-import { Clock, DateLine, SlotPill, StripCard } from "./widgets";
+import { Clock, DateLine, StripCard } from "./widgets";
 
-/** What the header carries for each scene: the small clock and date ("full"), only the pills ("pills": the hero already is the clock), or nothing. */
-export const HEADER_MODE: Record<SceneId, "full" | "pills" | "none"> = { idle: "pills", music: "full", soon: "full", day: "full", morning: "pills", night: "none", away: "pills", offline: "none" };
+/** What the header carries for each scene: the small clock and date plus the island ("full"), only the island ("island": the hero already is the clock), or nothing. */
+export const HEADER_MODE: Record<SceneId, "full" | "island" | "none"> = { idle: "island", music: "full", soon: "full", day: "full", morning: "island", night: "none", away: "island", offline: "none" };
 const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
 
-/** Header regions, left to right: [clock + date (+ greeting)] [pills]. The pills shrink (their titles shorten) before they can touch the clock; when the header is narrow the greeting goes first, then the second pill. */
-export function Header({ mode, now, scene, pills }: { mode: "full" | "pills" | "none"; now: number; scene: SceneId; pills: SlotItem[] }) {
+/** Header regions, left to right: [clock + date (+ greeting)] [the island, centred in what's left]. The island collapses its satellites first, then its text, when the header is narrow. */
+export function Header({ mode, now, scene, island }: { mode: "full" | "island" | "none"; now: number; scene: SceneId; island: React.ReactNode }) {
   if (mode === "none") return null;
   return (
     <div className="hdr">
@@ -22,7 +22,7 @@ export function Header({ mode, now, scene, pills }: { mode: "full" | "pills" | "
           </>
         )}
       </div>
-      <div className="hdr-r" data-area="pills">{pills.map((p) => <SlotPill key={p.id} item={p} />)}</div>
+      <div className="hdr-c" data-area="island">{island}</div>
     </div>
   );
 }

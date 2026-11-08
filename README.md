@@ -33,3 +33,10 @@ corner five times quickly; a locked screen asks for the PIN again first. Mock pr
 - **Prediction** (`src/lib/predict.ts`): song rollover and reconcile, optimistic controls, passed events dropping out; all pure and tested.
 - **Home** is a normal page (`src/components/home.tsx`): tiles (tap = toggle, drag = level, hold = detail popover), colour picker, optimistic everywhere. The control role shows the same page full-time.
 - **Glass indicator** (`src/components/glass.tsx`): one shared sliding indicator for the rail and the segmented pickers.
+
+## The dynamic island
+
+The header's centre (`src/components/island.tsx`, `src/lib/island.ts`, `src/lib/activities.ts`): ONE main item = the most pressing activity from OTHER pages (what the current page already shows is excluded; on the Calendar page a playing song is the main item, on the Music page it isn't),
+with up to three satellites per side (weather always first; one per kind; never the main item). Scores reuse the focus-score idea (`buildActivities`); a minimum dwell (8 s) plus a hysteresis margin keep it from flickering, and urgent items (an event about to start, an alert) bypass the dwell.
+Tap the main item for a compact card with real controls (closes on an outside tap or after 6 s); long-press jumps to its page; tap a satellite to pin it as the main item for 10 s. `fitIsland` measures the header and drops satellites from the outside in, then shrinks the pill, so it can never collide with the clock.
+Mock: `?mock=music&go=calendar` (go = today | calendar | music | home | mail | journal), `?mock=takeover`, `?mock=bare`.

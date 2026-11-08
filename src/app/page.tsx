@@ -23,6 +23,9 @@ import { useDevice } from "@/lib/useDevice";
 import { Rail } from "@/components/rail";
 import { Takeover } from "@/components/zones";
 import { Header, Foot, HEADER_MODE } from "@/components/frame";
+import { Island } from "@/components/island";
+import { buildActivities } from "@/lib/activities";
+import { selectIsland, type IslandMemory, type IslandPage, type IslandPin } from "@/lib/island";
 import { Timeline } from "@/components/timeline";
 import { findOverlaps, inside, type Box } from "@/lib/layout";
 import { applyHome, applyMusic, blendPosition, failOpt, liveEvents, overridesFor, pickLyrics, positionOf, predictMusic, reportedFor, resolveOpt, setOpt, type Opt } from "@/lib/predict";
@@ -56,10 +59,13 @@ export default function Page() {
   const [gate, setGate] = useState(false);                    // the PIN again, on a locked screen
   const [awakeUntil, setAwakeUntil] = useState(0);            // a dimmed control panel goes bright on touch
   const lastFire = useRef(0);
+  const [islandPin, setIslandPin] = useState<IslandPin | null>(null);        // a tapped satellite becomes the main item for 10 s
+  const islandMem = useRef<IslandMemory>({ mainId: null, since: 0 });
   const [optMap, setOptMap] = useState<Opt>({});               // optimistic overrides: what the user just did shows at once
   const shownPos = useRef<{ id: string; pos: number; t: number } | null>(null);
   const homeRef = useRef<Home | null>(null);
-  const mockHomeData = useMemo(() => (MOCK ? mockHome() : null), []);
+  const [mockBare, setMockBare] = useState(false);
+  const mockHomeData = useMemo(() => (MOCK ? mockHome(mockBare) : null), [mockBare]);
   const [mockDev] = useState<Partial<DeviceConfig> | null>(() => {      // mock only: ?role=control&view=home&device=locked&name=Kitchen&dim=never
     if (!MOCK || typeof location === "undefined") return null;
     const q = new URLSearchParams(location.search), d: Partial<DeviceConfig> = {};
@@ -84,21 +90,26 @@ export default function Page() {
     if (q.get("font") === "b") { document.documentElement.style.setProperty("--nf-text", "var(--nf-text-b)"); document.documentElement.style.setProperty("--nf-num", "var(--nf-num-b)"); }
     (window as unknown as { __dash: unknown }).__dash = { set: (sc: Scenario) => setMockOpts((o) => ({ ...o, scenario: sc })) };   // test hook: change the situation live
     (window as unknown as { __layoutCheck: unknown }).__layoutCheck = () => {            // walks the rendered boxes and reports overlaps (test harness)
+      if (!document.getElementById("__nomotion")) { const st = document.createElement("style"); st.id = "__nomotion"; st.textContent = "*, *::before, *::after { transition: none !important; animation-duration: 0s !important; animation-delay: 0s !important; }"; document.head.appendChild(st); }   // measure the final layout, not a frame mid-transition
+      void document.body.offsetHeight;
       const box = (el: Element, name: string): Box => { const r = el.getBoundingClientRect(); return { name, x: r.left, y: r.top, w: r.width, h: r.height }; };
       const vis = (el: Element) => { const cs = getComputedStyle(el); return cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity) > 0.05; };
       const overlaps: [string, string][] = [], outside: string[] = [];
       const siblings = (sel: string, label: string) => document.querySelectorAll(sel).forEach((parent, pi) => {
-        const kids = [...parent.children].filter((c) => vis(c) && getComputedStyle(c).position !== "absolute").map((c, i) => box(c, `${label}${pi}>${(c as HTMLElement).className.toString().split(" ")[0] || c.tagName}${i}`));
+        const kids = [...parent.children].filter((c) => vis(c) && !["absolute", "fixed"].includes(getComputedStyle(c).position)).map((c, i) => box(c, `${label}${pi}>${(c as HTMLElement).className.toString().split(" ")[0] || c.tagName}${i}`));
         overlaps.push(...findOverlaps(kids));
       });
       const areas = ["rail", "head", "hero", "foot"].map((n) => document.querySelector(`[data-area="${n}"]`)).filter((e): e is Element => !!e && vis(e) && e.getBoundingClientRect().height > 0).map((e) => box(e, (e as HTMLElement).dataset.area!));
       overlaps.push(...findOverlaps(areas));
-      siblings(".hdr", "hdr"); siblings(".hdr-l", "hdr-l"); siblings(".hdr-r", "pills"); siblings(".foot-row", "foot"); siblings(".strip-row", "strip"); siblings(".layer:not(.leaving) .sc", "sc"); siblings(".layer:not(.leaving) .sc > *", "blk"); siblings(".mmeta", "mmeta");
+      siblings(".hdr", "hdr"); siblings(".isl", "isl"); siblings(".isl-sats", "sats"); siblings(".hdr-l", "hdr-l"); siblings(".hdr-r", "pills"); siblings(".foot-row", "foot"); siblings(".strip-row", "strip"); siblings(".layer:not(.leaving) .sc", "sc"); siblings(".layer:not(.leaving) .sc > *", "blk"); siblings(".mmeta", "mmeta");
       const evs = [...document.querySelectorAll(".tl-event")].filter(vis).map((e, i) => box(e, `tl-event${i}`)); overlaps.push(...findOverlaps(evs));
       const vp: Box = { name: "viewport", x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
       document.querySelectorAll('[data-area="head"] *, [data-area="foot"] *, .layer:not(.leaving) .sc *').forEach((e) => { if (vis(e) && e.getBoundingClientRect().width > 0 && !(e.closest(".lyrics, .gtitle") && getComputedStyle(e).position === "absolute") && !inside(box(e, "x"), vp, 3)) outside.push(((e as HTMLElement).className?.toString() || e.tagName).slice(0, 40)); });
       return { overlaps, outside: [...new Set(outside)], viewport: [window.innerWidth, window.innerHeight] };
     };
+    setMockBare(q.get("mock") === "bare");
+    const go = q.get("go");
+    if (go) setPin({ key: { today: "scene:idle", calendar: "scene:day", music: "scene:music", home: "page:home", mail: "page:mail", journal: "page:journal" }[go] ?? "scene:idle", until: Date.now() + 1e11 });
     const at = q.get("at");
     if (at && /^\d{1,2}:\d{2}$/.test(at)) { const [h, m] = at.split(":").map(Number); const d = new Date(); d.setHours(h, m, 0, 0); setOffset(d.getTime() - Date.now()); }
   }, []);
@@ -255,8 +266,15 @@ export default function Page() {
   const railHidden = scene === "night" || scene === "offline" || controlMode;
   const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "home" ? "home" : viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : "today") : railFor(shownScene);
   const zonesOn = (!showingPage || viewKey === "page:home") && !railHidden;
-  const headerMode = showingPage ? (viewKey === "page:home" ? "full" : "none") : HEADER_MODE[shownScene];
+  const headerMode = showingPage ? (viewKey === "page:home" ? "full" : "island") : HEADER_MODE[shownScene];
   const timeline = !showingPage && (shownScene === "soon" || shownScene === "day") ? <Timeline events={viewEvents} now={now} compact={shownScene === "soon"} /> : undefined;
+  // the island: the most pressing thing from OTHER pages, satellites beside it
+  const currentPage = (activeRail ?? "today") as IslandPage;
+  const activities = buildActivities({ ...ctx, music }, { takeover, musicLights: !!homeView?.musicLights, lightsOn: homeView ? homeView.devices.filter((d) => (d.kind === "light" || d.kind === "plug") && d.on).length : 0 });
+  const sel = selectIsland({ currentPage, activities, now, previous: islandMem.current, pin: islandPin });
+  islandMem.current = sel.memory;
+  const islandNode = <Island sel={sel} now={now} music={music} events={viewEvents} accent={theme.accent} control={control} act={(b) => { post(callOpt, b); }}
+    onPin={(id) => setIslandPin({ id, until: Date.now() + offset + 10000 })} onGo={(page) => pick(page === "weather" || page === "any" ? "today" : (page as RailId))} />;
   const noSlots = { pills: [], strip: [], badges: {}, peek: null, takeover: null };
 
   return (
@@ -266,7 +284,7 @@ export default function Page() {
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
       <div className="frame" data-area="frame">
         <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} /></aside>
-        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} pills={zonesOn ? slots.pills : []} /></header>
+        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} /></header>
         <main className="area-hero" data-area="hero">
           {layers.map((l) => {
             const page = l.key.startsWith("page:"), id = l.key.slice(l.key.indexOf(":") + 1);
@@ -276,7 +294,7 @@ export default function Page() {
         </main>
         <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn}>{timeline}</Foot></footer>
       </div>
-      <Takeover item={takeover} />
+      <Takeover item={headerMode === "none" ? takeover : null} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
       <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : controlMode ? (nightNow && awakeUntil < now ? 0.55 : 0) : decision.dim }} />
       {overlays}
