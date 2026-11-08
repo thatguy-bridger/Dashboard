@@ -8,6 +8,7 @@ import { LyricTicker, LyricsBlock } from "@/components/lyrics";
 import { GradientTitle } from "@/components/title";
 import { LightsRow } from "@/components/lightsrow";
 import { ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
+import { parseSchool } from "@/lib/sources/school";
 import type { SceneProps } from "./types";
 
 const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
@@ -104,6 +105,7 @@ function Day(p: SceneProps) {
 function Morning(p: SceneProps) {
   const h = new Date(p.now).getHours();
   const today = p.events.filter((e) => new Date(e.start * 1000).toDateString() === new Date(p.now).toDateString() || (e.start * 1000 < p.now && e.end * 1000 > p.now));
+  const school = parseSchool(p.ctx.extra.school), periods = school?.periods ?? [];       // the day's periods, when Permuta sent a school day
   return (
     <div className="sc morning">
       <div className="left">
@@ -111,7 +113,14 @@ function Morning(p: SceneProps) {
         <WeatherCard w={p.data?.weather ?? null} big />
         <div><Clock now={p.now} className="mini" /><LyricTicker view={p.lyric} /></div>
       </div>
-      <div className="right"><EventList events={today.length ? today : p.events} now={p.now} title={today.length ? "Today" : "Up next"} max={6} /></div>
+      <div className="right">
+        <EventList events={today.length ? today : p.events} now={p.now} title={today.length ? "Today" : "Up next"} max={periods.length ? 3 : 6} />
+        {periods.length > 0 && (
+          <div className="card mperiods"><div className="cap">{school?.day ? `School · ${school.day} day` : "School"}</div>
+            {periods.slice(0, 7).map((x, i) => <div key={i} className={`mperiod ${x.end * 1000 < p.now ? "past" : ""}`}><span className="mp-n">{x.period ?? ""}</span><span className="mp-c fit">{x.class}</span><span className="mp-t">{fmtTime(x.start * 1000)}</span></div>)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

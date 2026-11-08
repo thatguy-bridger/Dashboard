@@ -57,7 +57,7 @@ export function buildActivities(c: SourceCtx & { music: PredMusic | null }, extr
     out.push({ id: "car", kind: "car", score: low ? 65 : 12, page: "home", icon: "car", label: low ? "Car is low" : "Car", value: pct != null ? `${Math.round(pct)}%` : undefined });
   }
   const bat = parseBattery(c.extra.battery);
-  if (bat) { const low = bat.pct <= 20 && !bat.charging; out.push({ id: "battery", kind: "battery", score: low ? 55 : 10, page: "home", icon: "battery", label: low ? "Tablet battery low" : "Tablet", value: `${Math.round(bat.pct)}%` }); }
+  if (bat && bat.pct <= 20 && !bat.charging) out.push({ id: "battery", kind: "battery", score: 55, page: "home", icon: "battery", label: "Tablet battery", value: `${Math.round(bat.pct)}%` });          // only when low and not charging
 
   if (extra.musicLights) out.push({ id: "musiclights", kind: "musiclights", score: 30, page: "home", icon: "note", label: "Music lights", value: "on" });
   if ((extra.lightsOn ?? 0) > 0) out.push({ id: "lights", kind: "lights", score: 18, page: "home", icon: "bulb", label: "Lights", value: String(extra.lightsOn) });

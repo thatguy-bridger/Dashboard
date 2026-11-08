@@ -85,7 +85,7 @@ test("activities: scores follow the focus-score idea, urgent only when it matter
   assert.equal(byId(buildActivities(ctx({ away: true })), "away").score, 55);
   assert.equal(byId(buildActivities(ctx({ extra: { mail: { unread: 5, priority: 2 } } })), "mail").score, 60); assert.equal(byId(buildActivities(ctx({ extra: { mail: { unread: 5 } } })), "mail").score, 22);
   assert.equal(byId(buildActivities(ctx({ extra: { journal: { due: true } } })), "journal").score, 45);
-  assert.equal(byId(buildActivities(ctx({ extra: { car: { fuelPct: 9 } } })), "car").score, 65); assert.equal(byId(buildActivities(ctx({ extra: { battery: { pct: 90 } } })), "battery").score, 10);
+  assert.equal(byId(buildActivities(ctx({ extra: { car: { fuelPct: 9 } } })), "car").score, 65); assert.equal(byId(buildActivities(ctx({ extra: { battery: { pct: 90 } } })), "battery"), undefined); assert.equal(byId(buildActivities(ctx({ extra: { battery: { pct: 14 } } })), "battery")?.score, 55);
   const a = buildActivities(ctx({ weather: { current: { temperature_2m: 43.4, weather_code: 0, is_day: 1 } } }), { musicLights: true, lightsOn: 5, takeover: { id: "g", zone: "takeover", title: "Garage door open", icon: "alert" } });
   assert.deepEqual([byId(a, "weather").value, byId(a, "musiclights").value, byId(a, "lights").value, byId(a, "alert:g").score], ["43°", "on", "5", 100]); assert.equal(byId(a, "alert:g").urgent, true);
   assert.equal(byId(a, "weather").page, "weather");

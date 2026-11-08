@@ -4,11 +4,11 @@ import { DEVICE_DEFAULTS, resolveDevice, mergeDevice, cleanPatch, isControl, for
 import { holdProgress, registerTap, inCorner, holdMoved, HOLD_MS } from "./gesture.ts";
 
 test("defaults: a display, auto view, unlocked, dims automatically", () => {
-  assert.deepEqual(DEVICE_DEFAULTS, { name: "", role: "display", view: "auto", locked: false, dim: "auto" });
+  assert.deepEqual(DEVICE_DEFAULTS, { name: "", role: "display", view: "auto", locked: false, dim: "auto", guest: false });
   assert.deepEqual(resolveDevice(null), DEVICE_DEFAULTS); assert.deepEqual(resolveDevice("x"), DEVICE_DEFAULTS); assert.deepEqual(resolveDevice([]), DEVICE_DEFAULTS); assert.deepEqual(resolveDevice({}), DEVICE_DEFAULTS);
 });
 test("resolve: valid fields are kept, invalid ones fall back to the default", () => {
-  assert.deepEqual(resolveDevice({ name: "  Kitchen  panel ", role: "control", view: "home", locked: true, dim: "never" }), { name: "Kitchen panel", role: "control", view: "home", locked: true, dim: "never" });
+  assert.deepEqual(resolveDevice({ name: "  Kitchen  panel ", role: "control", view: "home", locked: true, dim: "never" }), { name: "Kitchen panel", role: "control", view: "home", locked: true, dim: "never", guest: false });
   assert.deepEqual(resolveDevice({ role: "admin", view: "nope", locked: "yes", dim: 3, name: 7, extra: 1 }), DEVICE_DEFAULTS);
   assert.equal(resolveDevice({ name: "x".repeat(200) }).name.length, NAME_MAX);
 });
@@ -37,7 +37,7 @@ test("device id: hex, long enough, and validated", () => {
 test("ping info is sanitised", () => {
   const i = sanitizeInfo({ ua: "u".repeat(500), w: 1920.4, h: -5, scene: "music", mode: "focus", ver: "abc", name: "n", junk: 1 });
   assert.equal(i.ua?.length, 200); assert.equal(i.w, 1920); assert.equal(i.h, 0); assert.equal(i.scene, "music"); assert.ok(!("junk" in i));
-  assert.deepEqual(sanitizeInfo(null), { ua: undefined, w: undefined, h: undefined, scene: undefined, mode: undefined, ver: undefined, name: undefined });
+  assert.deepEqual(sanitizeInfo(null), { battery: undefined, ua: undefined, w: undefined, h: undefined, scene: undefined, mode: undefined, ver: undefined, name: undefined });
 });
 
 test("hold: progress runs 0 to 1 over three seconds and never leaves that range", () => {

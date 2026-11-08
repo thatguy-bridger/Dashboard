@@ -39,6 +39,11 @@ export function SettingsSheet({ cfg, save, onClose, onForget, id, online, lastSy
           <div className="small">When locked, opening this sheet asks for the PIN again.</div>
         </div>
         <div className="card setcard">
+          <div className="cap">Guest mode</div>
+          <div className="row"><button className={`switch ${cfg.guest ? "on" : ""}`} role="switch" aria-checked={cfg.guest} onClick={() => save({ guest: !cfg.guest })}><i /></button><div className="mid">{cfg.guest ? "On" : "Off"}</div></div>
+          <div className="small">Shows only the lights and the fan. The PIN lifts it for 4 hours.</div>
+        </div>
+        <div className="card setcard">
           <div className="cap">Dimming</div>
           <GlassGroup className="steps glass" active={DIMS.indexOf(cfg.dim)}>{(["auto", "never"] as const).map((d) => <button key={d} data-gi-item className={cfg.dim === d ? "on" : ""} onClick={() => save({ dim: d })}>{d === "auto" ? "Dim at night" : "Never dim"}</button>)}</GlassGroup>
         </div>

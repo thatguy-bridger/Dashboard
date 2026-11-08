@@ -1,8 +1,9 @@
 import { allowed, deny, pinOf } from "@/lib/auth";
 import { call } from "@/lib/ha";
 import { enqueue } from "@/lib/supabase";
+import { cancelCall, timerCalls } from "@/lib/timer";
 
-type Body = { op: string; id?: string; ids?: string[]; on?: boolean; pct?: number; k?: number; h?: number; s?: number; level?: number; action?: string; name?: string; cmd?: Record<string, unknown> };
+type Body = { op: string; id?: string; ids?: string[]; on?: boolean; pct?: number; k?: number; h?: number; s?: number; level?: number; minutes?: number; action?: string; name?: string; cmd?: Record<string, unknown> };
 
 /** Only real light entity ids, a sane number of them. */
 const lightIds = (ids: unknown): string[] => (Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string" && /^light\.[a-z0-9_]{1,60}$/.test(x)).slice(0, 40) : []);
@@ -34,6 +35,8 @@ export async function POST(req: Request) {
       if (b.name === "leaving") ok = await call("script", "turn_on", { entity_id: "script.home_base_leaving" });
       if (b.name === "returning") ok = await call("script", "turn_on", { entity_id: "script.home_base_returning" });
       break;
+    case "timer": { const calls = timerCalls(b); if (calls.length) ok = (await Promise.all(calls.map((c) => call(c.domain, c.service, c.data)))).every(Boolean); break; }       // script.permuta_timer, one run per entity
+    case "cancelTimers": { const c = cancelCall(); ok = await call(c.domain, c.service, c.data); break; }
     case "permuta": if (b.cmd) { await enqueue(pinOf(req), b.cmd); ok = true; } break;   // things only Permuta can do (Spotify playlists, …)
   }
   return Response.json({ ok }, { status: ok ? 200 : 502 });

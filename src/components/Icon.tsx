@@ -2,7 +2,7 @@
 export type IconName =
   | "sun" | "moon" | "cloud" | "cloud-sun" | "cloud-rain" | "snow" | "bolt" | "fog" | "thermometer"
   | "bulb" | "fan" | "speaker" | "play" | "pause" | "skip-back" | "skip-forward" | "note" | "backspace"
-  | "home" | "walk" | "calendar" | "mail" | "book" | "car" | "battery" | "clock" | "users" | "bell" | "flame" | "check" | "school" | "pin" | "sparkle" | "chart" | "alert";
+  | "home" | "walk" | "calendar" | "mail" | "book" | "car" | "battery" | "clock" | "users" | "bell" | "flame" | "check" | "school" | "pin" | "sparkle" | "chart" | "alert" | "timer";
 
 const S: Record<IconName, React.ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></>,
@@ -39,6 +39,7 @@ const S: Record<IconName, React.ReactNode> = {
   pin: <><path d="M12 21.5s7-6.1 7-11.7a7 7 0 0 0-14 0c0 5.6 7 11.7 7 11.7z" /><circle cx="12" cy="9.8" r="2.4" /></>,
   sparkle: <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />,
   chart: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
+  timer: <><circle cx="12" cy="13.5" r="7.5" /><path d="M12 9.5v4.2l2.6 1.6M9.5 3h5M12 3v3" /></>,
   alert: <path d="M12 3.5L2.8 19.5h18.4zM12 10v4.5M12 17.2v.2" />,
 };
 const FILLED: IconName[] = ["play", "pause", "skip-back", "skip-forward", "bolt"];

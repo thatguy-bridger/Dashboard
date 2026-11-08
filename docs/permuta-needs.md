@@ -115,16 +115,28 @@ Optional: `priority` 0 to 100, `scenes` / `hideIn` (scene ids), `color`, `icon`,
 ## Per-screen configuration (screens register themselves; Permuta manages them)
 
 Every browser that runs the page makes a random id once (localStorage `dash-device`) and calls `dash_device_ping(p_pin, p_id, p_info)` on load and every ~15 s through
-`POST /api/device {op:"ping"}`; `p_info = { ua, w, h, scene, mode, ver, name? }`. The returned config is authoritative and applied live (no reload); if the server can't be
+`POST /api/device {op:"ping"}`; `p_info = { ua, w, h, scene, mode, ver, name?, battery?: { pct, charging } }` (`battery` only where the browser has `navigator.getBattery`; the page also feeds it into its own battery pill, "Tablet battery 14%", so it works without Permuta). The returned config is authoritative and applied live (no reload); if the server can't be
 reached the last config (kept in localStorage) keeps being used and pings retry quietly. On-screen settings use `dash_device_self(p_pin, p_id, p_config)`.
 Permuta (write token) lists and edits screens with `dash_devices_list` / `dash_device_set` / `dash_device_remove`.
 
 ```json
-{ "name": "", "role": "display", "view": "auto", "locked": false, "dim": "auto" }
+{ "name": "", "role": "display", "view": "auto", "locked": false, "dim": "auto", "guest": false }
 ```
 `role`: `display` (the situational page) or `control` (a full-time home-control touch panel). `view` (displays): `auto`, `standby`, `music`, `timeline`, `calm`, `home`
 (`home` = the control panel). `locked`: opening the hidden settings sheet on that screen asks for the PIN again. `dim`: `auto` (dim at night, bright on touch for panels) or `never`.
-Nothing else is needed from Permuta for this.
+`guest` (new): `true` makes that screen show ONLY a big Lights switch (every light and plug) and the fan control; no rail, pages, island or settings. The hidden trigger
+(5 taps in the top-left corner, or press and hold the clock) then only asks for the PIN, and a correct PIN lifts guest mode on that screen for 4 hours (kept locally, so it
+comes back by itself). The on-screen settings sheet has a Guest switch; Permuta's Screens tab can add the same switch (`dash_device_set` with `{ "guest": true }`).
+Nothing else is needed from Permuta for this. (`dash_device_self` / `dash_device_set` / `dash_device_ping` merge any JSON, so `guest` and `info.battery` need no database change.)
+
+## Timers, welcome back, tablet battery (this round)
+
+- **Timers**: the Home popover has "Switch off after 15 min / 30 min / 1 h / 2 h" (or "on after" for a device that is off), an "Off at 10:45" readout and Cancel. `POST /api/act`
+  `{ op: "timer", id | ids, minutes, on? }` becomes `script.turn_on script.permuta_timer` with `variables { entity, minutes, on }` (one run per entity; only light/fan/switch ids, minutes 1 to 720);
+  `{ op: "cancelTimers" }` becomes `script.turn_off script.permuta_timer`. The script is in parallel mode, so turning it off stops every run: cancelling one light starts the others again with their remaining time (rounded up to a minute).
+  The page remembers what it started (localStorage `dash-timers`) to show a small timer glyph and the time on the tile; a timer started from somewhere else is not shown.
+- **Welcome back**: when `away` goes true to false (also by undoing the Leaving scene, which flips it optimistically) the page shows a full-screen welcome for about 8 s (greeting, weather, next event, unread mail count from `state:mail.unread`), then fades. Leaving shows a quiet "Goodbye" for about 3.5 s. Never on first load.
+- **Theme and screen knobs**: `config:theme` (accent, font, glass, radius, dark, artAccent) and `config:screen` (`disabled`, soonLeadMin, soonStayMin, night/morning windows, calmAfterSec, pageSec, minDwellSec) were already honoured; `state:life` is drawn on the Life page.
 
 ## Music extras (this round)
 

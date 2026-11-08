@@ -17,6 +17,13 @@ import { useLayers } from "@/lib/useLayers";
 import { PinPad } from "@/components/pin";
 import { HiddenTrigger } from "@/components/trigger";
 import { PinGate, SettingsSheet } from "@/components/settings";
+import { Welcome, Goodbye } from "@/components/welcome";
+import { GuestScreen } from "@/components/guest";
+import { awayEdge, welcomeInfo } from "@/lib/welcome";
+import { exemptFrom, guestActive, guestAllows, triggerOutcome } from "@/lib/guest";
+import { batteryExtra, type Bat } from "@/lib/battery";
+import { useBattery } from "@/lib/useBattery";
+import { parseMail } from "@/lib/sources/mail";
 import { forcedView, type DeviceConfig, type DeviceDim, type DeviceRole, type DeviceView } from "@/lib/device";
 import { inWindow } from "@/lib/scenes";
 import { useDevice } from "@/lib/useDevice";
@@ -70,9 +77,20 @@ export default function Page() {
     if (!MOCK || typeof location === "undefined") return null;
     const q = new URLSearchParams(location.search), d: Partial<DeviceConfig> = {};
     if (q.get("role")) d.role = q.get("role") as DeviceRole; if (q.get("view")) d.view = q.get("view") as DeviceView; if (q.get("dim")) d.dim = q.get("dim") as DeviceDim;
-    if (q.get("device") === "locked") d.locked = true; if (q.get("name")) d.name = q.get("name")!;
+    if (q.get("device") === "locked") d.locked = true; if (q.get("device") === "guest") d.guest = true; if (q.get("name")) d.name = q.get("name")!;
     return d;
   });
+  const [mockBat] = useState<Bat | null>(() => {                      // mock only: ?battery=14&charging=1
+    if (!MOCK || typeof location === "undefined") return null;
+    const q = new URLSearchParams(location.search), p = Number(q.get("battery"));
+    return q.get("battery") && isFinite(p) ? { pct: p, charging: q.get("charging") === "1" } : null;
+  });
+  const liveBat = useBattery();
+  const tabletBat = MOCK ? mockBat : liveBat;                          // the page's own battery; null where the browser has no API
+  const [guestUntil, setGuestUntil] = useState<number>(() => { try { return Number(localStorage.getItem("dash-guest-until")) || 0; } catch { return 0; } });   // guest mode lifted by the PIN until then
+  const [welcome, setWelcome] = useState<{ kind: "welcome" | "goodbye"; id: number; hold?: boolean } | null>(null);
+  const doneWelcome = useCallback(() => setWelcome(null), []);
+  const prevAway = useRef<boolean | null>(null);
   const fails = useRef(0);
   const loadedAt = useRef(Date.now());
   const version = useRef<string | null>(null);
@@ -86,7 +104,7 @@ export default function Page() {
   useEffect(() => {
     if (!MOCK) return;
     const q = new URLSearchParams(location.search);
-    setMockOpts({ scenario: (q.get("mock") as Scenario) || "idle", long: q.get("long") === "1", force: (q.get("scene") as SceneId) || null, pulse: Number(q.get("pulse")) || undefined, page: q.get("page") || undefined, lyrics: q.get("lyrics") !== "0", h24: q.get("h24") === "1", font: q.get("font") || undefined });
+    setMockOpts({ scenario: ((q.get("mock") === "welcome" ? "day" : q.get("mock")) as Scenario) || "idle", long: q.get("long") === "1", force: (q.get("scene") as SceneId) || null, pulse: Number(q.get("pulse")) || undefined, page: q.get("page") || undefined, lyrics: q.get("lyrics") !== "0", h24: q.get("h24") === "1", font: q.get("font") || undefined });
     if (q.get("font") === "b") { document.documentElement.style.setProperty("--nf-text", "var(--nf-text-b)"); document.documentElement.style.setProperty("--nf-num", "var(--nf-num-b)"); }
     (window as unknown as { __dash: unknown }).__dash = { set: (sc: Scenario) => setMockOpts((o) => ({ ...o, scenario: sc })) };   // test hook: change the situation live
     (window as unknown as { __layoutCheck: unknown }).__layoutCheck = () => {            // walks the rendered boxes and reports overlaps (test harness)
@@ -108,6 +126,7 @@ export default function Page() {
       return { overlaps, outside: [...new Set(outside)], viewport: [window.innerWidth, window.innerHeight] };
     };
     setMockBare(q.get("mock") === "bare");
+    if (q.get("mock") === "welcome") setWelcome({ kind: "welcome", id: 1, hold: true });
     const go = q.get("go");
     if (go) setPin({ key: { today: "scene:idle", calendar: "scene:day", music: "scene:music", home: "page:home", mail: "page:mail", journal: "page:journal" }[go] ?? "scene:idle", until: Date.now() + 1e11 });
     const at = q.get("at");
@@ -166,7 +185,7 @@ export default function Page() {
 
   // ----- information sources, focus or calm -----
   const viewEvents = widgets.includes("agenda") ? events : [];
-  const baseCtx: SourceCtx = { now, scene, events: viewEvents, music, weather: widgets.includes("weather") ? data?.weather ?? null : null, away, extra: data?.extra ?? {}, soonLeadMin: resolveConfig(sceneCfg).soonLeadMin };
+  const baseCtx: SourceCtx = { now, scene, events: viewEvents, music, weather: widgets.includes("weather") ? data?.weather ?? null : null, away, extra: batteryExtra(tabletBat, data?.extra), soonLeadMin: resolveConfig(sceneCfg).soonLeadMin };
   const { score } = focusScore(baseCtx);
   const focusCfg = resolveFocus(cfg);
   useEffect(() => { setModeState((prev) => decideMode(prev, { scene, score, now, cfg: focusCfg })); }, [scene, score, now, focusCfg.focusThreshold, focusCfg.calmAfterSec]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -175,9 +194,17 @@ export default function Page() {
   const rot = rotation(pages, now, focusCfg.pageSec);
 
   // ----- this screen's own role and view (the server is the authority; changes apply live) -----
-  const device = useDevice({ call: api.call, unlocked, scene, mode: calm ? "calm" : "focus", ver: version.current, mock: MOCK ? mockDev : null });
+  const device = useDevice({ call: api.call, unlocked, scene, mode: calm ? "calm" : "focus", ver: version.current, mock: MOCK ? mockDev : null, battery: tabletBat });
   const forced = forcedView(device.cfg);
   const controlMode = forced.kind === "control";
+  const guestOn = guestActive(device.cfg, guestUntil, now);          // guest mode: only the lights and the fan, until the PIN
+  const guestRef = useRef(guestOn); guestRef.current = guestOn;
+  const awayReady = !!data && (MOCK || home !== null || now - loadedAt.current > 8000);
+  useEffect(() => {                                                  // coming home shows the welcome; leaving shows a quiet goodbye (never for the first reading)
+    if (!awayReady) return;
+    const e = awayEdge(prevAway.current, away); prevAway.current = away;
+    if (e && !guestRef.current && !controlMode) setWelcome({ kind: e === "back" ? "welcome" : "goodbye", id: Date.now() });
+  }, [away, awayReady]);   // eslint-disable-line react-hooks/exhaustive-deps
   const infoItems = useMemo(() => normalizeInfo(data?.info), [data?.info]);
   const slots = collectSlots({ now, scene, events: viewEvents, info: [...sourceItems(baseCtx), ...infoItems] }, []);     // the sources supply every item (no built-in providers on top)
   const lyricsNow = useMemo(() => parseLyrics(data?.lyrics), [data?.lyrics]);
@@ -195,7 +222,7 @@ export default function Page() {
   const pinned = pin && pin.until > now ? pin.key : null;
   const computedKey = calm ? `page:${(MOCK && mockOpts.page) || rot.id}` : `scene:${scene}`;
   const viewKey = forced.kind === "control" ? "page:home" : forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
-  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, viewKey === "page:home" ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, viewKey]);   // the Home page refreshes faster while it's on screen
+  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, viewKey === "page:home" || guestOn ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, viewKey, guestOn]);   // the Home page refreshes faster while it's on screen
   const shownScene = viewKey.startsWith("scene:") ? (viewKey.slice(6) as SceneId) : scene;
   const showingPage = viewKey.startsWith("page:");
 
@@ -239,6 +266,7 @@ export default function Page() {
   }, [api]);
   const control = useCallback((cmd: Record<string, unknown>) => { post(callOpt, { op: "permuta", cmd: { type: "music", ...cmd } }); }, [callOpt]);
   const pick = (id: RailId) => {
+    if (!guestAllows(guestRef.current, "navigate")) return;
     const until = Date.now() + offset + 60000;
     if (id === "home") { setPin({ key: "page:home", until }); return; }
     if (id === "today") setPin({ key: "scene:idle", until }); else if (id === "calendar") setPin({ key: "scene:day", until });
@@ -249,12 +277,17 @@ export default function Page() {
   if (!unlocked) return <PinPad unlock={api.unlock} />;
 
   // the hidden settings trigger: hold a clock for 3 s, or tap the top-left corner five times
-  const trigger = () => { lastFire.current = Date.now(); if (device.cfg.locked) setGate(true); else setSheet(true); };
-  const verify = async (p: string) => { const ok = MOCK ? p === "4242" : (await fetch("/api/unlock", { method: "POST", headers: { "x-control-pin": p } })).ok; if (ok) { setGate(false); setSheet(true); } return ok; };
+  const trigger = () => { lastFire.current = Date.now(); if (triggerOutcome(guestOn, device.cfg.locked) === "settings") setSheet(true); else setGate(true); };       // in guest mode it only ever asks for the PIN
+  const verify = async (p: string) => {
+    const ok = MOCK ? p === "4242" : (await fetch("/api/unlock", { method: "POST", headers: { "x-control-pin": p } })).ok;
+    if (ok) { setGate(false); if (guestOn) { const u = exemptFrom(now); setGuestUntil(u); try { localStorage.setItem("dash-guest-until", String(u)); } catch {} } else setSheet(true); }     // the PIN lifts guest mode for 4 hours
+    return ok;
+  };
+  const saveCfg = (patch: Partial<DeviceConfig>) => { if (patch.guest === true) { setGuestUntil(0); setSheet(false); try { localStorage.removeItem("dash-guest-until"); } catch {} } device.save(patch); };
   const overlays = (
     <>
       <HiddenTrigger onFire={trigger} />
-      {sheet && <SettingsSheet cfg={device.cfg} save={device.save} onClose={() => setSheet(false)} onForget={() => { setSheet(false); api.forget(); }} id={device.id} online={device.online} lastSync={device.lastSync} />}
+      {sheet && !guestOn && <SettingsSheet cfg={device.cfg} save={saveCfg} onClose={() => setSheet(false)} onForget={() => { setSheet(false); api.forget(); }} id={device.id} online={device.online} lastSync={device.lastSync} />}
       {gate && <PinGate verify={verify} onCancel={() => setGate(false)} />}
     </>
   );
@@ -275,8 +308,18 @@ export default function Page() {
   islandMem.current = sel.memory;
   const islandNode = <Island sel={sel} now={now} music={music} events={viewEvents} accent={theme.accent} control={control} act={(b) => { post(callOpt, b); }}
     onPin={(id) => setIslandPin({ id, until: Date.now() + offset + 10000 })} onGo={(page) => pick(page === "weather" || page === "any" ? "today" : (page as RailId))} />;
+  const wInfo = welcome?.kind === "welcome" ? welcomeInfo({ now, events: viewEvents, weather: data?.weather ?? null, unread: parseMail(data?.extra?.mail)?.unread ?? 0 }) : null;
   const noSlots = { pills: [], strip: [], badges: {}, peek: null, takeover: null };
 
+  if (guestOn) return (                                              // nothing but the lights and the fan is rendered, so nothing else can be reached
+    <div className="root norail">
+      <div className="tint" /><div className="wash" style={{ opacity: 0.35 }} />
+      <GuestScreen home={homeView} now={now} act={(b) => { post(callOpt, b); setTimeout(loadHome, 450); }} />
+      <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : decision.dim }} />
+      <HiddenTrigger onFire={trigger} />
+      {gate && <PinGate verify={verify} onCancel={() => setGate(false)} />}
+    </div>
+  );
   return (
     <div className={`root ${railHidden ? "norail" : ""}`} onPointerDownCapture={() => { setAwakeUntil(now + 60000); interactingRef.current = true; setTimeout(() => { interactingRef.current = false; }, 5000); setPin((p) => (p && p.until > Date.now() + offset ? { ...p, until: Date.now() + offset + (p.key === "page:home" ? 120000 : 60000) } : p)); }}>
       <div className="tint" />
@@ -297,6 +340,8 @@ export default function Page() {
       <Takeover item={headerMode === "none" ? takeover : null} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
       <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : controlMode ? (nightNow && awakeUntil < now ? 0.55 : 0) : decision.dim }} />
+      {wInfo && <Welcome key={welcome!.id} info={wInfo} onDone={doneWelcome} hold={welcome!.hold} />}
+      {welcome?.kind === "goodbye" && <Goodbye key={welcome.id} onDone={doneWelcome} />}
       {overlays}
     </div>
   );

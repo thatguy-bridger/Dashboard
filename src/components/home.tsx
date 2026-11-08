@@ -8,6 +8,8 @@ import { post, type Call } from "@/lib/useApi";
 import type { SceneProps } from "@/scenes/types";
 import { Icon, type IconName } from "./Icon";
 import { GlassGroup } from "./glass";
+import { cancelPlan, liveTimers, startTimers, timerOf, TIMER_CHOICES, type Timers } from "@/lib/timer";
+import { fmtClock, fmtTime } from "@/lib/format";
 
 // The Home page: a normal page in the same frame (rail, header, tokens, motion). Scenes on top, then rooms as quiet sections of tiles.
 // A tile: TAP toggles, DRAG across it sets the level (the fill follows the finger), HOLD opens that device's detail popover. All of it is optimistic.
@@ -22,10 +24,27 @@ function useAct(call: Call, reload: () => void): Act {
   }, [call, reload]);
 }
 
+// "Switch off after": the timer itself runs in Home Assistant; this page remembers what it started so a tile can show when the light goes off.
+type TimerApi = { live: Timers; now: number; set: (ids: string[], minutes: number, on: boolean) => void; cancel: (ids: string[]) => void };
+const TIMER_KEY = "dash-timers";
+function useTimers(call: Call, now: number): TimerApi {
+  const [t, setT] = useState<Timers>(() => { try { return JSON.parse(localStorage.getItem(TIMER_KEY) ?? "{}") as Timers; } catch { return {}; } });
+  const ref = useRef(t); ref.current = t;
+  useEffect(() => { try { localStorage.setItem(TIMER_KEY, JSON.stringify(liveTimers(t, Date.now()))); } catch {} }, [t]);
+  const set = useCallback((ids: string[], minutes: number, on: boolean) => {
+    const before = ref.current; setT(startTimers(before, ids, minutes, on, Date.now()));                       // shown at once
+    post(call, { op: "timer", ids, minutes, on }).then((r) => { if (!r || !r.ok) setT((cur) => { const n = { ...cur }; for (const id of ids) { if (before[id]) n[id] = before[id]; else delete n[id]; } return n; }); });
+  }, [call]);
+  const cancel = useCallback((ids: string[]) => {
+    const plan = cancelPlan(ref.current, ids, Date.now()); setT(plan.timers);
+    post(call, { op: "cancelTimers" }).then(() => { for (const r of plan.rearm) post(call, { op: "timer", id: r.id, minutes: r.minutes, on: r.on }); });     // cancelling stops all of them in Home Assistant: the others start again
+  }, [call]);
+  return { live: liveTimers(t, now), now, set, cancel };
+}
 const rectOf = (el: Element): Rect => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
 
-type TileProps = { icon: IconName; title: string; sub?: string; lit?: boolean; tint?: string; level?: number; onTap?: () => void; onLevel?: (v: number, final: boolean) => void; onHold?: (anchor: Rect) => void; className?: string };
-function Tile({ icon, title, sub, lit, tint, level, onTap, onLevel, onHold, className = "" }: TileProps) {
+type TileProps = { icon: IconName; title: string; sub?: string; lit?: boolean; tint?: string; level?: number; badge?: string; onTap?: () => void; onLevel?: (v: number, final: boolean) => void; onHold?: (anchor: Rect) => void; className?: string };
+function Tile({ icon, title, sub, lit, tint, level, badge, onTap, onLevel, onHold, className = "" }: TileProps) {
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<TileState>(TILE_IDLE), startLevel = useRef(0), lastLevel = useRef<number | null>(null), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [local, setLocal] = useState<number | null>(null), [pressing, setPressing] = useState(false), [flash, setFlash] = useState(false);
@@ -67,6 +86,7 @@ function Tile({ icon, title, sub, lit, tint, level, onTap, onLevel, onHold, clas
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onTap?.(); }}>
       {draggable && (lit || local != null) && <div className="hfill" style={{ width: `${Math.round(shown * 100)}%` }} />}
       <Icon name={icon} className="hicon" />
+      {badge && <span className="hbadge" aria-label={`Timer, ${badge}`}><Icon name="timer" />{badge}</span>}
       <div className="htext"><div className="htitle fit">{title}</div>{sub && <div className="hsub fit">{sub}</div>}</div>
     </div>
   );
@@ -87,6 +107,7 @@ type Pop = { kind: "device"; id: string; anchor: Rect } | { kind: "room"; room: 
 export function HomePage(p: SceneProps) {
   const { home, call, reloadHome } = p;
   const act = useAct(call, reloadHome);
+  const tm = useTimers(call, p.now);
   const [pop, setPop] = useState<Pop | null>(null);
   const devices = useMemo(() => (home?.devices ?? []).filter((d) => d.kind !== "display"), [home]);
   const lights = devices.filter((d) => d.kind === "light" || d.kind === "plug");
@@ -117,7 +138,7 @@ export function HomePage(p: SceneProps) {
               <div className="htiles">
                 {ds.map((d) => {
                   const x = describe(d);
-                  return <Tile key={d.id} icon={x.icon} title={d.name} sub={x.sub} lit={x.lit} tint={d.kind === "light" ? tintFor(d) : undefined} level={x.level}
+                  return <Tile key={d.id} icon={x.icon} title={d.name} sub={x.sub} lit={x.lit} badge={badgeOf(tm, [d.id])} tint={d.kind === "light" ? tintFor(d) : undefined} level={x.level}
                     onTap={() => d.kind === "media" ? act({ op: "media", id: d.id, action: d.playing ? "pause" : "play" }) : act({ op: "toggle", id: d.id, on: !d.on })}
                     onLevel={x.level == null ? undefined : (v, f) => d.kind === "fan" ? act({ op: "fan", id: d.id, pct: Math.round((d.speedCount ? Math.round(v * d.speedCount) / d.speedCount : v) * 100) }, f) : d.kind === "media" ? act({ op: "volume", id: d.id, level: v }, f) : act({ op: "brightness", ids: [d.id], pct: Math.max(1, v * 100) }, f)}
                     onHold={(anchor) => setPop({ kind: "device", id: d.id, anchor })} />;
@@ -129,9 +150,9 @@ export function HomePage(p: SceneProps) {
         {!roomNames.length && <div className="card"><div className="small">No devices found. Home Assistant may not be answering.</div></div>}
       </div>
       {pop && <Popover anchor={pop.anchor} onClose={() => setPop(null)}>
-        {pop.kind === "device" && <DevicePanel id={pop.id} devices={devices} act={act} />}
-        {pop.kind === "room" && <LightsPanel title={pop.room} lights={devices.filter((d) => d.room === pop.room && (d.kind === "light" || d.kind === "plug"))} act={act} />}
-        {pop.kind === "all" && <LightsPanel title="All lights" lights={lights} act={act} />}
+        {pop.kind === "device" && <DevicePanel id={pop.id} devices={devices} act={act} tm={tm} />}
+        {pop.kind === "room" && <LightsPanel title={pop.room} lights={devices.filter((d) => d.room === pop.room && (d.kind === "light" || d.kind === "plug"))} act={act} tm={tm} />}
+        {pop.kind === "all" && <LightsPanel title="All lights" lights={lights} act={act} tm={tm} />}
       </Popover>}
     </div>
   );
@@ -194,7 +215,7 @@ function HuePicker({ hs, onChange }: { hs: [number, number]; onChange: (h: numbe
 }
 
 /** Brightness, warmth and colour for one light or a whole room (applied to every light in it). */
-function LightsPanel({ title, lights, act }: { title: string; lights: Device[]; act: Act }) {
+function LightsPanel({ title, lights, act, tm }: { title: string; lights: Device[]; act: Act; tm: TimerApi }) {
   const ids = lights.map((l) => l.id), dim = lights.filter((l) => l.dimmable), col = lights.filter((l) => l.supportsColor);
   const warm = lights.find((l) => l.kelvinRange), range = warm?.kelvinRange ?? [2200, 6500];
   const bri = dim.filter((l) => l.on).reduce((s, l, _, a) => s + (l.brightness ?? 1) / a.length, 0);
@@ -211,14 +232,15 @@ function LightsPanel({ title, lights, act }: { title: string; lights: Device[]; 
         </div>
       )}
       {ids.length > 0 && <button className="chip wide" onClick={() => { act({ op: "kelvin", ids, k: 4000 }); }}>Reset to white</button>}
+      {ids.length > 0 && <TimerBox ids={ids} anyOn={lights.some((l) => l.on)} tm={tm} />}
     </div>
   );
 }
 
-function DevicePanel({ id, devices, act }: { id: string; devices: Device[]; act: Act }) {
+function DevicePanel({ id, devices, act, tm }: { id: string; devices: Device[]; act: Act; tm: TimerApi }) {
   const d = devices.find((x) => x.id === id); const [muted, setMuted] = useState<number | null>(null);
   if (!d) return null;
-  if (d.kind === "light" || d.kind === "plug") return <LightsPanel title={d.name} lights={[d]} act={act} />;
+  if (d.kind === "light" || d.kind === "plug") return <LightsPanel title={d.name} lights={[d]} act={act} tm={tm} />;
   if (d.kind === "fan") {
     const n = d.speedCount ?? 0, step = stepOf(d), names = SPEEDS(Math.max(1, n));
     return (
@@ -229,6 +251,7 @@ function DevicePanel({ id, devices, act }: { id: string; devices: Device[]; act:
           {d.direction != null && <button className={`chip ${d.direction === "reverse" ? "on" : ""}`} onClick={() => act({ op: "direction", id, name: d.direction === "reverse" ? "forward" : "reverse" })}>Reverse</button>}
           {(d.presets ?? []).map((pr) => <button key={pr} className={`chip ${d.preset === pr ? "on" : ""}`} onClick={() => act({ op: "preset", id, name: pr })}>{pr}</button>)}
         </div>
+        <TimerBox ids={[id]} anyOn={d.on} tm={tm} />
       </div>
     );
   }
@@ -242,6 +265,21 @@ function DevicePanel({ id, devices, act }: { id: string; devices: Device[]; act:
       </div>
       {d.volume != null && <Slider label="Volume" value={d.volume} onChange={(v, f) => act({ op: "volume", id, level: v }, f)} />}
       {d.volume != null && <button className="chip wide" onClick={() => { if (muted == null) { setMuted(d.volume ?? 0.3); act({ op: "volume", id, level: 0 }); } else { act({ op: "volume", id, level: muted }); setMuted(null); } }}>{muted == null ? "Mute" : "Unmute"}</button>}
+    </div>
+  );
+}
+
+/** What a tile shows while one of its devices has a timer: the time it fires, e.g. "10:45". */
+const badgeOf = (tm: TimerApi, ids: string[]) => { const t = timerOf(tm.live, ids, tm.now); return t ? fmtClock(t.at).time : undefined; };
+
+/** "Switch off after" chips (or "on after" when the device is off), what is running, and Cancel. */
+function TimerBox({ ids, anyOn, tm }: { ids: string[]; anyOn: boolean; tm: TimerApi }) {
+  const cur = timerOf(tm.live, ids, tm.now), on = cur ? cur.on : !anyOn;
+  return (
+    <div className="ptimer">
+      <div className="cap">{on ? "Switch on after" : "Switch off after"}</div>
+      <div className="chips">{TIMER_CHOICES.map((c) => <button key={c.minutes} className="chip" onClick={() => tm.set(ids, c.minutes, on)}>{c.label}</button>)}</div>
+      {cur && <div className="row ptimer-run"><Icon name="timer" /><span className="mid">{cur.on ? "On" : "Off"} at {fmtTime(cur.at)}</span><span style={{ flex: 1 }} /><button className="chip" onClick={() => tm.cancel(ids)}>Cancel</button></div>}
     </div>
   );
 }

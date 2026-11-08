@@ -40,3 +40,7 @@ The header's centre (`src/components/island.tsx`, `src/lib/island.ts`, `src/lib/
 with up to three satellites per side (weather always first; one per kind; never the main item). Scores reuse the focus-score idea (`buildActivities`); a minimum dwell (8 s) plus a hysteresis margin keep it from flickering, and urgent items (an event about to start, an alert) bypass the dwell.
 Tap the main item for a compact card with real controls (closes on an outside tap or after 6 s); long-press jumps to its page; tap a satellite to pin it as the main item for 10 s. `fitIsland` measures the header and drops satellites from the outside in, then shrinks the pill, so it can never collide with the clock.
 Mock: `?mock=music&go=calendar` (go = today | calendar | music | home | mail | journal), `?mock=takeover`, `?mock=bare`.
+
+## Tablet features (timers, welcome back, battery, guest, morning)
+See `docs/permuta-needs.md` ("Timers, welcome back, tablet battery"). Pure logic with tests: `src/lib/timer.ts`, `welcome.ts`, `battery.ts`, `guest.ts` (`features.test.ts`).
+Mock hooks (local build with `NEXT_PUBLIC_DASH_MOCK=1`): `?mock=welcome` (holds the welcome screen), `?device=guest` (PIN 4242 lifts it), `?battery=14&charging=0`, `?mock=morning&scene=morning` (school periods).

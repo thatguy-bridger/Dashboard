@@ -4,9 +4,9 @@
 export type DeviceRole = "display" | "control";
 export type DeviceView = "auto" | "standby" | "music" | "timeline" | "calm" | "home";
 export type DeviceDim = "auto" | "never";
-export type DeviceConfig = { name: string; role: DeviceRole; view: DeviceView; locked: boolean; dim: DeviceDim };
+export type DeviceConfig = { name: string; role: DeviceRole; view: DeviceView; locked: boolean; dim: DeviceDim; guest: boolean };
 
-export const DEVICE_DEFAULTS: DeviceConfig = { name: "", role: "display", view: "auto", locked: false, dim: "auto" };
+export const DEVICE_DEFAULTS: DeviceConfig = { name: "", role: "display", view: "auto", locked: false, dim: "auto", guest: false };
 export const ROLES: DeviceRole[] = ["display", "control"];
 export const VIEWS: DeviceView[] = ["auto", "standby", "music", "timeline", "calm", "home"];
 export const DIMS: DeviceDim[] = ["auto", "never"];
@@ -21,6 +21,7 @@ export function cleanPatch(raw: unknown): Partial<DeviceConfig> {
   if (VIEWS.includes(o.view as DeviceView)) out.view = o.view as DeviceView;
   if (typeof o.locked === "boolean") out.locked = o.locked;
   if (DIMS.includes(o.dim as DeviceDim)) out.dim = o.dim as DeviceDim;
+  if (typeof o.guest === "boolean") out.guest = o.guest;
   return out;
 }
 /** A config from whatever the server (or the cache) returned: defaults for everything missing or invalid. */
@@ -47,11 +48,13 @@ export function forcedView(c: DeviceConfig): Forced {
 export const makeDeviceId = (bytes: ArrayLike<number>) => Array.from(bytes, (b) => (b & 255).toString(16).padStart(2, "0")).join("");
 export const validDeviceId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(id);
 
-export type DeviceInfo = { ua?: string; w?: number; h?: number; scene?: string; mode?: string; ver?: string; name?: string };
+export type DeviceInfo = { ua?: string; w?: number; h?: number; scene?: string; mode?: string; ver?: string; name?: string; battery?: { pct: number; charging: boolean } };
 /** What the page tells the server about itself, with lengths capped. */
 export function sanitizeInfo(raw: unknown): DeviceInfo {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const s = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : undefined);
   const n = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.min(20000, Math.max(0, Math.round(v))) : undefined);
-  return { ua: s(o.ua, 200), w: n(o.w), h: n(o.h), scene: s(o.scene, 20), mode: s(o.mode, 10), ver: s(o.ver, 40), name: s(o.name, NAME_MAX) };
+  const b = o.battery && typeof o.battery === "object" ? (o.battery as Record<string, unknown>) : null;
+  const battery = b && typeof b.pct === "number" && isFinite(b.pct) ? { pct: Math.min(100, Math.max(0, Math.round(b.pct))), charging: b.charging === true } : undefined;
+  return { battery, ua: s(o.ua, 200), w: n(o.w), h: n(o.h), scene: s(o.scene, 20), mode: s(o.mode, 10), ver: s(o.ver, 40), name: s(o.name, NAME_MAX) };
 }
