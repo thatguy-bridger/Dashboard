@@ -3,11 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Device, Home } from "@/lib/ha";
 
 type Ev = { title: string; start: number; end: number; allDay?: boolean; color?: string };
-type Music = { playing: boolean; track: string; artist: string; album?: string; art?: string; progress: number; duration: number; at: number; device?: string };
+type Music = { playing: boolean; track: string; artist: string; album?: string; art?: string; progress: number; duration: number; at: number; device?: string; volume?: number };
 type Screen = {
   screen: { widgets?: string[]; accent?: string; name?: string; hideRooms?: string[]; hours24?: boolean } | null;
   agenda: { events: Ev[] } | null; music: Music | null; status: { away?: boolean; at?: number } | null;
-  weather: { current?: { temperature_2m: number; weather_code: number }; daily?: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; weather_code: number[] } } | null;
+  weather: { current?: { temperature_2m: number; weather_code: number; is_day?: number }; daily?: { time: string[]; temperature_2m_max: number[]; temperature_2m_min: number[]; weather_code: number[] } } | null;
   now: number;
 };
 
@@ -65,30 +65,92 @@ export default function Page() {
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !scr?.screen?.hours24 }).replace(/\s?(AM|PM)/i, "");
   const away = !!scr?.status?.away || !!home?.away;
 
+  const upcoming = (scr?.agenda?.events ?? []).filter((e) => e.end * 1000 > tick);
+  const first = upcoming[0];
+  const m = scr?.music ?? null;
+  const sendMusic = (cmd: Record<string, unknown>) => post(api.call, { op: "permuta", cmd: { type: "music", ...cmd } });
+
   return (
     <>
-      <div className="stage" style={{ gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr) auto" }} onClick={() => setOpen(true)}>
-        <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "2vmin", minWidth: 0 }}>
-          {widgets.includes("clock") && <div><div className="clock">{time}</div><div className="date">{d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}{away ? " · away" : ""}</div></div>}
+      <div className="backdrop" style={m?.art ? { backgroundImage: `url("${m.art}")` } : undefined} />
+      <div className="stage standby" onClick={() => setOpen(true)}>
+        <div className="top">
+          {first && (
+            <div className="pill"><span className="dot" style={{ color: first.color ?? "#b48cff", background: first.color ?? "#b48cff" }} /><span className="fit">{first.title}</span><b>{until(first, tick)}</b></div>
+          )}
+        </div>
+        <div className="left">
+          {widgets.includes("clock") && <div>
+            <div className="clock">{time}{!scr?.screen?.hours24 && <small>{d.getHours() >= 12 ? "PM" : "AM"}</small>}</div>
+            <div className="date">{d.toLocaleDateString([], { weekday: "long" })} · {d.toLocaleDateString([], { month: "long", day: "numeric" })}{away ? " · away" : ""}</div>
+          </div>}
           {widgets.includes("weather") && <Weather w={scr?.weather ?? null} />}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2vmin", minHeight: 0 }}>
-          {widgets.includes("music") && <NowPlaying m={scr?.music ?? null} now={tick} />}
-          {widgets.includes("agenda") && <Agenda events={scr?.agenda?.events ?? []} now={tick} />}
+        <div className="right">
+          {widgets.includes("music") && m && m.track && <NowPlaying m={m} now={tick} onControl={sendMusic} />}
         </div>
-        <div className="hint" style={{ gridColumn: "1 / -1", position: "static" }}>Tap anywhere for controls</div>
+        {widgets.includes("agenda") && <div className="strip"><div className="cap">Next up</div><div className="strip-row">{upcoming.slice(0, 5).map((e, i) => (
+          <div key={i} className="chipcard"><span className="dot" style={{ color: e.color ?? "#7c8cff", background: e.color ?? "#7c8cff" }} /><div style={{ minWidth: 0 }}><div className="clamp1 midsm">{e.title}</div><div className="small">{when(e, tick)}</div></div></div>))}
+          {upcoming.length === 0 && <div className="small">Nothing coming up</div>}</div></div>}
       </div>
       {open && <Controls home={home} call={api.call} reload={async () => { try { const r = await api.call("/api/home"); if (r.ok) setHome(await r.json()); } catch {} }} hide={scr?.screen?.hideRooms ?? []} close={() => setOpen(false)} music={scr?.music ?? null} />}
     </>
   );
 }
 
+function until(e: Ev, now: number) {
+  const mins = Math.round((e.start * 1000 - now) / 60000);
+  if (mins <= 0) return "now";
+  if (mins < 60) return `in ${mins} min`;
+  const h = Math.floor(mins / 60);
+  return h < 24 ? `in ${h}h ${mins % 60}m` : `in ${Math.floor(h / 24)}d`;
+}
+function when(e: Ev, now: number) {
+  const day = (t: number) => { const a = new Date(t), n = new Date(now); const diff = Math.round((new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime() - new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()) / 864e5); return diff <= 0 ? "Today" : diff === 1 ? "Tomorrow" : a.toLocaleDateString([], { weekday: "long" }); };
+  const tm = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return e.allDay ? `${day(e.start * 1000)} · all day` : `${day(e.start * 1000)} ${tm(e.start * 1000)} – ${tm(e.end * 1000)}`;
+}
+
 function PinPad({ unlock }: { unlock: (p: string) => Promise<boolean> }) {
-  const [v, setV] = useState(""); const [bad, setBad] = useState(false);
+  const [v, setV] = useState(""); const [bad, setBad] = useState(false); const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+
+  const submit = useCallback(async (pin: string) => {
+    busyRef.current = true; setBusy(true);
+    const ok = await unlock(pin);
+    if (!ok) { setBad(true); setTimeout(() => { setV(""); setBad(false); busyRef.current = false; setBusy(false); }, 700); }
+    // on success the page replaces this screen
+  }, [unlock]);
+
+  const press = useCallback((d: string) => {
+    if (busyRef.current) return;
+    setBad(false);
+    setV((cur) => {
+      const next = (cur + d).slice(0, 4);
+      if (next.length === 4) setTimeout(() => submit(next), 120);   // four digits: send it
+      return next;
+    });
+  }, [submit]);
+
+  // a real or remote keyboard works too
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) press(e.key);
+      else if (e.key === "Backspace") setV((c) => (busyRef.current ? c : c.slice(0, -1)));
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [press]);
+
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", ""];
   return (
     <div className="pin">
       <div className="cap">Enter the PIN</div>
-      <input value={v} inputMode="numeric" type="password" autoFocus onChange={(e) => { setV(e.target.value); setBad(false); }} onKeyDown={async (e) => { if (e.key === "Enter") setBad(!(await unlock(v))); }} />
+      <div className={`dots ${bad ? "bad" : ""}`}>{[0, 1, 2, 3].map((i) => <i key={i} className={i < v.length ? "on" : ""} />)}</div>
+      <div className="keypad">
+        {keys.map((k, i) => k === "" ? <span key={i} /> :
+          <button key={i} autoFocus={k === "5"} disabled={busy && k !== "⌫"} onClick={() => k === "⌫" ? (!busyRef.current && setV((c) => c.slice(0, -1))) : press(k)}>{k}</button>)}
+      </div>
       <div className="small" style={{ opacity: bad ? 1 : 0, color: "#ff8a8a" }}>That PIN didn&apos;t work</div>
     </div>
   );
@@ -96,45 +158,41 @@ function PinPad({ unlock }: { unlock: (p: string) => Promise<boolean> }) {
 
 function Weather({ w }: { w: Screen["weather"] }) {
   if (!w?.current) return null;
-  const dd = w.daily;
+  const code = w.current.weather_code, night = w.current.is_day === 0;
+  const icon = code === 0 ? (night ? "🌙" : "☀️") : code <= 2 ? (night ? "☁️" : "⛅") : code === 3 ? "☁️" : code >= 95 ? "⛈" : code >= 71 && code <= 77 ? "❄️" : code >= 45 && code <= 48 ? "🌫" : "🌧";
+  const hi = w.daily?.temperature_2m_max[0], lo = w.daily?.temperature_2m_min[0];
   return (
-    <div className="card">
-      <div className="row"><div className="clock" style={{ fontSize: "9vmin" }}>{Math.round(w.current.temperature_2m)}°</div><div className="mid">{WMO[w.current.weather_code] ?? ""}</div></div>
-      {dd && <div className="row" style={{ marginTop: "1.6vmin", justifyContent: "space-between" }}>{dd.time.slice(1, 5).map((t, i) => (
-        <div key={t} style={{ textAlign: "center" }}><div className="cap">{new Date(t + "T12:00").toLocaleDateString([], { weekday: "short" })}</div><div className="mid">{Math.round(dd.temperature_2m_max[i + 1])}°</div><div className="small">{Math.round(dd.temperature_2m_min[i + 1])}°</div></div>))}</div>}
-    </div>
+    <div className="wx"><span style={{ fontSize: "5.6vmin" }}>{icon}</span><span className="temp">{Math.round(w.current.temperature_2m)}°</span>
+      <div><div className="mid" style={{ fontWeight: 700 }}>{WMO[code] ?? ""}</div>{hi != null && lo != null && <div className="small">H {Math.round(hi)}° · L {Math.round(lo)}°</div>}</div></div>
   );
 }
 
-function Agenda({ events, now }: { events: Ev[]; now: number }) {
-  const upcoming = events.filter((e) => e.end * 1000 > now).slice(0, 5);
-  return (
-    <div className="card" style={{ flex: 1, overflow: "hidden" }}>
-      <div className="cap" style={{ marginBottom: "1.4vmin" }}>Up next</div>
-      {upcoming.length === 0 && <div className="small">Nothing coming up</div>}
-      {upcoming.map((e, i) => (
-        <div key={i} className="row" style={{ marginBottom: "1.4vmin" }}>
-          <span className="dot" style={{ color: e.color ?? "#7c8cff", background: e.color ?? "#7c8cff" }} />
-          <div style={{ minWidth: 0, flex: 1 }}><div className="mid clamp">{e.title}</div><div className="small">{e.allDay ? "All day" : new Date(e.start * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div>
-        </div>))}
-    </div>
-  );
-}
-
-function NowPlaying({ m, now }: { m: Music | null; now: number }) {
-  if (!m || !m.track) return null;
+function NowPlaying({ m, now, onControl }: { m: Music; now: number; onControl: (c: Record<string, unknown>) => void }) {
   const pos = Math.min(m.duration, m.progress + (m.playing ? (now - m.at) / 1000 : 0));
+  const fmt = (x: number) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+  const stop = (f: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); f(); };
+  const vref = useRef<HTMLDivElement>(null);
+  const setVol = (e: React.PointerEvent, final: boolean) => { const r = vref.current!.getBoundingClientRect(); const v = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height)); if (final) onControl({ action: "volume", level: v }); };
   return (
-    <div className="card">
-      <div className="row">
-        {m.art ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="art" src={m.art} alt="" /> : <div className="art" />}
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="cap">{m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
-          <div className="big clamp" style={{ marginTop: ".6vmin" }}>{m.track}</div>
-          <div className="mid clamp1" style={{ opacity: .6 }}>{m.artist}</div>
-          <div className="bar" style={{ marginTop: "1.6vmin" }}><i style={{ width: `${m.duration ? (pos / m.duration) * 100 : 0}%` }} /></div>
+    <div className="np" onClick={(e) => e.stopPropagation()}>
+      <div className="npcard">
+        <div className="row" style={{ alignItems: "flex-start" }}>
+          {m.art ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="art" src={m.art} alt="" /> : <div className="art" />}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="big clamp">{m.track}</div>
+            <div className="mid clamp1" style={{ opacity: .6 }}>{m.artist}</div>
+            <div className="row" style={{ gap: "2.4vmin", marginTop: "1.6vmin" }}>
+              <button className="ctl" onClick={stop(() => onControl({ action: "previous" }))}>⏮</button>
+              <button className="ctl main" onClick={stop(() => onControl({ action: m.playing ? "pause" : "play" }))}>{m.playing ? "⏸" : "▶︎"}</button>
+              <button className="ctl" onClick={stop(() => onControl({ action: "next" }))}>⏭</button>
+            </div>
+          </div>
         </div>
+        <div className="cap" style={{ margin: "1.6vmin 0 .6vmin" }}>{m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
+        <div className="bar"><i style={{ width: `${m.duration ? (pos / m.duration) * 100 : 0}%` }} /></div>
+        <div className="row" style={{ justifyContent: "space-between", marginTop: ".6vmin" }}><span className="small">{fmt(pos)}</span><span className="small">{fmt(m.duration)}</span></div>
       </div>
+      {m.volume != null && <div ref={vref} className="vol" onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setVol(e, false); }} onPointerUp={(e) => setVol(e, true)}><i style={{ height: `${m.volume * 100}%` }} /></div>}
     </div>
   );
 }

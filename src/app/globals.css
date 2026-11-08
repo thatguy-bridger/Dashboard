@@ -30,3 +30,24 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.15; }
 .clamp1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; overflow-wrap: anywhere; }
 .stage > * { min-width: 0; }
+
+.backdrop { position: fixed; inset: -10%; background-size: cover; background-position: center; filter: blur(70px) saturate(1.6); opacity: .5; transform: scale(1.2); z-index: 0; transition: background-image .8s; }
+.stage.standby { z-index: 1; background: linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.62)); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; padding: 3.5vmin 6vmin; gap: 2vmin 4vmin; }
+.top { grid-column: 1 / -1; display: flex; justify-content: flex-end; min-height: 6vmin; }
+.pill { display: flex; align-items: center; gap: 1.4vmin; padding: 1.4vmin 2.6vmin; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.07)); border: 1px solid var(--edge); font-size: 2.2vmin; font-weight: 700; max-width: 62%; } .pill b { opacity: .9; white-space: nowrap; }
+.left { display: flex; flex-direction: column; justify-content: center; gap: 3vmin; min-width: 0; }
+.right { display: flex; align-items: center; min-width: 0; }
+.clock { display: flex; align-items: baseline; gap: 1.2vmin; } .clock small { font-size: 4.6vmin; font-weight: 600; opacity: .85; -webkit-text-fill-color: color-mix(in srgb, var(--accent) 70%, #fff); }
+.wx { display: inline-flex; align-items: center; gap: 2vmin; padding: 1.8vmin 3vmin; border-radius: 3.4vmin; background: linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.06)); border: 1px solid var(--edge); align-self: flex-start; } .wx .temp { font-size: 7vmin; font-weight: 600; font-family: ui-rounded, system-ui; }
+.np { display: flex; gap: 2vmin; width: 100%; align-items: stretch; } .npcard { flex: 1; min-width: 0; padding: 2.6vmin; border-radius: 4vmin; background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.06)); border: 1px solid var(--edge); }
+.np .art { width: 15vmin; height: 15vmin; border-radius: 3.2vmin; }
+.ctl { font-size: 3.2vmin; width: 7vmin; height: 7vmin; border-radius: 50%; display: grid; place-items: center; } .ctl.main { background: rgba(255,255,255,.14); border: 1px solid var(--edge); }
+.vol { width: 6vmin; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.06)); border: 1px solid var(--edge); position: relative; overflow: hidden; touch-action: none; } .vol > i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, color-mix(in srgb, var(--accent) 80%, #fff), var(--accent)); }
+.strip { grid-column: 1 / -1; min-width: 0; } .strip .cap { margin-bottom: 1.2vmin; padding-left: .6vmin; }
+.strip-row { display: flex; gap: 1.6vmin; overflow: hidden; } .chipcard { display: flex; align-items: center; gap: 1.4vmin; flex: 1 1 0; min-width: 0; padding: 1.8vmin 2.2vmin; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06)); border: 1px solid var(--edge); } .midsm { font-size: 2vmin; font-weight: 700; }
+
+.dots { display: flex; gap: 2.4vmin; } .dots i { width: 3vmin; height: 3vmin; border-radius: 50%; border: .35vmin solid rgba(255,255,255,.5); transition: background .1s; } .dots i.on { background: #fff; }
+.dots.bad { animation: shake .4s; } .dots.bad i { border-color: #ff8a8a; background: #ff8a8a; }
+@keyframes shake { 20%, 60% { transform: translateX(-1.4vmin); } 40%, 80% { transform: translateX(1.4vmin); } }
+.keypad { display: grid; grid-template-columns: repeat(3, 12vmin); gap: 1.6vmin; } .keypad span { display: block; }
+.keypad button { height: 12vmin; border-radius: 3vmin; background: var(--glass); border: 1px solid var(--edge); font-size: 4.6vmin; font-weight: 600; } .keypad button:focus { outline: .5vmin solid var(--accent); outline-offset: .3vmin; background: rgba(255,255,255,.2); } .keypad button:active { background: rgba(255,255,255,.3); }
