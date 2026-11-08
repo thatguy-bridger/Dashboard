@@ -20,7 +20,14 @@ export async function GET(req: Request) {
   try {
     const kv = await readAll(pinOf(req));
     const v = (k: string) => kv[k]?.v;
+    // every other state:* row (school, mail, journal, car, battery, life, lyrics_next, lights …) goes to the page as `extra`, keyed by its name
+    const known = new Set(["agenda", "music", "status", "lyrics", "info"]);
+    const extra: Record<string, unknown> = {};
+    for (const [k, row] of Object.entries(kv)) if (k.startsWith("state:") && !known.has(k.slice(6))) extra[k.slice(6)] = row.v;
     return Response.json({
+      lyrics: v("state:lyrics") ?? null,
+      info: v("state:info") ?? undefined,
+      extra,
       screen: v("config:screen") ?? null,
       theme: v("config:theme") ?? null,
       agenda: v("state:agenda") ?? null,
