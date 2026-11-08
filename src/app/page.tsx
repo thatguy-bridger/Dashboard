@@ -67,7 +67,7 @@ export default function Page() {
 
   return (
     <>
-      <div className="stage" style={{ gridTemplateColumns: "1.15fr 1fr", gridTemplateRows: "1fr auto" }} onClick={() => setOpen(true)}>
+      <div className="stage" style={{ gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr) auto" }} onClick={() => setOpen(true)}>
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "2vmin", minWidth: 0 }}>
           {widgets.includes("clock") && <div><div className="clock">{time}</div><div className="date">{d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}{away ? " · away" : ""}</div></div>}
           {widgets.includes("weather") && <Weather w={scr?.weather ?? null} />}
@@ -109,13 +109,13 @@ function Weather({ w }: { w: Screen["weather"] }) {
 function Agenda({ events, now }: { events: Ev[]; now: number }) {
   const upcoming = events.filter((e) => e.end * 1000 > now).slice(0, 5);
   return (
-    <div className="card" style={{ flex: 1 }}>
+    <div className="card" style={{ flex: 1, overflow: "hidden" }}>
       <div className="cap" style={{ marginBottom: "1.4vmin" }}>Up next</div>
       {upcoming.length === 0 && <div className="small">Nothing coming up</div>}
       {upcoming.map((e, i) => (
         <div key={i} className="row" style={{ marginBottom: "1.4vmin" }}>
           <span className="dot" style={{ color: e.color ?? "#7c8cff", background: e.color ?? "#7c8cff" }} />
-          <div style={{ minWidth: 0 }}><div className="mid fit">{e.title}</div><div className="small">{e.allDay ? "All day" : new Date(e.start * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div>
+          <div style={{ minWidth: 0, flex: 1 }}><div className="mid clamp">{e.title}</div><div className="small">{e.allDay ? "All day" : new Date(e.start * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</div></div>
         </div>))}
     </div>
   );
@@ -130,8 +130,8 @@ function NowPlaying({ m, now }: { m: Music | null; now: number }) {
         {m.art ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="art" src={m.art} alt="" /> : <div className="art" />}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="cap">{m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
-          <div className="big fit" style={{ marginTop: ".6vmin" }}>{m.track}</div>
-          <div className="mid fit" style={{ opacity: .6 }}>{m.artist}</div>
+          <div className="big clamp" style={{ marginTop: ".6vmin" }}>{m.track}</div>
+          <div className="mid clamp1" style={{ opacity: .6 }}>{m.artist}</div>
           <div className="bar" style={{ marginTop: "1.6vmin" }}><i style={{ width: `${m.duration ? (pos / m.duration) * 100 : 0}%` }} /></div>
         </div>
       </div>
