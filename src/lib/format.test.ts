@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fmtClock, fmtTime, hourLabel, setHours24, getHours24, until, when, countdown, mmss, dayLabel } from "./format.ts";
 import { reloadDue, resolvePulse } from "./pulse.ts";
-import { resolveTheme, cssVars, soften } from "./theme.ts";
+import { resolveTheme, cssVars, soften, titleGradient, luminance, mix } from "./theme.ts";
 
 const t = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).getTime();
 
@@ -66,4 +66,16 @@ test("the page-wide setting drives every time, and defaults to 12-hour", () => {
   setHours24(true);
   assert.equal(fmtTime(t(7, 14, 5)), "14:05"); assert.equal(when(ev, now), "Tomorrow 08:30 – 13:30"); assert.deepEqual(fmtClock(t(7, 14, 5)), { time: "14:05", ampm: "" });
   setHours24(undefined); assert.equal(getHours24(), false); assert.equal(fmtTime(t(7, 14, 5)), "2:05 PM");
+});
+
+test("title gradient: from the palette, readable, 2 to 4 stops, fallback when empty", () => {
+  const stops = (g: string) => g.match(/#[0-9a-f]{6}/g) ?? [];
+  const g = titleGradient(["#ff0000", "#0000ff", "#00aa00"], "#7c8cff");
+  assert.ok(g.startsWith("linear-gradient(100deg")); assert.equal(stops(g).length, 3);
+  for (const c of stops(g)) assert.ok(luminance(c) >= 0.38, `${c} is too dark to read on the dark backdrop`);
+  assert.equal(stops(titleGradient(["#112233"], "#7c8cff")).length, 2);                         // one colour becomes a gentle two-stop gradient
+  assert.equal(stops(titleGradient(["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff"], "#7c8cff")).length, 4);   // at most four
+  assert.equal(stops(titleGradient(["red", "#12"], "#7c8cff")).length, 2);                      // invalid colours are ignored: the fallback is used
+  assert.equal(stops(titleGradient(undefined, "#7c8cff")).length, 2); assert.equal(titleGradient([], "#7c8cff", 120).startsWith("linear-gradient(120deg"), true);
+  assert.equal(mix("#000000", "#ffffff", 0.5), "#808080"); assert.ok(luminance("#ffffff") > 0.99 && luminance("#000000") < 0.01);
 });

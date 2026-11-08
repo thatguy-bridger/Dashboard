@@ -1,6 +1,6 @@
 export type Device = {
   id: string; name: string; kind: "light" | "plug" | "fan" | "media" | "display"; room: string; on: boolean;
-  brightness?: number; dimmable: boolean; supportsColor?: boolean; kelvin?: number; kelvinRange?: [number, number];
+  brightness?: number; dimmable: boolean; supportsColor?: boolean; color?: [number, number]; kelvin?: number; kelvinRange?: [number, number];
   percentage?: number; speedCount?: number; oscillating?: boolean; direction?: string; presets?: string[]; preset?: string;
   playing?: boolean; volume?: number; title?: string; artist?: string;
 };
@@ -29,6 +29,7 @@ function device(s: State): Device | null {
   if (domain === "light") {
     const modes: string[] = a.supported_color_modes ?? [];
     const d: Device = { id: s.entity_id, name, kind: "light", room: "", on: s.state === "on", brightness: a.brightness != null ? a.brightness / 255 : undefined, dimmable: modes.some((m) => m !== "onoff"), supportsColor: modes.some((m) => ["hs", "rgb", "rgbw", "rgbww", "xy"].includes(m)) };
+    if (Array.isArray(a.hs_color) && a.hs_color.length === 2 && a.color_mode && a.color_mode !== "color_temp") d.color = [Number(a.hs_color[0]), Number(a.hs_color[1])];
     if (modes.includes("color_temp") && a.min_color_temp_kelvin && a.max_color_temp_kelvin) { d.kelvinRange = [a.min_color_temp_kelvin, a.max_color_temp_kelvin]; d.kelvin = a.color_temp_kelvin; }
     return d;
   }

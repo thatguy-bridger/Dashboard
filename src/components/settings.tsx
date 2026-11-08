@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { VIEWS, type DeviceConfig, type DeviceRole, type DeviceView } from "@/lib/device";
 import { Icon } from "./Icon";
 import { PinPad } from "./pin";
+import { GlassGroup } from "./glass";
+import { ROLES, DIMS } from "@/lib/device";
 
 const VIEW_LABEL: Record<DeviceView, string> = { auto: "Auto", standby: "Standby", music: "Music", timeline: "Timeline", calm: "Calm pages", home: "Home control" };
 const ROLE_LABEL: Record<DeviceRole, string> = { display: "Display", control: "Control panel" };
@@ -14,7 +16,7 @@ export function SettingsSheet({ cfg, save, onClose, onForget, id, online, lastSy
   const commitName = () => { if (name.trim() !== cfg.name) save({ name: name.trim() }); };
   return (
     <div className="sheet settings" onClick={(e) => e.stopPropagation()}>
-      <div className="tabs"><div className="cap" style={{ fontSize: "1.8vmin" }}>Screen settings</div><span style={{ flex: 1 }} /><button className="tab" onClick={onClose}>Close</button></div>
+      <div className="tabs"><div className="cap" style={{ fontSize: "calc(1.8 * var(--u))" }}>Screen settings</div><span style={{ flex: 1 }} /><button className="tab" onClick={onClose}>Close</button></div>
       <div className="setgrid">
         <div className="card setcard">
           <div className="cap">Name</div>
@@ -23,12 +25,12 @@ export function SettingsSheet({ cfg, save, onClose, onForget, id, online, lastSy
         </div>
         <div className="card setcard">
           <div className="cap">Role</div>
-          <div className="steps">{(Object.keys(ROLE_LABEL) as DeviceRole[]).map((r) => <button key={r} className={cfg.role === r ? "on" : ""} onClick={() => save({ role: r })}>{ROLE_LABEL[r]}</button>)}</div>
+          <GlassGroup className="steps glass" active={ROLES.indexOf(cfg.role)}>{(Object.keys(ROLE_LABEL) as DeviceRole[]).map((r) => <button key={r} data-gi-item className={cfg.role === r ? "on" : ""} onClick={() => save({ role: r })}>{ROLE_LABEL[r]}</button>)}</GlassGroup>
           <div className="small">A display shows the situational page. A control panel is a full-time home-control touch panel.</div>
         </div>
         <div className="card setcard wide">
           <div className="cap">View</div>
-          <div className="steps wrapsteps">{VIEWS.map((v) => <button key={v} className={cfg.view === v ? "on" : ""} onClick={() => save({ view: v })}>{VIEW_LABEL[v]}</button>)}</div>
+          <GlassGroup className="steps glass wrapsteps" active={VIEWS.indexOf(cfg.view)}>{VIEWS.map((v) => <button key={v} data-gi-item className={cfg.view === v ? "on" : ""} onClick={() => save({ view: v })}>{VIEW_LABEL[v]}</button>)}</GlassGroup>
           <div className="small">Auto lets the page choose from the situation. Anything else keeps this screen on that view all the time.</div>
         </div>
         <div className="card setcard">
@@ -38,7 +40,7 @@ export function SettingsSheet({ cfg, save, onClose, onForget, id, online, lastSy
         </div>
         <div className="card setcard">
           <div className="cap">Dimming</div>
-          <div className="steps">{(["auto", "never"] as const).map((d) => <button key={d} className={cfg.dim === d ? "on" : ""} onClick={() => save({ dim: d })}>{d === "auto" ? "Dim at night" : "Never dim"}</button>)}</div>
+          <GlassGroup className="steps glass" active={DIMS.indexOf(cfg.dim)}>{(["auto", "never"] as const).map((d) => <button key={d} data-gi-item className={cfg.dim === d ? "on" : ""} onClick={() => save({ dim: d })}>{d === "auto" ? "Dim at night" : "Never dim"}</button>)}</GlassGroup>
         </div>
       </div>
       <div className="row setfoot">

@@ -125,3 +125,16 @@ Permuta (write token) lists and edits screens with `dash_devices_list` / `dash_d
 `role`: `display` (the situational page) or `control` (a full-time home-control touch panel). `view` (displays): `auto`, `standby`, `music`, `timeline`, `calm`, `home`
 (`home` = the control panel). `locked`: opening the hidden settings sheet on that screen asks for the PIN again. `dim`: `auto` (dim at night, bright on touch for panels) or `never`.
 Nothing else is needed from Permuta for this.
+
+## Music extras (this round)
+
+- `state:music.palette` = `["#RRGGBB", ...]` (1 to 4 colours: the same ones the lights use, already hue-corrected). The song title is painted with a soft gradient of them (the accent follows the first); without it the page uses a colour taken from the album art.
+- `state:music.next` = `{ "id": "spotify track id", "track": "...", "artist": "...", "art": "https://...", "duration": 217, "palette": ["#RRGGBB"], "lyricsId": "..." }` and `state:lyrics_next` = `{ "id": "...", "lines": [[seconds, "text"], ...] }`.
+  When the playing song's extrapolated position passes its `duration`, the page rolls over to `next` at once (position counted from the predicted end moment; art, title, palette and lyrics swap with the normal cross-fade) and keeps running on that prediction. A later report for the same song reconciles with a gentle correction (at most 25% of real time); a report for a different song is switched to immediately. With no `next`, the page holds at the end in a paused look instead of showing 3:37 / 3:37 for ever. `state:music.progress` and `at` stay as before.
+- `state:lights` = `{ "on": true, "lights": [{ "id": "light.x", "name": "Light bar 1", "mode": "art" | "white" | "off" | "leave", "color": "#RRGGBB" }] }`: the quiet "Music lights" row on the Music scene (only `art` and `white` lights are shown; the whole row hides when `on` is false). `color` is the light's current colour and fades slowly.
+
+## API additions on the page's server (no Permuta change needed)
+
+- `/api/act` op `color` `{ ids: ["light.x"], h: 0-360, s: 0-100 }` -> `light.turn_on` with `hs_color` (brightness untouched); op `kelvin` now also takes `ids`.
+- `/api/home` returns `color: [h, s]` for lights that report an hs colour.
+- `/api/screen` returns `lyrics`, `lyricsNext`, `lights`, `info` and `extra` (every other `state:*` row, e.g. school, mail, journal, car, battery, life).

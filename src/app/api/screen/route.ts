@@ -1,5 +1,6 @@
 import { allowed, deny, pinOf } from "@/lib/auth";
 import { readAll } from "@/lib/supabase";
+import { buildScreen } from "@/lib/screen";
 
 export const dynamic = "force-dynamic";
 
@@ -19,16 +20,6 @@ export async function GET(req: Request) {
   if (!(await allowed(req))) return deny();
   try {
     const kv = await readAll(pinOf(req));
-    const v = (k: string) => kv[k]?.v;
-    return Response.json({
-      screen: v("config:screen") ?? null,
-      theme: v("config:theme") ?? null,
-      agenda: v("state:agenda") ?? null,
-      music: v("state:music") ?? null,
-      status: v("state:status") ?? null,
-      updatedAt: kv["state:status"]?.at ?? null,
-      weather: await weather(v("config:location") as Loc | undefined),
-      now: Date.now(),
-    });
+    return Response.json(buildScreen(kv, await weather(kv["config:location"]?.v as Loc | undefined), Date.now()));
   } catch { return Response.json({ error: "storage" }, { status: 502 }); }
 }

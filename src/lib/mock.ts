@@ -16,7 +16,7 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
     ev("(Mom's Ward) Church - Second Sunday", 900, 180, "#ffd60a"),
     ev("Mission prep", 1000, 60, "#ffd60a"),
   ];
-  const music = (playing: boolean) => ({ trackId: "mock1", playing, track: long ? LONG_SONG : "NEW DROP", artist: "Don Toliver", album: "Hardstone Psycho", art: "/mock-art-a.svg", progress: 60 + (Math.floor(now / 1000) % 90), duration: 217, at: now - (playing ? 0 : 20000), device: "Bridger's Speakers", volume: 0.4, next: { track: "Another Song", artist: "Someone", art: "/mock-art-b.svg" } });
+  const music = (playing: boolean) => ({ trackId: "mock1", playing, track: long ? LONG_SONG : "NEW DROP", artist: "Don Toliver", album: "Hardstone Psycho", art: "/mock-art-a.svg", progress: 60 + (Math.floor(now / 1000) % 90), duration: 217, at: now - (playing ? 0 : 20000), device: "Bridger's Speakers", volume: 0.4, palette: ["#e8943a", "#c8554a", "#5b6fb5"], next: { id: "mock2", track: "Another Song", artist: "Someone", art: "/mock-art-b.svg", duration: 190, palette: ["#2f8f7a", "#7bd0b3"], lyricsId: "mock2" } });
   // fake synced lyrics around 1:40 (position 100 s at the moment the data is generated, then the clock moves on)
   const lines: [number, string][] = [[84, "I been out here workin' all night"], [89, "Tellin' you the things you never heard"], [94, ""], [98, "Lights down low, I'm moving like a ghost"], [103, long ? "Every single word that you ever said still echoes through the hallway of my head tonight" : "Every word you said is on repeat"], [108, "Hold me closer, hold me tight"], [113, "Say you'll stay until the morning light"], [118, "Never let me go"], [124, "(instrumental)"]];
   const lyrics = withLyrics ? { id: "mock1", lines: lines.map(([t, x]) => [t, x] as [number, string]) } : null;
@@ -28,14 +28,16 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
         journal: { due: s === "busy", wroteToday: false, streak: 12, best: 40, prompt: "What made you laugh today?" }, life: { stats: [{ label: "Music today", value: "2h 10m", detail: "20 min more than usual", icon: "note" }, { label: "Steps", value: "6,412", detail: "On track", icon: "walk" }, { label: "Mail", value: "34", detail: "9 that mattered", icon: "mail" }, { label: "Time at home", value: "5h 20m", icon: "home" }] },
         car: { fuelPct: s === "busy" ? 9 : 62, rangeMi: 240, locked: s === "busy" ? false : true, lastDrive: { miles: 11.2, minutes: 24 } }, battery: { pct: s === "busy" ? 14 : 80, charging: false } }
     : {};
+  const lyricsNext = withLyrics ? { id: "mock2", lines: [[2, "Another song begins to play"], [8, "Soft light on the water"], [14, "Carry me home"]] as [number, string][] } : null;
+  const lights = { on: s !== "idle" && s !== "paused", lights: [{ id: "light.bar1", name: "Light bar 1", mode: "art", color: "#e8943a" }, { id: "light.bar2", name: "Light bar 2", mode: "art", color: "#5b6fb5" }, { id: "light.lamp", name: "Desk lamp", mode: "white", color: "#fff1d6" }, { id: "light.x", name: "Hall", mode: "leave", color: "#ffffff" }] };
   const info = s === "takeover" ? [{ id: "garage", zone: "takeover", title: "Garage door has been open for 20 minutes", detail: "Tap to close it from Permuta", icon: "alert", priority: 90 }] : [];
   const dayEvents = [ev("English 11", -170, 50, "#7c8cff"), ev("Seminary", -110, 50, "#ffd60a"), ev("Chemistry", -20, 50, "#b48cff", { location: "Room 214", kind: "school" }), ev("Pre-Calculus", 35, 50, "#7c8cff", { kind: "school" }), ev("US History", 125, 50, "#7c8cff", { kind: "school" }), ev("Basketball practice", 240, 90, "#ff8a65")];
   const hr = new Date(now).getHours();
   return {
-    screen: { widgets: ["clock", "weather", "agenda", "music"], calmAfterSec: 0, pageSec: 6, ...(pulseMin ? { pulseMin } : {}) }, theme: null,
+    screen: { widgets: ["clock", "weather", "agenda", "music"], calmAfterSec: 0, pageSec: 6, minDwellSec: 0, ...(pulseMin ? { pulseMin } : {}) }, theme: null,
     agenda: { events: (s === "day" || s === "busy" ? dayEvents : events).filter((e) => e.end > sec) },
     music: s === "music" || s === "nightmusic" ? music(true) : s === "paused" ? music(false) : null,
-    lyrics, info: info as never, extra,
+    lyrics, lyricsNext, lights, info: info as never, extra,
     status: { away: s === "away", at: s === "offline" ? sec - 900 : sec - 5 },
     weather: { current: { temperature_2m: 43, weather_code: 0, is_day: hr >= 7 && hr < 19 ? 1 : 0 }, daily: { time: [0, 1, 2, 3, 4].map((i) => new Date(now + i * 864e5).toISOString().slice(0, 10)), temperature_2m_max: [53, 64, 67, 61, 59], temperature_2m_min: [36, 38, 45, 51, 48], weather_code: [0, 1, 2, 3, 0] } },
     updatedAt: new Date(now).toISOString(), now,
@@ -46,7 +48,7 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
 export function mockHome(): Home {
   const L = (id: string, name: string, room: string, on: boolean, b: number, extra = {}) => ({ id: `light.${id}`, name, kind: "light" as const, room, on, brightness: b, dimmable: true, ...extra });
   const devices: Home["devices"] = [
-    L("bed_lamp", "Bedside lamp", "Bedroom", true, 0.6, { kelvinRange: [2200, 6500] as [number, number], kelvin: 3000 }), L("bed_bar", "Light bar", "Bedroom", true, 0.9, { supportsColor: true }), L("bed_led", "LED strip", "Bedroom", false, 0.5),
+    L("bed_lamp", "Bedside lamp", "Bedroom", true, 0.6, { kelvinRange: [2200, 6500] as [number, number], kelvin: 3000 }), L("bed_bar", "Light bar", "Bedroom", true, 0.9, { supportsColor: true, color: [24, 80] as [number, number] }), L("bed_led", "LED strip", "Bedroom", false, 0.5),
     L("liv_a", "Floor lamp", "Living room", true, 0.45, { kelvinRange: [2200, 6500] as [number, number], kelvin: 4200 }), L("liv_b", "Ceiling", "Living room", false, 0.8), L("liv_c", "Shelf lights", "Living room", true, 0.3),
     L("kit_a", "Counter", "Kitchen", true, 1), L("kit_b", "Pendants", "Kitchen", false, 0.7),
     { id: "fan.bed", name: "Bedroom fan", kind: "fan", room: "Bedroom", on: true, dimmable: false, percentage: 0.66, speedCount: 3, oscillating: true, direction: "forward", presets: ["sleep"] },

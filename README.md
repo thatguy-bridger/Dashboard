@@ -25,3 +25,11 @@ The old app is archived in Permuta/Dashboard (with its git history).
 Each screen registers itself (`/api/device`, see `docs/permuta-needs.md`). A display shows the situational page (optionally pinned to a view); a control panel
 (`role: control` or `view: home`) is a full-time home-control touch panel. Settings are opened with no visible button: press and hold any clock for 3 s, or tap the top-left
 corner five times quickly; a locked screen asks for the PIN again first. Mock preview: `?role=control&view=home`, `?device=locked`, `?view=standby|music|timeline|calm`, `?dim=never`, `?name=Kitchen`.
+
+## Frame, fonts, prediction, Home
+
+- **Frame**: a strict grid with named areas (`rail | head / hero / foot`, `src/components/frame.tsx`); nothing is positioned over anything else. `window.__layoutCheck()` in the mock harness walks the rendered boxes and reports overlaps (checked at 1920x1080, 1280x720, 1024x600, 800x480 and 1024x768).
+- **Fonts**: self-hosted with next/font (`src/app/layout.tsx`): Figtree for words, Nunito for numerals (tabular figures), weights 400 to 600. `config:theme.font` switches `rounded` (default) / `default` / `serif` / `mono`. Preview the alternative pairing (DM Sans + Quicksand) with `?font=b` in the mock.
+- **Prediction** (`src/lib/predict.ts`): song rollover and reconcile, optimistic controls, passed events dropping out; all pure and tested.
+- **Home** is a normal page (`src/components/home.tsx`): tiles (tap = toggle, drag = level, hold = detail popover), colour picker, optimistic everywhere. The control role shows the same page full-time.
+- **Glass indicator** (`src/components/glass.tsx`): one shared sliding indicator for the rail and the segmented pickers.

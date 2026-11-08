@@ -45,7 +45,7 @@ const FILLED: IconName[] = ["play", "pause", "skip-back", "skip-forward", "bolt"
 
 export function Icon({ name, size = "1em", className = "", level }: { name: IconName; size?: string; className?: string; level?: number }) {
   return (
-    <svg className={`icon ${className}`} viewBox="0 0 24 24" width={size} height={size} fill={FILLED.includes(name) ? "currentColor" : "none"} stroke="currentColor"
+    <svg className={`icon ${className}`} viewBox="0 0 24 24" style={{ width: size, height: size }} fill={FILLED.includes(name) ? "currentColor" : "none"} stroke="currentColor"
       strokeWidth="var(--icon-stroke, 1.75)" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {S[name]}
       {name === "battery" && level != null && <rect x="4.6" y="9.6" width={Math.max(0.5, 12.8 * Math.min(1, Math.max(0, level)))} height="4.8" rx="1" fill="currentColor" stroke="none" />}

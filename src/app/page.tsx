@@ -17,14 +17,16 @@ import { useLayers } from "@/lib/useLayers";
 import { PinPad } from "@/components/pin";
 import { HiddenTrigger } from "@/components/trigger";
 import { PinGate, SettingsSheet } from "@/components/settings";
-import { Panel } from "@/components/panel";
 import { forcedView, type DeviceConfig, type DeviceDim, type DeviceRole, type DeviceView } from "@/lib/device";
-import { inCorner } from "@/lib/gesture";
 import { inWindow } from "@/lib/scenes";
 import { useDevice } from "@/lib/useDevice";
-import { Controls } from "@/components/controls";
 import { Rail } from "@/components/rail";
-import { Takeover, Zones } from "@/components/zones";
+import { Takeover } from "@/components/zones";
+import { Header, Foot, HEADER_MODE } from "@/components/frame";
+import { Timeline } from "@/components/timeline";
+import { findOverlaps, inside, type Box } from "@/lib/layout";
+import { applyHome, applyMusic, blendPosition, failOpt, liveEvents, overridesFor, pickLyrics, positionOf, predictMusic, reportedFor, resolveOpt, setOpt, type Opt } from "@/lib/predict";
+import type { Call } from "@/lib/useApi";
 import { SCENE_VIEWS } from "@/scenes";
 import { PAGES } from "@/calm";
 
@@ -39,8 +41,6 @@ export default function Page() {
   const api = useApi();
   const [real, setReal] = useState<ScreenData | null>(null);
   const [home, setHome] = useState<Home | null>(null);
-  const [open, setOpen] = useState(false);
-  const [touched, setTouched] = useState(0);
   const [offset, setOffset] = useState(0);                       // mock only: pretend it is another time of day
   const [clock, setClock] = useState(() => Date.now());
   const [fast, setFast] = useState(() => Date.now());           // 4 Hz, only while lyrics are on screen
@@ -49,13 +49,17 @@ export default function Page() {
   const [sceneState, setSceneState] = useState<SceneState | null>(null);
   const [modeState, setModeState] = useState<ModeState | null>(null);
   const [pin, setPin] = useState<Pin | null>(null);
-  const [mockOpts, setMockOpts] = useState<{ scenario: Scenario; long: boolean; force: SceneId | null; pulse?: number; page?: string; lyrics: boolean; h24?: boolean }>({ scenario: "idle", long: false, force: null, lyrics: true });
+  const [mockOpts, setMockOpts] = useState<{ scenario: Scenario; long: boolean; force: SceneId | null; pulse?: number; page?: string; lyrics: boolean; h24?: boolean; font?: string }>({ scenario: "idle", long: false, force: null, lyrics: true });
   const [mounted, setMounted] = useState(false);              // the first paint happens in the browser only: the clock must never be rendered on the server
   useEffect(() => setMounted(true), []);
   const [sheet, setSheet] = useState(false);                  // the hidden Screen settings sheet
   const [gate, setGate] = useState(false);                    // the PIN again, on a locked screen
   const [awakeUntil, setAwakeUntil] = useState(0);            // a dimmed control panel goes bright on touch
   const lastFire = useRef(0);
+  const [optMap, setOptMap] = useState<Opt>({});               // optimistic overrides: what the user just did shows at once
+  const shownPos = useRef<{ id: string; pos: number; t: number } | null>(null);
+  const homeRef = useRef<Home | null>(null);
+  const mockHomeData = useMemo(() => (MOCK ? mockHome() : null), []);
   const [mockDev] = useState<Partial<DeviceConfig> | null>(() => {      // mock only: ?role=control&view=home&device=locked&name=Kitchen&dim=never
     if (!MOCK || typeof location === "undefined") return null;
     const q = new URLSearchParams(location.search), d: Partial<DeviceConfig> = {};
@@ -76,8 +80,25 @@ export default function Page() {
   useEffect(() => {
     if (!MOCK) return;
     const q = new URLSearchParams(location.search);
-    setMockOpts({ scenario: (q.get("mock") as Scenario) || "idle", long: q.get("long") === "1", force: (q.get("scene") as SceneId) || null, pulse: Number(q.get("pulse")) || undefined, page: q.get("page") || undefined, lyrics: q.get("lyrics") !== "0", h24: q.get("h24") === "1" });
+    setMockOpts({ scenario: (q.get("mock") as Scenario) || "idle", long: q.get("long") === "1", force: (q.get("scene") as SceneId) || null, pulse: Number(q.get("pulse")) || undefined, page: q.get("page") || undefined, lyrics: q.get("lyrics") !== "0", h24: q.get("h24") === "1", font: q.get("font") || undefined });
+    if (q.get("font") === "b") { document.documentElement.style.setProperty("--nf-text", "var(--nf-text-b)"); document.documentElement.style.setProperty("--nf-num", "var(--nf-num-b)"); }
     (window as unknown as { __dash: unknown }).__dash = { set: (sc: Scenario) => setMockOpts((o) => ({ ...o, scenario: sc })) };   // test hook: change the situation live
+    (window as unknown as { __layoutCheck: unknown }).__layoutCheck = () => {            // walks the rendered boxes and reports overlaps (test harness)
+      const box = (el: Element, name: string): Box => { const r = el.getBoundingClientRect(); return { name, x: r.left, y: r.top, w: r.width, h: r.height }; };
+      const vis = (el: Element) => { const cs = getComputedStyle(el); return cs.display !== "none" && cs.visibility !== "hidden" && parseFloat(cs.opacity) > 0.05; };
+      const overlaps: [string, string][] = [], outside: string[] = [];
+      const siblings = (sel: string, label: string) => document.querySelectorAll(sel).forEach((parent, pi) => {
+        const kids = [...parent.children].filter((c) => vis(c) && getComputedStyle(c).position !== "absolute").map((c, i) => box(c, `${label}${pi}>${(c as HTMLElement).className.toString().split(" ")[0] || c.tagName}${i}`));
+        overlaps.push(...findOverlaps(kids));
+      });
+      const areas = ["rail", "head", "hero", "foot"].map((n) => document.querySelector(`[data-area="${n}"]`)).filter((e): e is Element => !!e && vis(e) && e.getBoundingClientRect().height > 0).map((e) => box(e, (e as HTMLElement).dataset.area!));
+      overlaps.push(...findOverlaps(areas));
+      siblings(".hdr", "hdr"); siblings(".hdr-l", "hdr-l"); siblings(".hdr-r", "pills"); siblings(".foot-row", "foot"); siblings(".strip-row", "strip"); siblings(".layer:not(.leaving) .sc", "sc"); siblings(".layer:not(.leaving) .sc > *", "blk"); siblings(".mmeta", "mmeta");
+      const evs = [...document.querySelectorAll(".tl-event")].filter(vis).map((e, i) => box(e, `tl-event${i}`)); overlaps.push(...findOverlaps(evs));
+      const vp: Box = { name: "viewport", x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+      document.querySelectorAll('[data-area="head"] *, [data-area="foot"] *, .layer:not(.leaving) .sc *').forEach((e) => { if (vis(e) && e.getBoundingClientRect().width > 0 && !(e.closest(".lyrics, .gtitle") && getComputedStyle(e).position === "absolute") && !inside(box(e, "x"), vp, 3)) outside.push(((e as HTMLElement).className?.toString() || e.tagName).slice(0, 40)); });
+      return { overlaps, outside: [...new Set(outside)], viewport: [window.innerWidth, window.innerHeight] };
+    };
     const at = q.get("at");
     if (at && /^\d{1,2}:\d{2}$/.test(at)) { const [h, m] = at.split(":").map(Number); const d = new Date(); d.setHours(h, m, 0, 0); setOffset(d.getTime() - Date.now()); }
   }, []);
@@ -106,9 +127,22 @@ export default function Page() {
   setHours24(cfg?.hours24);                                    // every time on screen follows config:screen.hours24 (12-hour by default)
   const widgets = cfg?.widgets ?? ["clock", "weather", "agenda", "music"];
   const theme = useMemo(() => resolveTheme(data?.theme, data?.screen?.accent), [data?.theme, data?.screen?.accent]);
-  const away = !!data?.status?.away || !!home?.away;
-  const events = useMemo(() => (data?.agenda?.events ?? []).filter((e) => e.end * 1000 > now).sort((a, b) => a.start - b.start), [data?.agenda, now]);
-  const music = data?.music && data.music.track ? data.music : null;
+  const events = useMemo(() => liveEvents(data?.agenda?.events ?? [], now), [data?.agenda, now]);           // a passed event drops out on its own
+  // ----- music: the clock decides, reports only correct it (rollover to the next song, gentle reconcile, optimistic keys) -----
+  const rawMusic = data?.music && data.music.track ? data.music : null;
+  const predicted = useMemo(() => {
+    const p = predictMusic(rawMusic, now);
+    if (!p) { shownPos.current = null; return null; }
+    const id = p.trackId ?? p.track, target = positionOf(p, now), prev = shownPos.current;
+    const pos = prev && prev.id === id && p.playing ? blendPosition(prev.pos, target, Math.min(5, Math.max(0, (now - prev.t) / 1000))) : target;
+    shownPos.current = { id, pos, t: now };
+    return { ...p, progress: pos, at: now };
+  }, [rawMusic, nowSec]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const music = useMemo(() => applyMusic(predicted, optMap), [predicted, optMap]);
+  const homeView = useMemo(() => applyHome(MOCK ? mockHomeData : home, optMap), [home, optMap, mockHomeData]);
+  homeRef.current = MOCK ? mockHomeData : home;
+  useEffect(() => { setOptMap((m) => resolveOpt(m, reportedFor(m, homeRef.current, rawMusic), Date.now())); }, [nowSec, home, rawMusic]);   // confirmed or expired overrides drop out
+  const away = !!data?.status?.away || !!homeView?.away;
   const sceneCfg = useMemo(() => ({ ...cfg, disabled: [...(cfg?.disabled ?? []), ...(widgets.includes("music") ? [] : (["music"] as SceneId[]))] }), [cfg, widgets]);
   const decision = decide({
     now, events, music: music ? { playing: music.playing, track: music.track, at: music.at } : null, away,
@@ -133,13 +167,14 @@ export default function Page() {
   const device = useDevice({ call: api.call, unlocked, scene, mode: calm ? "calm" : "focus", ver: version.current, mock: MOCK ? mockDev : null });
   const forced = forcedView(device.cfg);
   const controlMode = forced.kind === "control";
-  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, open || controlMode ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, open, controlMode]);
   const infoItems = useMemo(() => normalizeInfo(data?.info), [data?.info]);
   const slots = collectSlots({ now, scene, events: viewEvents, info: [...sourceItems(baseCtx), ...infoItems] }, []);     // the sources supply every item (no built-in providers on top)
-  const lyrics = useMemo(() => parseLyrics(data?.lyrics), [data?.lyrics]);
-  const lyricsOn = !!music?.playing && !!lyrics && lyrics.id === music.trackId;
+  const lyricsNow = useMemo(() => parseLyrics(data?.lyrics), [data?.lyrics]);
+  const lyricsNext = useMemo(() => parseLyrics(data?.lyricsNext), [data?.lyricsNext]);
+  const lyrics = pickLyrics(music?.lyricsId ?? music?.trackId, lyricsNow, lyricsNext);      // the next song's lines after a predicted rollover
+  const lyricsOn = !!music?.playing && !!lyrics;
   useEffect(() => { if (!lyricsOn) return; const t = setInterval(() => setFast(Date.now()), 250); return () => clearInterval(t); }, [lyricsOn]);
-  const lyric = lyricsOn ? lyricView(music, lyrics, fast + offset) : null;
+  const lyric = lyricsOn && music ? lyricView({ ...music, trackId: lyrics?.id }, lyrics, fast + offset) : null;
 
   // takeover: an urgent item shows until it expires (default five minutes from first seen)
   let takeover = slots.takeover;
@@ -148,7 +183,8 @@ export default function Page() {
   // ----- what's on screen: a scene (focus) or a calm page, or something pinned from the rail -----
   const pinned = pin && pin.until > now ? pin.key : null;
   const computedKey = calm ? `page:${(MOCK && mockOpts.page) || rot.id}` : `scene:${scene}`;
-  const viewKey = forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
+  const viewKey = forced.kind === "control" ? "page:home" : forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
+  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, viewKey === "page:home" ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, viewKey]);   // the Home page refreshes faster while it's on screen
   const shownScene = viewKey.startsWith("scene:") ? (viewKey.slice(6) as SceneId) : scene;
   const showingPage = viewKey.startsWith("page:");
 
@@ -156,7 +192,7 @@ export default function Page() {
   const art = useStableArt(music?.art);
   const colors = useArtColors(art);
   useEffect(() => { preload(music?.next?.art); }, [music?.next?.art]);
-  const accent = shownScene === "music" && !showingPage && colors?.accent ? colors.accent : null;
+  const accent = shownScene === "music" && !showingPage ? (music?.palette?.[0] && /^#[0-9a-fA-F]{6}$/.test(music.palette[0]) ? music.palette[0] : colors?.accent ?? null) : null;
   const vars = useMemo(() => cssVars(theme, accent), [theme, accent]);
   useEffect(() => { for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v); }, [vars]);
 
@@ -174,20 +210,26 @@ export default function Page() {
     return () => clearInterval(t);
   }, [unlocked, pulseCfg.versionMin]);
   const sceneRef = useRef(scene); sceneRef.current = scene;
-  const openRef = useRef(open); openRef.current = open;
+  const interactingRef = useRef(false);
   const newRef = useRef(newVersion); newRef.current = newVersion;
   useEffect(() => {
     if (!unlocked || MOCK) return;
-    const t = setInterval(() => { if (reloadDue({ now: Date.now(), loadedAt: loadedAt.current, scene: sceneRef.current, newVersion: newRef.current, reloadMin: pulseCfg.reloadMin, interacting: openRef.current })) location.reload(); }, 30000);
+    const t = setInterval(() => { if (reloadDue({ now: Date.now(), loadedAt: loadedAt.current, scene: sceneRef.current, newVersion: newRef.current, reloadMin: pulseCfg.reloadMin, interacting: interactingRef.current })) location.reload(); }, 30000);
     return () => clearInterval(t);
   }, [unlocked, pulseCfg.reloadMin]);
-  useEffect(() => { if (!open) return; const t = setTimeout(() => setOpen(false), 45000); return () => clearTimeout(t); }, [open, touched]);   // the controller closes itself
 
   const layers = useLayers(viewKey, 900);
-  const control = useCallback((cmd: Record<string, unknown>) => { if (!MOCK) post(api.call, { op: "permuta", cmd: { type: "music", ...cmd } }); }, [api.call]);
+  // every control applies at once (optimistic) and is reverted only if the request fails or the reports still disagree after ~6 s
+  const callOpt: Call = useCallback(async (path, init) => {
+    let keys: string[] = [];
+    if (path === "/api/act" && init?.body) { try { const patch = overridesFor(JSON.parse(String(init.body)), homeRef.current); keys = Object.keys(patch); if (keys.length) setOptMap((m) => setOpt(m, patch, Date.now())); } catch {} }
+    if (MOCK) return new Response("{}", { status: 200 });
+    try { const r = await api.call(path, init); if (!r.ok && keys.length) setOptMap((m) => failOpt(m, keys)); return r; } catch (e) { if (keys.length) setOptMap((m) => failOpt(m, keys)); throw e; }
+  }, [api]);
+  const control = useCallback((cmd: Record<string, unknown>) => { post(callOpt, { op: "permuta", cmd: { type: "music", ...cmd } }); }, [callOpt]);
   const pick = (id: RailId) => {
     const until = Date.now() + offset + 60000;
-    if (id === "home") { setOpen(true); return; }
+    if (id === "home") { setPin({ key: "page:home", until }); return; }
     if (id === "today") setPin({ key: "scene:idle", until }); else if (id === "calendar") setPin({ key: "scene:day", until });
     else if (id === "music") setPin({ key: music ? "scene:music" : "scene:idle", until }); else setPin({ key: `page:${id}`, until });
   };
@@ -207,47 +249,36 @@ export default function Page() {
   );
   const nightNow = inWindow(new Date(now).getHours(), resolveConfig(sceneCfg).nightStart, resolveConfig(sceneCfg).nightEnd);
 
-  // ----- the control panel: home control as the full-time view -----
-  if (controlMode) {
-    const dim = device.cfg.dim === "auto" && nightNow && awakeUntil < now ? 0.55 : 0;
-    return (
-      <div className="root panelroot" onPointerDownCapture={() => setAwakeUntil(now + 60000)}>
-        <div className="tint" />
-        <Panel now={now} home={MOCK ? mockHome() : home} call={api.call} reload={loadHome} hide={cfg?.hideRooms ?? []} music={music} events={viewEvents} onMusic={control} name={device.cfg.name || undefined} />
-        <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
-        <div className="dimmer" style={{ opacity: dim }} />
-        {overlays}
-      </div>
-    );
-  }
-
   const ctx: SourceCtx = { ...baseCtx, scene: shownScene };
-  const props = { now, data: data && !widgets.includes("weather") ? { ...data, weather: null } : data, theme, away, events: viewEvents, music, art, lyric, slots, ctx, control };
+  const props = { now, data: data && !widgets.includes("weather") ? { ...data, weather: null } : data, theme, away, events: viewEvents, music, art, lyric, slots, ctx, control, home: homeView, call: callOpt, reloadHome: loadHome, hideRooms: cfg?.hideRooms ?? [] };
   const backdropOn = shownScene === "music" && !showingPage && !!art;
-  const railHidden = scene === "night" || scene === "offline";
-  const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : "today") : railFor(shownScene);
-  const zonesOn = !showingPage && !railHidden;
+  const railHidden = scene === "night" || scene === "offline" || controlMode;
+  const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "home" ? "home" : viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : "today") : railFor(shownScene);
+  const zonesOn = (!showingPage || viewKey === "page:home") && !railHidden;
+  const headerMode = showingPage ? (viewKey === "page:home" ? "full" : "none") : HEADER_MODE[shownScene];
+  const timeline = !showingPage && (shownScene === "soon" || shownScene === "day") ? <Timeline events={viewEvents} now={now} compact={shownScene === "soon"} /> : undefined;
+  const noSlots = { pills: [], strip: [], badges: {}, peek: null, takeover: null };
 
   return (
-    <div className={`root ${railHidden ? "norail" : ""} ${slots.strip.length && zonesOn ? "hasstrip" : ""}`} onClick={(e) => { if (Date.now() - lastFire.current < 800 || inCorner(e.clientX, e.clientY, window.innerWidth, window.innerHeight)) return; setOpen(true); }}>
+    <div className={`root ${railHidden ? "norail" : ""}`} onPointerDownCapture={() => { setAwakeUntil(now + 60000); interactingRef.current = true; setTimeout(() => { interactingRef.current = false; }, 5000); setPin((p) => (p && p.until > Date.now() + offset ? { ...p, until: Date.now() + offset + (p.key === "page:home" ? 120000 : 60000) } : p)); }}>
       <div className="tint" />
       <div className={`backdrop ${backdropOn ? "on" : ""} ${colors?.soft ? "" : "fallback"}`} style={backdropOn ? { backgroundImage: `url("${colors?.soft ?? art}")` } : undefined} />
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
-      {layers.map((l) => {
-        const page = l.key.startsWith("page:"), id = l.key.slice(l.key.indexOf(":") + 1);
-        const View = page ? PAGES[id] ?? PAGES.standby : SCENE_VIEWS[id as SceneId];
-        return <div key={l.id} className={`layer ${l.leaving ? "leaving" : ""}`}><View {...props} decision={{ ...decision, scene: (page ? "idle" : id) as SceneId, focus: decision.focus ?? lastFocus.current }} /></div>;
-      })}
-      <Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} />
-      {zonesOn && <Zones slots={slots} />}
+      <div className="frame" data-area="frame">
+        <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} /></aside>
+        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} pills={zonesOn ? slots.pills : []} /></header>
+        <main className="area-hero" data-area="hero">
+          {layers.map((l) => {
+            const page = l.key.startsWith("page:"), id = l.key.slice(l.key.indexOf(":") + 1);
+            const View = page ? PAGES[id] ?? PAGES.standby : SCENE_VIEWS[id as SceneId];
+            return <div key={l.id} className={`layer ${l.leaving ? "leaving" : ""}`}><View {...props} decision={{ ...decision, scene: (page ? "idle" : id) as SceneId, focus: decision.focus ?? lastFocus.current }} /></div>;
+          })}
+        </main>
+        <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn}>{timeline}</Foot></footer>
+      </div>
       <Takeover item={takeover} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
-      <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : decision.dim }} />
-      {open && (
-        <div onPointerDownCapture={() => setTouched(Date.now())} onClick={(e) => e.stopPropagation()}>
-          <Controls home={MOCK ? mockHome() : home} call={api.call} reload={loadHome} hide={cfg?.hideRooms ?? []} close={() => setOpen(false)} music={music} />
-        </div>
-      )}
+      <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : controlMode ? (nightNow && awakeUntil < now ? 0.55 : 0) : decision.dim }} />
       {overlays}
     </div>
   );

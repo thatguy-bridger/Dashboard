@@ -5,7 +5,8 @@ import { resolveConfig, type SceneId } from "@/lib/scenes";
 import { countdown, fmtTime, until, when } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { LyricTicker, LyricsBlock } from "@/components/lyrics";
-import { Timeline } from "@/components/timeline";
+import { GradientTitle } from "@/components/title";
+import { LightsRow } from "@/components/lightsrow";
 import { ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
 import type { SceneProps } from "./types";
 
@@ -20,32 +21,34 @@ export function Idle(p: SceneProps) {
   );
 }
 
-/** Music = art-forward: the cover takes over, the accent and backdrop follow it, the lyrics are the main text. */
+/** Music = art-forward: the cover takes over, the accent and backdrop follow it, the lyrics are the main text. (The small clock and date are in the frame's header.) */
 function MusicScene(p: SceneProps) {
   const m = p.music; if (!m) return <Idle {...p} />;
   const lyr = p.lyric;
+  const fallback = p.theme.accent;
+  const id = m.trackId ?? m.track;
   return (
     <div className="sc music">
-      <div className="mtop"><div className="row" style={{ gap: "2.4vmin" }}><Clock now={p.now} className="mini" /><DateLine now={p.now} /></div></div>
       <div className="mbody">
         <ArtTile src={p.art} className="art hero" />
         <div className="mmeta">
-          <div className="cap">{m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
+          <div className="cap fit">{m.ended ? "Finished" : m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
           {lyr ? (
             <>
-              <div className="track title-small clamp1">{m.track}</div>
-              <div className="mid clamp1" style={{ opacity: .6 }}>{m.artist}</div>
+              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track title-small" />
+              <div className="mid clamp1 artist">{m.artist}</div>
               <LyricsBlock view={lyr} />
             </>
           ) : (
             <>
-              <div className="track clamp3">{m.track}</div>
-              <div className="mid clamp1" style={{ opacity: .6, fontSize: "3.2vmin" }}>{m.artist}</div>
+              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track" />
+              <div className="mid clamp1 artist">{m.artist}</div>
             </>
           )}
-          <div style={{ margin: "2.4vmin 0 1.8vmin" }}><Progress m={m} now={p.now} /></div>
+          <div className="mprog"><Progress m={m} now={p.now} /></div>
           <Transport m={m} control={p.control} />
-          {m.next && <div className="small" style={{ marginTop: "2vmin" }}>Next · {m.next.track}{m.next.artist ? ` · ${m.next.artist}` : ""}</div>}
+          {m.next && <div className="small fit mnext">Next · {m.next.track}{m.next.artist ? ` · ${m.next.artist}` : ""}</div>}
+          <LightsRow lights={p.data?.lights} palette={m.palette} />
         </div>
         <VolumePill m={m} control={p.control} />
       </div>
@@ -53,9 +56,9 @@ function MusicScene(p: SceneProps) {
   );
 }
 
-/** Soon = the Timeline with the next event grown into a countdown. */
+/** Soon = the next event grown into a countdown (the day timeline sits in the frame's foot, in its own row). */
 function Soon(p: SceneProps) {
-  const e = p.decision.focus; if (!e) return <Idle {...p} />;
+  const e = p.decision.focus; if (!e || e.end * 1000 <= p.now) return <Idle {...p} />;          // an event that is over never lingers
   const lead = resolveConfig(p.data?.screen).soonLeadMin * 60;
   const toStart = (e.start * 1000 - p.now) / 1000;
   const started = toStart <= 0;
@@ -63,7 +66,6 @@ function Soon(p: SceneProps) {
   const R = 46, C = 2 * Math.PI * R;
   return (
     <div className="sc soon">
-      <div className="stop"><div><Clock now={p.now} className="mini" /><LyricTicker view={p.lyric} /></div></div>
       <div className="scenter">
         <div className="ring">
           <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r={R} className="rtrack" /><circle cx="50" cy="50" r={R} className="rfill" style={{ strokeDasharray: C, strokeDashoffset: C * (1 - frac) }} /></svg>
@@ -71,32 +73,30 @@ function Soon(p: SceneProps) {
         </div>
         <div className="sinfo">
           <div className="stitle clamp3"><Dot color={e.color} />{e.title}</div>
-          <div className="mid" style={{ opacity: .65 }}>{fmtTime(e.start * 1000)} – {fmtTime(e.end * 1000)}{e.location ? ` · ${e.location}` : ""}</div>
+          <div className="mid soft">{fmtTime(e.start * 1000)} – {fmtTime(e.end * 1000)}{e.location ? ` · ${e.location}` : ""}</div>
+          <LyricTicker view={p.lyric} />
         </div>
       </div>
-      <Timeline events={p.events} now={p.now} compact />
     </div>
   );
 }
 
-/** Day = the Timeline on a busy day (school, church): the day as a line with a now marker, the next event as the headline. */
+/** Day = a busy day (school, church): the next event as the headline; the clock, greeting and date are in the header, the day timeline in the foot. */
 function Day(p: SceneProps) {
   const next = p.events.find((e) => !e.allDay && e.end * 1000 > p.now);
-  const h = new Date(p.now).getHours();
   return (
     <div className="sc day">
-      <div className="dtop"><div className="row" style={{ gap: "2.4vmin", alignItems: "baseline" }}><Clock now={p.now} className="mini" /><div><div className="greet small-greet">{greeting(h)}</div><DateLine now={p.now} /></div></div><LyricTicker view={p.lyric} /></div>
       <div className="dmid">
         {next ? (
           <div className="card nextcard">
             <div className="cap">{next.start * 1000 <= p.now ? "Happening now" : `Next · ${until(next.start, p.now)}`}</div>
             <div className="stitle clamp3"><Dot color={next.color} />{next.title}</div>
-            <div className="mid" style={{ opacity: .65 }}>{when(next, p.now)}{next.location ? ` · ${next.location}` : ""}</div>
+            <div className="mid soft">{when(next, p.now)}{next.location ? ` · ${next.location}` : ""}</div>
+            <LyricTicker view={p.lyric} />
           </div>
         ) : <div className="card nextcard"><div className="cap">Today</div><div className="mid">Nothing left today</div></div>}
         <WeatherCard w={p.data?.weather ?? null} />
       </div>
-      <Timeline events={p.events} now={p.now} />
     </div>
   );
 }
@@ -121,7 +121,7 @@ function Night(p: SceneProps) {
   return (
     <div className="sc night">
       <Clock now={p.now} className="night-clock" />
-      {next && <div className="small" style={{ marginTop: "2vmin" }}>{when(next, p.now)} · {next.title}</div>}
+      {next && <div className="small" style={{ marginTop: "calc(2 * var(--u))" }}>{when(next, p.now)} · {next.title}</div>}
     </div>
   );
 }
@@ -134,8 +134,8 @@ function Away(p: SceneProps) {
       <Clock now={p.now} className="mini big2" />
       <DateLine now={p.now} />
       <LyricTicker view={p.lyric} />
-      <div className="row" style={{ marginTop: "3vmin" }}><WeatherCard w={p.data?.weather ?? null} /></div>
-      {next && <div className="small" style={{ marginTop: "3vmin" }}>Next · {next.title} · {when(next, p.now)}</div>}
+      <div className="row" style={{ marginTop: "calc(3 * var(--u))" }}><WeatherCard w={p.data?.weather ?? null} /></div>
+      {next && <div className="small" style={{ marginTop: "calc(3 * var(--u))" }}>Next · {next.title} · {when(next, p.now)}</div>}
     </div>
   );
 }
