@@ -1,4 +1,5 @@
 // A local test harness: fake data for each situation, used only when the build is made with NEXT_PUBLIC_DASH_MOCK=1 (never on Vercel).
+import type { Home } from "./ha";
 import type { ScreenData } from "./types";
 
 export type Scenario = "idle" | "music" | "paused" | "soon" | "morning" | "night" | "away" | "offline" | "nightmusic" | "day" | "calm" | "takeover" | "busy";
@@ -39,4 +40,18 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
     weather: { current: { temperature_2m: 43, weather_code: 0, is_day: hr >= 7 && hr < 19 ? 1 : 0 }, daily: { time: [0, 1, 2, 3, 4].map((i) => new Date(now + i * 864e5).toISOString().slice(0, 10)), temperature_2m_max: [53, 64, 67, 61, 59], temperature_2m_min: [36, 38, 45, 51, 48], weather_code: [0, 1, 2, 3, 0] } },
     updatedAt: new Date(now).toISOString(), now,
   };
+}
+
+/** Fake Home Assistant state for the control panel preview. */
+export function mockHome(): Home {
+  const L = (id: string, name: string, room: string, on: boolean, b: number, extra = {}) => ({ id: `light.${id}`, name, kind: "light" as const, room, on, brightness: b, dimmable: true, ...extra });
+  const devices: Home["devices"] = [
+    L("bed_lamp", "Bedside lamp", "Bedroom", true, 0.6, { kelvinRange: [2200, 6500] as [number, number], kelvin: 3000 }), L("bed_bar", "Light bar", "Bedroom", true, 0.9, { supportsColor: true }), L("bed_led", "LED strip", "Bedroom", false, 0.5),
+    L("liv_a", "Floor lamp", "Living room", true, 0.45, { kelvinRange: [2200, 6500] as [number, number], kelvin: 4200 }), L("liv_b", "Ceiling", "Living room", false, 0.8), L("liv_c", "Shelf lights", "Living room", true, 0.3),
+    L("kit_a", "Counter", "Kitchen", true, 1), L("kit_b", "Pendants", "Kitchen", false, 0.7),
+    { id: "fan.bed", name: "Bedroom fan", kind: "fan", room: "Bedroom", on: true, dimmable: false, percentage: 0.66, speedCount: 3, oscillating: true, direction: "forward", presets: ["sleep"] },
+    { id: "media_player.speakers", name: "Bridger's Speakers", kind: "media", room: "Speakers", on: true, dimmable: false, playing: true, volume: 0.4, title: "NEW DROP", artist: "Don Toliver" },
+    { id: "media_player.mini", name: "Nest Mini", kind: "media", room: "Speakers", on: false, dimmable: false, playing: false, volume: 0.2 },
+  ] as Home["devices"];
+  return { configured: true, reachable: true, devices, away: false, musicLights: true, rooms: ["Bedroom", "Kitchen", "Living room"] };
 }

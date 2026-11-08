@@ -8,7 +8,7 @@ import type { Music } from "@/lib/types";
 // ---------- the touch controller ----------
 
 
-function Level({ icon, label, value, onChange, onIcon }: { icon?: IconName; label: string; value: number; onChange: (v: number, final: boolean) => void; onIcon?: () => void }) {
+export function Level({ icon, label, value, onChange, onIcon }: { icon?: IconName; label: string; value: number; onChange: (v: number, final: boolean) => void; onIcon?: () => void }) {
   const ref = useRef<HTMLDivElement>(null); const [drag, setDrag] = useState<number | null>(null);
   const at = (e: React.PointerEvent) => { const r = ref.current!.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
   const shown = drag ?? value;
@@ -83,7 +83,7 @@ export function Controls({ home, call, reload, hide, close, music }: { home: Hom
   );
 }
 
-function LightTile({ l, send, throttled, call }: { l: Device; send: (b: Record<string, unknown>) => void; throttled: (fn: () => void, final: boolean) => void; call: Call }) {
+export function LightTile({ l, send, throttled, call }: { l: Device; send: (b: Record<string, unknown>) => void; throttled: (fn: () => void, final: boolean) => void; call: Call }) {
   return (
     <div className={`tile ${l.on ? "lit" : ""}`}>
       <button className="row" onClick={() => send({ op: "toggle", id: l.id, on: !l.on })}><Icon name="bulb" size="3vmin" className={l.on ? "ic-on" : "ic-off"} /><span className="mid fit">{l.name}</span></button>
@@ -93,7 +93,7 @@ function LightTile({ l, send, throttled, call }: { l: Device; send: (b: Record<s
   );
 }
 
-function Warmth({ l, throttled, call }: { l: Device; throttled: (fn: () => void, final: boolean) => void; call: Call }) {
+export function Warmth({ l, throttled, call }: { l: Device; throttled: (fn: () => void, final: boolean) => void; call: Call }) {
   const ref = useRef<HTMLDivElement>(null); const [lo, hi] = l.kelvinRange!;
   const pos = ((l.kelvin ?? (lo + hi) / 2) - lo) / (hi - lo);
   const set = (e: React.PointerEvent, final: boolean) => { const r = ref.current!.getBoundingClientRect(); const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); throttled(() => post(call, { op: "kelvin", id: l.id, k: lo + x * (hi - lo) }), final); };
@@ -104,7 +104,7 @@ function Warmth({ l, throttled, call }: { l: Device; throttled: (fn: () => void,
   );
 }
 
-function FanTile({ f, send }: { f: Device; send: (b: Record<string, unknown>) => void }) {
+export function FanTile({ f, send }: { f: Device; send: (b: Record<string, unknown>) => void }) {
   const n = f.speedCount ?? 0; const step = Math.round((f.on ? (f.percentage ?? 1) : 0) * Math.max(1, n));
   const name = (i: number) => i === 0 ? "Off" : n === 3 ? ["Low", "Medium", "High"][i - 1] : n === 2 ? (i === 1 ? "Low" : "High") : n === 1 ? "On" : `${i}`;
   return (

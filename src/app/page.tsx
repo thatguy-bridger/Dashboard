@@ -9,12 +9,19 @@ import { lyricView, parseLyrics } from "@/lib/lyrics";
 import { setHours24 } from "@/lib/format";
 import { resolvePulse, reloadDue } from "@/lib/pulse";
 import { cssVars, resolveTheme } from "@/lib/theme";
-import { mockData, type Scenario } from "@/lib/mock";
+import { mockData, mockHome, type Scenario } from "@/lib/mock";
 import type { ScreenData } from "@/lib/types";
 import { post, useApi } from "@/lib/useApi";
 import { preload, useArtColors, useStableArt } from "@/lib/useArt";
 import { useLayers } from "@/lib/useLayers";
 import { PinPad } from "@/components/pin";
+import { HiddenTrigger } from "@/components/trigger";
+import { PinGate, SettingsSheet } from "@/components/settings";
+import { Panel } from "@/components/panel";
+import { forcedView, type DeviceConfig, type DeviceDim, type DeviceRole, type DeviceView } from "@/lib/device";
+import { inCorner } from "@/lib/gesture";
+import { inWindow } from "@/lib/scenes";
+import { useDevice } from "@/lib/useDevice";
 import { Controls } from "@/components/controls";
 import { Rail } from "@/components/rail";
 import { Takeover, Zones } from "@/components/zones";
@@ -45,6 +52,17 @@ export default function Page() {
   const [mockOpts, setMockOpts] = useState<{ scenario: Scenario; long: boolean; force: SceneId | null; pulse?: number; page?: string; lyrics: boolean; h24?: boolean }>({ scenario: "idle", long: false, force: null, lyrics: true });
   const [mounted, setMounted] = useState(false);              // the first paint happens in the browser only: the clock must never be rendered on the server
   useEffect(() => setMounted(true), []);
+  const [sheet, setSheet] = useState(false);                  // the hidden Screen settings sheet
+  const [gate, setGate] = useState(false);                    // the PIN again, on a locked screen
+  const [awakeUntil, setAwakeUntil] = useState(0);            // a dimmed control panel goes bright on touch
+  const lastFire = useRef(0);
+  const [mockDev] = useState<Partial<DeviceConfig> | null>(() => {      // mock only: ?role=control&view=home&device=locked&name=Kitchen&dim=never
+    if (!MOCK || typeof location === "undefined") return null;
+    const q = new URLSearchParams(location.search), d: Partial<DeviceConfig> = {};
+    if (q.get("role")) d.role = q.get("role") as DeviceRole; if (q.get("view")) d.view = q.get("view") as DeviceView; if (q.get("dim")) d.dim = q.get("dim") as DeviceDim;
+    if (q.get("device") === "locked") d.locked = true; if (q.get("name")) d.name = q.get("name")!;
+    return d;
+  });
   const fails = useRef(0);
   const loadedAt = useRef(Date.now());
   const version = useRef<string | null>(null);
@@ -79,7 +97,6 @@ export default function Page() {
     try { const r = await api.call("/api/home"); if (r.ok) setHome(await r.json()); } catch {}
   }, [api]);
   useEffect(() => { if (!unlocked || MOCK) return; loadScreen(); const t = setInterval(loadScreen, 5000); return () => clearInterval(t); }, [unlocked, loadScreen]);
-  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, open ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, open]);
 
   const nowSec = Math.floor(now / 1000);
   const data: ScreenData | null = useMemo(() => (MOCK ? (() => { const d = mockData(mockOpts.scenario, nowSec * 1000, mockOpts.long, mockOpts.pulse, mockOpts.lyrics); return mockOpts.h24 ? { ...d, screen: { ...d.screen, hours24: true } } : d; })() : real), [real, mockOpts, nowSec]);
@@ -111,6 +128,12 @@ export default function Page() {
   const calm = (modeState?.mode === "calm" && scene === "idle") || (MOCK && !!mockOpts.page);
   const pages = calmPages(baseCtx);
   const rot = rotation(pages, now, focusCfg.pageSec);
+
+  // ----- this screen's own role and view (the server is the authority; changes apply live) -----
+  const device = useDevice({ call: api.call, unlocked, scene, mode: calm ? "calm" : "focus", ver: version.current, mock: MOCK ? mockDev : null });
+  const forced = forcedView(device.cfg);
+  const controlMode = forced.kind === "control";
+  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, open || controlMode ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, open, controlMode]);
   const infoItems = useMemo(() => normalizeInfo(data?.info), [data?.info]);
   const slots = collectSlots({ now, scene, events: viewEvents, info: [...sourceItems(baseCtx), ...infoItems] }, []);     // the sources supply every item (no built-in providers on top)
   const lyrics = useMemo(() => parseLyrics(data?.lyrics), [data?.lyrics]);
@@ -125,7 +148,7 @@ export default function Page() {
   // ----- what's on screen: a scene (focus) or a calm page, or something pinned from the rail -----
   const pinned = pin && pin.until > now ? pin.key : null;
   const computedKey = calm ? `page:${(MOCK && mockOpts.page) || rot.id}` : `scene:${scene}`;
-  const viewKey = pinned ?? computedKey;
+  const viewKey = forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
   const shownScene = viewKey.startsWith("scene:") ? (viewKey.slice(6) as SceneId) : scene;
   const showingPage = viewKey.startsWith("page:");
 
@@ -172,6 +195,32 @@ export default function Page() {
   if (!mounted || (!MOCK && !api.checked)) return null;
   if (!unlocked) return <PinPad unlock={api.unlock} />;
 
+  // the hidden settings trigger: hold a clock for 3 s, or tap the top-left corner five times
+  const trigger = () => { lastFire.current = Date.now(); if (device.cfg.locked) setGate(true); else setSheet(true); };
+  const verify = async (p: string) => { const ok = MOCK ? p === "4242" : (await fetch("/api/unlock", { method: "POST", headers: { "x-control-pin": p } })).ok; if (ok) { setGate(false); setSheet(true); } return ok; };
+  const overlays = (
+    <>
+      <HiddenTrigger onFire={trigger} />
+      {sheet && <SettingsSheet cfg={device.cfg} save={device.save} onClose={() => setSheet(false)} onForget={() => { setSheet(false); api.forget(); }} id={device.id} online={device.online} lastSync={device.lastSync} />}
+      {gate && <PinGate verify={verify} onCancel={() => setGate(false)} />}
+    </>
+  );
+  const nightNow = inWindow(new Date(now).getHours(), resolveConfig(sceneCfg).nightStart, resolveConfig(sceneCfg).nightEnd);
+
+  // ----- the control panel: home control as the full-time view -----
+  if (controlMode) {
+    const dim = device.cfg.dim === "auto" && nightNow && awakeUntil < now ? 0.55 : 0;
+    return (
+      <div className="root panelroot" onPointerDownCapture={() => setAwakeUntil(now + 60000)}>
+        <div className="tint" />
+        <Panel now={now} home={MOCK ? mockHome() : home} call={api.call} reload={loadHome} hide={cfg?.hideRooms ?? []} music={music} events={viewEvents} onMusic={control} name={device.cfg.name || undefined} />
+        <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
+        <div className="dimmer" style={{ opacity: dim }} />
+        {overlays}
+      </div>
+    );
+  }
+
   const ctx: SourceCtx = { ...baseCtx, scene: shownScene };
   const props = { now, data: data && !widgets.includes("weather") ? { ...data, weather: null } : data, theme, away, events: viewEvents, music, art, lyric, slots, ctx, control };
   const backdropOn = shownScene === "music" && !showingPage && !!art;
@@ -180,7 +229,7 @@ export default function Page() {
   const zonesOn = !showingPage && !railHidden;
 
   return (
-    <div className={`root ${railHidden ? "norail" : ""} ${slots.strip.length && zonesOn ? "hasstrip" : ""}`} onClick={() => setOpen(true)}>
+    <div className={`root ${railHidden ? "norail" : ""} ${slots.strip.length && zonesOn ? "hasstrip" : ""}`} onClick={(e) => { if (Date.now() - lastFire.current < 800 || inCorner(e.clientX, e.clientY, window.innerWidth, window.innerHeight)) return; setOpen(true); }}>
       <div className="tint" />
       <div className={`backdrop ${backdropOn ? "on" : ""} ${colors?.soft ? "" : "fallback"}`} style={backdropOn ? { backgroundImage: `url("${colors?.soft ?? art}")` } : undefined} />
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
@@ -193,12 +242,13 @@ export default function Page() {
       {zonesOn && <Zones slots={slots} />}
       <Takeover item={takeover} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />
-      <div className="dimmer" style={{ opacity: decision.dim }} />
+      <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : decision.dim }} />
       {open && (
         <div onPointerDownCapture={() => setTouched(Date.now())} onClick={(e) => e.stopPropagation()}>
-          <Controls home={home} call={api.call} reload={loadHome} hide={cfg?.hideRooms ?? []} close={() => setOpen(false)} music={music} />
+          <Controls home={MOCK ? mockHome() : home} call={api.call} reload={loadHome} hide={cfg?.hideRooms ?? []} close={() => setOpen(false)} music={music} />
         </div>
       )}
+      {overlays}
     </div>
   );
 }

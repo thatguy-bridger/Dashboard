@@ -17,7 +17,8 @@ export function useApi() {
     if (r.ok) { try { localStorage.setItem(PIN_KEY, p); } catch {} setPin(p); return true; }
     return false;
   }, []);
-  return useMemo(() => ({ pin, checked, call, unlock }), [pin, checked, call, unlock]);   // stable: effects that depend on it must not restart every render
+  const forget = useCallback(() => { try { localStorage.removeItem(PIN_KEY); } catch {} setPin(null); }, []);     // 'Forget PIN on this device'
+  return useMemo(() => ({ pin, checked, call, unlock, forget }), [pin, checked, call, unlock, forget]);   // stable: effects that depend on it must not restart every render
 }
 export type Call = (path: string, init?: RequestInit) => Promise<Response>;
 export const post = (call: Call, body: Record<string, unknown>) => call("/api/act", { method: "POST", body: JSON.stringify(body) }).catch(() => null);

@@ -19,3 +19,9 @@ The old app is archived in Permuta/Dashboard (with its git history).
 - Local preview with fake data (never on Vercel): `NEXT_PUBLIC_DASH_MOCK=1 npx next build && NEXT_PUBLIC_DASH_MOCK=1 npx next start -p 3124`, then
   `/?mock=music|paused|soon|day|busy|calm|takeover|away|offline|nightmusic|idle&at=HH:MM&long=1&page=weather|school|mail|journal|life|today&h24=1&lyrics=0&pulse=1`.
 - What Permuta must supply: `docs/permuta-needs.md`.
+
+## Per-screen roles and the hidden settings
+
+Each screen registers itself (`/api/device`, see `docs/permuta-needs.md`). A display shows the situational page (optionally pinned to a view); a control panel
+(`role: control` or `view: home`) is a full-time home-control touch panel. Settings are opened with no visible button: press and hold any clock for 3 s, or tap the top-left
+corner five times quickly; a locked screen asks for the PIN again first. Mock preview: `?role=control&view=home`, `?device=locked`, `?view=standby|music|timeline|calm`, `?dim=never`, `?name=Kitchen`.

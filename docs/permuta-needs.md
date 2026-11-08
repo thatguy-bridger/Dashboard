@@ -111,3 +111,17 @@ Optional: `priority` 0 to 100, `scenes` / `hideIn` (scene ids), `color`, `icon`,
    anything but idle or any score is >= `focusThreshold`; calm (full-screen pages rotating every `pageSec`, skipping empty ones) only after the scene has been plain idle
    with all scores under the threshold minus 10 for `calmAfterSec`. Anything pressing returns to focus at once.
 3. **Self-care**: a pulse and data refresh every `pulseMin`; a soft full reload every `reloadMin` (never during a Soon scene) or when `/api/version` changes.
+
+## Per-screen configuration (screens register themselves; Permuta manages them)
+
+Every browser that runs the page makes a random id once (localStorage `dash-device`) and calls `dash_device_ping(p_pin, p_id, p_info)` on load and every ~15 s through
+`POST /api/device {op:"ping"}`; `p_info = { ua, w, h, scene, mode, ver, name? }`. The returned config is authoritative and applied live (no reload); if the server can't be
+reached the last config (kept in localStorage) keeps being used and pings retry quietly. On-screen settings use `dash_device_self(p_pin, p_id, p_config)`.
+Permuta (write token) lists and edits screens with `dash_devices_list` / `dash_device_set` / `dash_device_remove`.
+
+```json
+{ "name": "", "role": "display", "view": "auto", "locked": false, "dim": "auto" }
+```
+`role`: `display` (the situational page) or `control` (a full-time home-control touch panel). `view` (displays): `auto`, `standby`, `music`, `timeline`, `calm`, `home`
+(`home` = the control panel). `locked`: opening the hidden settings sheet on that screen asks for the PIN again. `dim`: `auto` (dim at night, bright on touch for panels) or `never`.
+Nothing else is needed from Permuta for this.

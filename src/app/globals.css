@@ -208,3 +208,29 @@ html, body, .root { background: var(--bg); }
 @keyframes lyricfade { from { opacity: 0; transform: translateY(1.2vmin); } to { opacity: 1; transform: none; } } @keyframes lyricout { from { opacity: 1; } to { opacity: 0; transform: translateY(-1.2vmin); } }
 .track.title-small { font-size: 3.8vmin; margin: .8vmin 0 .4vmin; font-weight: 600; }
 .ticker { animation: lyricfade .8s var(--ease-soft) both; }
+
+/* ===== control panel + hidden settings ===== */
+.panelroot { background: var(--bg); }
+.panel { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; padding: 3.6vmin 4.4vmin 3.2vmin; gap: 2.6vmin; animation: fadein .85s var(--ease-soft) both; }
+.phead { display: flex; align-items: center; justify-content: space-between; gap: 3vmin; min-height: 11vmin; } .phead .pill { max-width: 52%; }
+.pwrap { flex: 1; display: flex; gap: 3.2vmin; min-height: 0; }
+.pnav { width: 34vmin; flex: none; display: flex; flex-direction: column; gap: 1.4vmin; overflow-y: auto; padding-right: .4vmin; }
+.pnav button { display: flex; align-items: center; gap: 1.8vmin; min-height: 9.6vmin; padding: 0 2.8vmin; border-radius: var(--r-tile); background: linear-gradient(180deg, rgba(255,255,255,var(--glass-a)), rgba(255,255,255,var(--glass-b))); border: 1px solid var(--edge); font-size: 2.6vmin; font-weight: 600; text-align: left; color: var(--fg2); transition: background .5s var(--ease-soft), color .5s var(--ease-soft); }
+.pnav button .icon { font-size: 3.2vmin; } .pnav button.on { background: color-mix(in srgb, var(--accent) 80%, transparent); color: var(--on-accent); }
+.navcount { margin-left: auto; min-width: 3.4vmin; height: 3.4vmin; padding: 0 .9vmin; border-radius: 999px; display: grid; place-items: center; font-size: 1.9vmin; font-weight: 700; background: rgba(255,255,255,.14); font-family: var(--font-num); } .pnav button.on .navcount { background: rgba(0,0,0,.14); }
+.pmain { flex: 1; min-width: 0; overflow-y: auto; padding-right: .6vmin; } .pstack { display: flex; flex-direction: column; gap: 2.4vmin; }
+.panel .tile { padding: 3vmin; gap: 2vmin; } .panel .level { height: 8.4vmin; } .panel .level > span { font-size: 2.4vmin; } .panel .steps button { padding: 2.2vmin 0; font-size: 2.4vmin; } .panel .chip { padding: 1.6vmin 2.8vmin; font-size: 2.2vmin; } .panel .grid { grid-template-columns: repeat(auto-fill, minmax(40vmin, 1fr)); gap: 2.2vmin; }
+.bigtile { min-height: 13vmin; align-items: center; font-size: 2.8vmin; gap: 2vmin; } .bigtile .icon { font-size: 4vmin; } .scenegrid { grid-template-columns: repeat(auto-fill, minmax(38vmin, 1fr)); }
+.bigsteps button { padding: 2.4vmin 0 !important; } .bigsteps .icon { font-size: 3.6vmin; } .bigchip { font-size: 2.4vmin !important; padding: 1.8vmin 3.2vmin !important; }
+.musictile .mid { font-size: 3vmin; }
+
+/* the hold ring, the settings sheet and the PIN gate */
+.holdring { position: fixed; z-index: 40; pointer-events: none; transition: opacity .3s var(--ease-soft); } .holdring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.hr-track { fill: none; stroke: rgba(236,233,228,.1); stroke-width: 1.6; } .hr-fill { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; }
+.sheet.settings { z-index: 35; padding: 4vmin 5vmin; gap: 2.6vmin; background: var(--bg); }
+.setgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.4vmin; } .setcard { display: flex; flex-direction: column; gap: 1.8vmin; } .setcard.wide { grid-column: 1 / -1; }
+.setcard .steps button { padding: 2vmin 1vmin; font-size: 2.2vmin; } .wrapsteps { flex-wrap: wrap; } .wrapsteps button { flex: 1 1 22%; }
+.nameinput { flex: 1; min-width: 0; padding: 1.8vmin 2.4vmin; border-radius: 999px; background: rgba(255,255,255,.07); border: 1px solid var(--edge); color: var(--fg); font: inherit; font-size: 2.4vmin; outline: none; } .nameinput:focus { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.switch { width: 11vmin; height: 6vmin; border-radius: 999px; background: rgba(255,255,255,.14); position: relative; flex: none; transition: background .4s var(--ease-soft); } .switch i { position: absolute; top: .7vmin; left: .7vmin; width: 4.6vmin; height: 4.6vmin; border-radius: 50%; background: var(--fg); transition: transform .4s var(--ease-soft); } .switch.on { background: color-mix(in srgb, var(--accent) 75%, transparent); } .switch.on i { transform: translateX(5vmin); }
+.setfoot { margin-top: auto; padding-top: 1vmin; } .setfoot .chip { display: inline-flex; align-items: center; gap: 1vmin; font-size: 2vmin; padding: 1.5vmin 2.6vmin; }
+.gate { position: fixed; inset: 0; z-index: 36; } .gatecancel { position: fixed; z-index: 40; bottom: 4vmin; left: 50%; transform: translateX(-50%); font-size: 2.2vmin; padding: 1.6vmin 3.6vmin; }
