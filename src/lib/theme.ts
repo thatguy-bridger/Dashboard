@@ -1,4 +1,4 @@
-import { rgbVar } from "./color";
+import { rgbVar } from "./color.ts";
 // Theme tokens pushed by Permuta (config:theme) so the page can look like the app. Everything has a default; unknown fields are ignored.
 
 export type ThemeConfig = {
