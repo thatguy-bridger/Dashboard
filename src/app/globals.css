@@ -438,3 +438,36 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .fit-text.one { display: inline-block; white-space: nowrap; }
 
 .sc.music .mmeta .track { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; } .sc.music .mmeta .lyrics { min-height: calc(12 * var(--u)); }
+
+/* the speaker output and the one button (the playlists open over the page) */
+.playentry { display: flex; align-items: center; gap: calc(1.6 * var(--u)); flex-wrap: wrap; margin-top: calc(1.6 * var(--u)); } .playentry .pp-speakers { flex-wrap: nowrap; }
+.pe-btn { display: inline-flex; align-items: center; gap: calc(1 * var(--u)); padding: calc(1.1 * var(--u)) calc(2.2 * var(--u)); border-radius: 999px; background: rgba(255,255,255,.1); border: 1px solid var(--edge); font-size: calc(2.1 * var(--u)); font-weight: 500; } .pe-btn .icon { width: calc(2.3 * var(--u)); height: calc(2.3 * var(--u)); } .pe-btn:disabled { opacity: .6; }
+.pp-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: calc(5 * var(--u)); background: rgba(8,7,12,.78); -webkit-backdrop-filter: blur(calc(2.4 * var(--u))); backdrop-filter: blur(calc(2.4 * var(--u))); animation: lyricfade .35s var(--ease-soft) both; }
+.pp-sheet { width: 100%; max-width: calc(150 * var(--u)); max-height: 100%; overflow-y: auto; scrollbar-width: none; padding: calc(3 * var(--u)); border-radius: calc(5 * var(--u)); background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.05)); border: 1px solid var(--edge); } .pp-sheet::-webkit-scrollbar { display: none; }
+.pp-sheethead { display: flex; align-items: center; gap: calc(2 * var(--u)); margin-bottom: calc(2 * var(--u)); flex-wrap: wrap; } .pp-sheethead .pp-speakers { flex: 1; } .pp-close { width: calc(5.6 * var(--u)); height: calc(5.6 * var(--u)); border-radius: 50%; background: rgba(255,255,255,.1); display: grid; place-items: center; } .pp-close .icon { width: calc(2.6 * var(--u)); height: calc(2.6 * var(--u)); }
+.pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(20 * var(--u)), 1fr)); gap: calc(2 * var(--u)); } .pp-grid .pp-tile { width: auto; } .pp-grid .pp-art { height: auto; aspect-ratio: 1 / 1; width: 100%; } .pp-grid .pp-name { font-size: calc(2.2 * var(--u)); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; }
+.pp-note { margin-top: calc(1.4 * var(--u)); font-size: calc(2 * var(--u)); color: var(--fg2); } .playpanel.big .pp-head { margin-bottom: calc(2 * var(--u)); }
+@supports not (aspect-ratio: 1 / 1) { .pp-grid .pp-art { height: calc(20 * var(--u)); } }
+
+/* the music-lights bar: full names, at the bottom; a popup (fades itself out) when the colours change on other pages */
+.area-foot { display: flex; flex-direction: column; justify-content: flex-end; gap: calc(1.4 * var(--u)); }
+.lightsbar { display: flex; align-items: center; gap: calc(1.8 * var(--u)); flex-wrap: wrap; padding: calc(1.2 * var(--u)) calc(2.2 * var(--u)); border-radius: calc(3 * var(--u)); background: rgba(255,255,255,.06); border: 1px solid var(--edge); font-size: calc(2 * var(--u)); color: var(--fg2); min-width: 0; }
+.lb-label { display: inline-flex; align-items: center; gap: calc(1 * var(--u)); font-size: calc(1.5 * var(--u)); letter-spacing: .22em; text-transform: uppercase; font-weight: 600; color: var(--fg3); flex: none; }
+.lb-chips { display: flex; flex-wrap: wrap; gap: calc(.8 * var(--u)) calc(1.4 * var(--u)); min-width: 0; } .lb-chip { display: inline-flex; align-items: center; gap: calc(.8 * var(--u)); padding: calc(.5 * var(--u)) calc(1.4 * var(--u)) calc(.5 * var(--u)) calc(.9 * var(--u)); border-radius: 999px; background: rgba(255,255,255,.06); white-space: nowrap; font-weight: 500; color: var(--fg); }
+.lb-chip i { width: calc(1.5 * var(--u)); height: calc(1.5 * var(--u)); border-radius: 50%; flex: none; transition: background 1.6s var(--ease-soft); } .lb-chip em { font-style: normal; font-size: calc(1.6 * var(--u)); color: var(--fg3); }
+@keyframes lbpop { 0% { opacity: 0; transform: translateY(calc(1.6 * var(--u))); } 8% { opacity: 1; transform: none; } 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(calc(.8 * var(--u))); } } .lightsbar.popup { animation: lbpop 6s var(--ease-soft) both; }
+
+/* the Music column has to fit with the lights bar below it: tighter spacing, one-line title next to lyrics, the lyrics give way first */
+.sc.music .mmeta { justify-content: flex-start; } .sc.music .mmeta .track.title-small { -webkit-line-clamp: 1; margin: calc(.4 * var(--u)) 0 calc(.2 * var(--u)); }
+.sc.music .mmeta .artists { font-size: calc(2.8 * var(--u)); } .sc.music .mmeta .album { font-size: calc(2.1 * var(--u)); margin-top: calc(.2 * var(--u)); }
+.sc.music .mmeta .lyrics { min-height: calc(7 * var(--u)); margin: calc(.8 * var(--u)) 0; } .sc.music .mmeta .mprog { margin: calc(1 * var(--u)) 0 calc(.8 * var(--u)); } .sc.music .mmeta .mnext { margin-top: calc(.8 * var(--u)); } .sc.music .playentry { margin-top: calc(1 * var(--u)); }
+.sc.music .mrow { display: flex; align-items: center; justify-content: space-between; gap: calc(2 * var(--u)); min-width: 0; } .sc.music .mrow .transport { flex: none; } .sc.music .mrow .playentry { margin-top: 0; justify-content: flex-end; flex-wrap: nowrap; min-width: 0; }
+.sc.music .mrow .pp-chip { max-width: calc(26 * var(--u)); } .sc.music .mrow .pp-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc.music .ctl { width: calc(6.6 * var(--u)); height: calc(6.6 * var(--u)); }
+.sc.music .mrow .transport { width: auto; margin: 0; flex: none; gap: calc(1.4 * var(--u)); } .pe-btn { white-space: nowrap; } .sc.music .mrow { flex-wrap: wrap; row-gap: calc(.8 * var(--u)); } .sc.music .mrow .playentry { flex: 1 1 auto; }
+
+.sc.music .mrow { flex-wrap: nowrap; } .sc.music .mrow .playentry { flex: 0 0 auto; }
+
+.sc.music .mrow .transport { gap: calc(.6 * var(--u)); } .sc.music .mrow .pe-btn { padding: calc(1 * var(--u)) calc(1.8 * var(--u)); }
+
+.pe-btn.icononly { width: calc(6.6 * var(--u)); height: calc(6.6 * var(--u)); padding: 0; border-radius: 50%; justify-content: center; flex: none; } .pe-btn.icononly .icon { width: calc(2.8 * var(--u)); height: calc(2.8 * var(--u)); }

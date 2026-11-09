@@ -6,9 +6,8 @@ import { countdown, fmtTime, until, when } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { LyricTicker, LyricsBlock } from "@/components/lyrics";
 import { GradientTitle } from "@/components/title";
-import { LightsRow } from "@/components/lightsrow";
 import { AlbumLine, ArtistsLine, ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
-import { PlayPanel } from "@/components/playpanel";
+import { PlayEntry, PlayPanel } from "@/components/playpanel";
 import { parseSchool } from "@/lib/sources/school";
 import type { SceneProps } from "./types";
 
@@ -49,10 +48,8 @@ function MusicScene(p: SceneProps) {
             </>
           )}
           <div className="mprog"><Progress m={m} now={p.now} /></div>
-          <Transport m={m} control={p.control} />
+          <div className="mrow"><Transport m={m} control={p.control} /><PlayEntry data={p.data} playingOn={m.device} control={p.control} /></div>
           {m.next && <div className="small fit mnext">Next · {m.next.track}{m.next.artist ? ` · ${m.next.artist}` : ""}</div>}
-          <LightsRow lights={p.data?.lights} palette={m.palette} />
-          <PlayPanel data={p.data} playingOn={m.device} control={p.control} />
         </div>
         <VolumePill m={m} control={p.control} />
       </div>

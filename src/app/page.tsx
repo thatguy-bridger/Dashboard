@@ -1,4 +1,6 @@
 "use client";
+import { LightsBar } from "@/components/lightsrow";
+import { lightsView } from "@/lib/lights";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Home } from "@/lib/ha";
 import { decide, resolveConfig, settle, type SceneId, type SceneState } from "@/lib/scenes";
@@ -273,6 +275,15 @@ export default function Page() {
     else if (id === "music") setPin({ key: music ? "scene:music" : "scene:idle", until }); else setPin({ key: `page:${id}`, until });
   };
 
+  // the music-lights bar: always in the Music scene (where there's room), and as a short popup elsewhere when the colours change
+  const lightChips = lightsView(data?.lights);
+  const lightsKey = lightChips ? lightChips.map((l) => l.id + l.color).join("|") : "";
+  const prevLightsKey = useRef<string | null>(null);
+  const [lightsPopUntil, setLightsPopUntil] = useState(0);
+  useEffect(() => { if (prevLightsKey.current !== null && lightsKey && lightsKey !== prevLightsKey.current) setLightsPopUntil(Date.now() + 6000); prevLightsKey.current = lightsKey; }, [lightsKey]);
+  useEffect(() => { if (!lightsPopUntil) return; const t = setTimeout(() => setLightsPopUntil(0), Math.max(0, lightsPopUntil - Date.now()) + 60); return () => clearTimeout(t); }, [lightsPopUntil]);
+  const lightsBar = lightChips && (shownScene === "music" || lightsPopUntil > 0) ? <LightsBar key={shownScene === "music" ? "steady" : String(lightsPopUntil)} lights={data?.lights} palette={music?.palette} popup={shownScene !== "music"} /> : null;
+
   if (!mounted || (!MOCK && !api.checked)) return null;
   if (!unlocked) return <PinPad unlock={api.unlock} />;
 
@@ -335,7 +346,7 @@ export default function Page() {
             return <div key={l.id} className={`layer ${l.leaving ? "leaving" : ""}`}><View {...props} decision={{ ...decision, scene: (page ? "idle" : id) as SceneId, focus: decision.focus ?? lastFocus.current }} /></div>;
           })}
         </main>
-        <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn}>{timeline}</Foot></footer>
+        <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn} lights={lightsBar}>{timeline}</Foot></footer>
       </div>
       <Takeover item={headerMode === "none" ? takeover : null} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />

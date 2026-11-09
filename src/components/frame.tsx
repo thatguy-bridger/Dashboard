@@ -28,13 +28,16 @@ export function Header({ mode, now, scene, island }: { mode: "full" | "island" |
 }
 
 /** The foot: the Next Up strip (or the day timeline, passed in as children) and a corner peek, side by side. */
-export function Foot({ slots, children, showStrip }: { slots: Slots; children?: React.ReactNode; showStrip: boolean }) {
+export function Foot({ slots, children, showStrip, lights }: { slots: Slots; children?: React.ReactNode; showStrip: boolean; lights?: React.ReactNode }) {
   const main = children ?? (showStrip && slots.strip.length ? <div className="strip-row">{slots.strip.map((s) => <StripCard key={s.id} item={s} />)}</div> : null);
-  if (!main && !slots.peek) return null;
+  if (!main && !slots.peek && !lights) return null;
   return (
+    <>
+    {lights}
     <div className="foot-row">
       <div className="foot-main" data-area="footmain">{main}</div>
       {slots.peek && <div className="peek" key={slots.peek.id} data-area="peek">{slots.peek.icon && <Icon name={slots.peek.icon as IconName} />}<span className="fit">{slots.peek.title}</span></div>}
     </div>
+    </>
   );
 }

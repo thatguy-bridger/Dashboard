@@ -11,7 +11,7 @@ export function lightsView(raw: LightsState | null | undefined): LightChip[] | n
   for (const l of raw.lights) {
     if (!l || typeof l.id !== "string" || typeof l.name !== "string") continue;
     if (l.mode !== "art" && l.mode !== "white") continue;
-    out.push({ id: l.id, name: l.name.slice(0, 28), mode: l.mode, color: typeof l.color === "string" && HEX.test(l.color) ? l.color : "#ece9e4" });
+    out.push({ id: l.id, name: l.name.slice(0, 40), mode: l.mode, color: typeof l.color === "string" && HEX.test(l.color) ? l.color : "#ece9e4" });
   }
   return out.length ? out : null;
 }

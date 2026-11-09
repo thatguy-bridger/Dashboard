@@ -29,7 +29,7 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
         car: { fuelPct: s === "busy" ? 9 : 62, rangeMi: 240, locked: s === "busy" ? false : true, lastDrive: { miles: 11.2, minutes: 24 } }, battery: { pct: s === "busy" ? 14 : 80, charging: false } }
     : {};
   extra.playlists = { items: ["Drive", "Chill", "Youth playlist", "feeling whitney", "unz unz", "CHIP AND DIP", "Nathan's play list"].map((n, i) => ({ id: `p${i}`, uri: `spotify:playlist:p${i}`, name: n, count: 20 + i * 7 })) };
-  extra.speakers = { items: [{ name: "Bridger's Speakers" }, { name: "Bedroom" }, { name: "Nest Mini" }] };
+  extra.speakers = { items: [{ name: "Bridger's Speakers" }] };
   const lyricsNext = withLyrics ? { id: "mock2", lines: [[2, "Another song begins to play"], [8, "Soft light on the water"], [14, "Carry me home"]] as [number, string][] } : null;
   const lights = { on: s !== "idle" && s !== "paused" && s !== "bare", lights: [{ id: "light.bar1", name: "Light bar 1", mode: "art", color: "#e8943a" }, { id: "light.bar2", name: "Light bar 2", mode: "art", color: "#5b6fb5" }, { id: "light.lamp", name: "Desk lamp", mode: "white", color: "#fff1d6" }, { id: "light.x", name: "Hall", mode: "leave", color: "#ffffff" }] };
   const info = s === "takeover" ? [{ id: "garage", zone: "takeover", title: "Garage door has been open for 20 minutes", detail: "Tap to close it from Permuta", icon: "alert", priority: 90 }] : [];

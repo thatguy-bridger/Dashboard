@@ -1,4 +1,5 @@
 "use client";
+import { visibleSpeaker } from "@/lib/speakers";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Device, Home } from "@/lib/ha";
 import { hsToHex, hsToPicker, pickerToHs, rgbVar, SWATCHES, tintFor } from "@/lib/color";
@@ -109,7 +110,8 @@ export function HomePage(p: SceneProps) {
   const act = useAct(call, reloadHome);
   const tm = useTimers(call, p.now);
   const [pop, setPop] = useState<Pop | null>(null);
-  const devices = useMemo(() => (home?.devices ?? []).filter((d) => d.kind !== "display"), [home]);
+  const vis = p.data?.screen?.visibleSpeakers;
+  const devices = useMemo(() => (home?.devices ?? []).filter((d) => d.kind !== "display" && (d.kind !== "media" || visibleSpeaker(d.name, vis))), [home, vis]);
   const lights = devices.filter((d) => d.kind === "light" || d.kind === "plug");
   const roomNames = useMemo(() => { const seen: string[] = []; for (const r of [...(home?.rooms ?? []), ...devices.map((d) => d.room)]) if (r && !seen.includes(r) && !p.hideRooms.includes(r)) seen.push(r); return seen; }, [home, devices, p.hideRooms]);
   const anyOn = lights.some((l) => l.on), away = !!home?.away;
