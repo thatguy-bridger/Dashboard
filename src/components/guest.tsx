@@ -1,4 +1,5 @@
 "use client";
+import { Slider } from "./home";
 import { useMemo } from "react";
 import type { Home } from "@/lib/ha";
 import { fanRequest, guestPlan, lightsRequest } from "@/lib/guest";
@@ -22,7 +23,7 @@ export function GuestScreen({ home, now, act }: { home: Home | null; now: number
       {plan.fans.map((f) => (
         <div key={f.id} className="guest-fan">
           <div className="guest-fanhead"><Icon name="fan" /><span>{plan.fans.length > 1 ? f.name : "Fan"}</span></div>
-          <GlassGroup className="steps glass guest-steps" active={Math.min(f.step, f.steps)}>{NAMES(f.steps).map((nm, i) => <button key={i} data-gi-item className={i === f.step ? "on" : ""} onClick={() => act(fanRequest(f, i))}>{nm}</button>)}</GlassGroup>
+          <Slider label={f.step === 0 ? "Off" : f.steps > 1 ? `Speed ${f.step} of ${f.steps}` : "On"} value={f.steps > 0 ? f.step / f.steps : 0} onChange={(v, final) => { if (final) act(fanRequest(f, Math.round(v * f.steps))); }} />
         </div>
       ))}
     </div>

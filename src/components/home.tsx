@@ -188,7 +188,7 @@ function Popover({ anchor, onClose, children }: { anchor: Rect; onClose: () => v
   );
 }
 
-function Slider({ label, value, onChange, tone }: { label: string; value: number; onChange: (v: number, final: boolean) => void; tone?: string }) {
+export function Slider({ label, value, onChange, tone }: { label: string; value: number; onChange: (v: number, final: boolean) => void; tone?: string }) {
   const ref = useRef<HTMLDivElement>(null); const [drag, setDrag] = useState<number | null>(null);
   const at = (e: React.PointerEvent) => { const r = ref.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)); };
   const shown = drag ?? value;
@@ -247,7 +247,8 @@ function DevicePanel({ id, devices, act, tm }: { id: string; devices: Device[]; 
     const n = d.speedCount ?? 0, step = stepOf(d), names = SPEEDS(Math.max(1, n));
     return (
       <div className="ppanel"><div className="ptitle">{d.name}</div>
-        {d.percentage != null && <GlassGroup className="steps glass" active={Math.min(step, names.length - 1)}>{names.map((nm, i) => <button key={i} data-gi-item className={i === step ? "on" : ""} onClick={() => act({ op: "fan", id, pct: (i / Math.max(1, n)) * 100 })}>{nm}</button>)}</GlassGroup>}
+        {d.percentage != null && <Slider label={step === 0 ? "Off" : n > 1 ? `Speed ${step} of ${n}` : "On"} value={d.on ? d.percentage ?? 0 : 0}
+          onChange={(v, f) => act({ op: "fan", id, pct: Math.round((n > 0 ? Math.round(v * n) / n : v) * 100) }, f)} />}
         <div className="chips">
           {d.oscillating != null && <button className={`chip ${d.oscillating ? "on" : ""}`} onClick={() => act({ op: "oscillate", id, on: !d.oscillating })}>Oscillate</button>}
           {d.direction != null && <button className={`chip ${d.direction === "reverse" ? "on" : ""}`} onClick={() => act({ op: "direction", id, name: d.direction === "reverse" ? "forward" : "reverse" })}>Reverse</button>}
