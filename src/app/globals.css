@@ -271,11 +271,11 @@ body { font-weight: 500; font-variant-numeric: normal; }
 
 /* hero scenes fill their area and size themselves to it */
 .sc.idle .left, .sc.morning .left { height: 100%; justify-content: center; }
-.sc.music { display: flex; } .mbody { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; align-items: center; gap: calc(5 * var(--u)); }
-.art.hero { width: auto; height: min(100%, calc(60 * var(--u))); aspect-ratio: 1 / 1; max-width: 46%; flex: none; }
+.sc.music { display: flex; } .mbody { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; align-items: center; gap: calc(4 * var(--u)); }
+.art.hero { width: min(calc(76 * var(--u)), 52vw, 66vh); height: min(calc(76 * var(--u)), 52vw, 66vh); max-width: none; flex: none; }
 .mmeta { flex: 1 1 0; min-width: 0; max-height: 100%; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
 .mmeta .lyrics { flex: 0 1 auto; height: calc(24 * var(--u)); min-height: calc(13 * var(--u)); }
-.vol { height: min(calc(44 * var(--u)), 60%); }
+.vol { width: calc(3.6 * var(--u)); height: min(calc(34 * var(--u)), 46%); }
 .mprog { margin: calc(2.2 * var(--u)) 0 calc(1.6 * var(--u)); } .mnext { margin-top: calc(1.8 * var(--u)); } .artist { opacity: .6; font-size: calc(3.2 * var(--u)); }
 .sc.soon { display: flex; align-items: center; justify-content: center; } .scenter { width: 100%; height: 100%; max-height: calc(70 * var(--u)); }
 .ring { width: auto; height: min(100%, calc(46 * var(--u))); aspect-ratio: 1 / 1; } .sinfo { max-width: 52%; } .soft { opacity: .62; }
@@ -471,3 +471,10 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .sc.music .mrow .transport { gap: calc(.6 * var(--u)); } .sc.music .mrow .pe-btn { padding: calc(1 * var(--u)) calc(1.8 * var(--u)); }
 
 .pe-btn.icononly { width: calc(6.6 * var(--u)); height: calc(6.6 * var(--u)); padding: 0; border-radius: 50%; justify-content: center; flex: none; } .pe-btn.icononly .icon { width: calc(2.8 * var(--u)); height: calc(2.8 * var(--u)); }
+/* old browsers (Fire TV) drop a whole background that uses color-mix, which hid the progress bar and volume fill: plain fallbacks */
+@supports not (background: color-mix(in srgb, red 50%, blue)) {
+  .bar > i, .vol > i { background: var(--accent); }
+  .bar { background: rgba(255,255,255,.16); }
+  .vol { background: rgba(255,255,255,.14); }
+}
+.art.hero { box-sizing: border-box; }
