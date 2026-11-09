@@ -1,4 +1,5 @@
 "use client";
+import { AlbumLine, ArtistsLine } from "@/components/widgets";
 import { rgbVar } from "@/lib/color";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { countdown, fmtTime, mmss } from "@/lib/format";
@@ -131,7 +132,7 @@ function ExpandedCard({ main, music, now, events, act, control, onGo }: { main: 
       <>
         <div className="row" style={{ gap: "calc(2.4 * var(--u))", alignItems: "center" }}>
           <ArtTile src={music.art ?? null} className="isl-bigart" />
-          <div style={{ minWidth: 0, flex: 1 }}><div className="isl-ctitle clamp" style={{ backgroundImage: titleGradient(music.palette, "#ece9e4") }}>{music.track}</div><div className="small clamp1">{music.artist}</div></div>
+          <div style={{ minWidth: 0, flex: 1 }}><div className="isl-ctitle clamp" style={{ backgroundImage: titleGradient(music.palette, "#ece9e4") }}>{music.track}</div><ArtistsLine m={music} /><AlbumLine album={music.album} /></div>
         </div>
         <div className="isl-scrub"><div className="bar"><i style={{ width: `${music.duration ? Math.min(100, (pos / music.duration) * 100) : 0}%` }} /></div><div className="row" style={{ justifyContent: "space-between" }}><span className="small">{mmss(pos)}</span><span className="small">{mmss(music.duration)}</span></div></div>
         <div className="row isl-ctl">

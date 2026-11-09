@@ -83,3 +83,15 @@ export function VolumePill({ m, control }: { m: Music; control: (c: Record<strin
   return <div ref={ref} className="vol" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); set(e, false); }} onPointerUp={(e) => set(e, true)}><i style={{ height: `${m.volume * 100}%` }} /></div>;
 }
 export { fmtTime };
+
+
+/** Every artist on the song (medium weight, a touch of the accent), then the album a little dimmer and smaller. */
+export function ArtistsLine({ m, className = "" }: { m: { artist?: string; artists?: string[] }; className?: string }) {
+  const names = m.artists && m.artists.length ? m.artists : (m.artist ?? "").split(", ").filter(Boolean);
+  if (!names.length) return null;
+  return <div className={`artists clamp2 ${className}`}>{names.join(", ")}</div>;
+}
+export function AlbumLine({ album, className = "" }: { album?: string; className?: string }) {
+  if (!album) return null;
+  return <div className={`album fit ${className}`}><Icon name="disc" /><span className="fit">{album}</span></div>;
+}

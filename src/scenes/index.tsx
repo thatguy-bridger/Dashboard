@@ -7,7 +7,8 @@ import { Icon } from "@/components/Icon";
 import { LyricTicker, LyricsBlock } from "@/components/lyrics";
 import { GradientTitle } from "@/components/title";
 import { LightsRow } from "@/components/lightsrow";
-import { ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
+import { AlbumLine, ArtistsLine, ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
+import { PlayPanel } from "@/components/playpanel";
 import { parseSchool } from "@/lib/sources/school";
 import type { SceneProps } from "./types";
 
@@ -24,7 +25,8 @@ export function Idle(p: SceneProps) {
 
 /** Music = art-forward: the cover takes over, the accent and backdrop follow it, the lyrics are the main text. (The small clock and date are in the frame's header.) */
 function MusicScene(p: SceneProps) {
-  const m = p.music; if (!m) return <Idle {...p} />;
+  const m = p.music;
+  if (!m) return <div className="sc music"><div className="mbody empty"><PlayPanel data={p.data} control={p.control} big /></div></div>;      // nothing playing: the Music page offers to start something
   const lyr = p.lyric;
   const fallback = p.theme.accent;
   const id = m.trackId ?? m.track;
@@ -37,19 +39,20 @@ function MusicScene(p: SceneProps) {
           {lyr ? (
             <>
               <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track title-small" />
-              <div className="mid clamp1 artist">{m.artist}</div>
+              <ArtistsLine m={m} /><AlbumLine album={m.album} />
               <LyricsBlock view={lyr} />
             </>
           ) : (
             <>
               <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track" />
-              <div className="mid clamp1 artist">{m.artist}</div>
+              <ArtistsLine m={m} /><AlbumLine album={m.album} />
             </>
           )}
           <div className="mprog"><Progress m={m} now={p.now} /></div>
           <Transport m={m} control={p.control} />
           {m.next && <div className="small fit mnext">Next · {m.next.track}{m.next.artist ? ` · ${m.next.artist}` : ""}</div>}
           <LightsRow lights={p.data?.lights} palette={m.palette} />
+          <PlayPanel data={p.data} playingOn={m.device} control={p.control} />
         </div>
         <VolumePill m={m} control={p.control} />
       </div>

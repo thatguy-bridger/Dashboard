@@ -415,3 +415,22 @@ body { font-weight: 500; font-variant-numeric: normal; }
 @media (prefers-reduced-motion: reduce) { .welcome, .welcome.out, .welcome-in, .goodbye { animation-duration: .2s; animation-name: wel-in; } .welcome.out { animation-name: wel-out; } }
 
 @supports not (aspect-ratio: 1 / 1) { .art.hero { width: min(calc(60 * var(--u)), 44vw); height: min(calc(60 * var(--u)), 44vw); } .ring { width: min(calc(46 * var(--u)), 44vw); height: min(calc(46 * var(--u)), 44vw); } }
+
+.artists { font-size: calc(3.2 * var(--u)); font-weight: 500; color: var(--fg); opacity: .86; line-height: 1.2; }
+.album { display: flex; align-items: center; gap: calc(1 * var(--u)); margin-top: calc(.5 * var(--u)); font-size: calc(2.3 * var(--u)); font-weight: 400; color: var(--fg3); } .album .icon { width: calc(2.4 * var(--u)); height: calc(2.4 * var(--u)); flex: none; }
+.playpanel { margin-top: calc(2.2 * var(--u)); min-width: 0; } .playpanel.big { width: 100%; margin: 0; }
+.pp-head { display: flex; align-items: center; justify-content: space-between; gap: calc(2 * var(--u)); margin-bottom: calc(1.2 * var(--u)); flex-wrap: wrap; } .pp-speakers { display: flex; gap: calc(1 * var(--u)); flex-wrap: wrap; }
+.pp-chip { display: inline-flex; align-items: center; gap: calc(.9 * var(--u)); max-width: calc(34 * var(--u)); padding: calc(.9 * var(--u)) calc(1.7 * var(--u)); border-radius: 999px; background: rgba(255,255,255,.08); font-size: calc(2 * var(--u)); font-weight: 500; color: var(--fg2); } .pp-chip .icon { width: calc(2.2 * var(--u)); height: calc(2.2 * var(--u)); flex: none; } .pp-chip.on { background: rgba(var(--accent-rgb), .85); color: var(--on-accent); }
+.pp-row { display: flex; gap: calc(1.6 * var(--u)); overflow-x: auto; padding-bottom: calc(.6 * var(--u)); scrollbar-width: none; } .pp-row::-webkit-scrollbar { display: none; }
+.pp-tile { flex: none; width: calc(15 * var(--u)); display: flex; flex-direction: column; gap: calc(.8 * var(--u)); text-align: left; } .pp-tile:disabled { opacity: .55; }
+.pp-art { position: relative; width: 100%; aspect-ratio: 1 / 1; height: calc(15 * var(--u)); border-radius: calc(2.4 * var(--u)); overflow: hidden; background: rgba(255,255,255,.08); display: grid; place-items: center; } .pp-art img { width: 100%; height: 100%; object-fit: cover; } .pp-art .icon { width: calc(5 * var(--u)); height: calc(5 * var(--u)); }
+.pp-busy { position: absolute; inset: 0; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center; background: rgba(0,0,0,.45); } .pp-name { font-size: calc(2 * var(--u)); font-weight: 500; color: var(--fg2); }
+.pp-fail { margin-top: calc(1 * var(--u)); font-size: calc(2 * var(--u)); color: #f0a09a; }
+.mbody.empty { align-items: center; justify-content: center; } .playpanel.big .pp-tile { width: calc(22 * var(--u)); } .playpanel.big .pp-art { height: calc(22 * var(--u)); } .playpanel.big .pp-name { font-size: calc(2.6 * var(--u)); }
+@supports not (aspect-ratio: 1 / 1) { .pp-art { height: calc(15 * var(--u)); } }
+
+/* the Music page's text column is a flex column, so the lyrics give way (not the title) when the panel and album line need room */
+.sc.music .mmeta { display: flex; flex-direction: column; min-height: 0; max-height: 100%; justify-content: center; } .sc.music .mmeta > * { flex: none; }
+.sc.music .mmeta .lyrics { flex: 1 1 0; min-height: calc(8 * var(--u)); height: auto; margin: calc(1.2 * var(--u)) 0; } .sc.music .mmeta .lyricline { font-size: calc(5.6 * var(--u)); }
+.sc.music .playpanel:not(.big) { margin-top: calc(1.2 * var(--u)); } .sc.music .playpanel:not(.big) .pp-head { flex-wrap: nowrap; margin-bottom: calc(.8 * var(--u)); } .sc.music .playpanel:not(.big) .pp-speakers { flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+.sc.music .playpanel:not(.big) .pp-tile { width: calc(11 * var(--u)); } .sc.music .playpanel:not(.big) .pp-art { height: calc(11 * var(--u)); } .sc.music .playpanel:not(.big) .pp-name { font-size: calc(1.8 * var(--u)); }

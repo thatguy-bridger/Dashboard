@@ -2,7 +2,7 @@
 export type IconName =
   | "sun" | "moon" | "cloud" | "cloud-sun" | "cloud-rain" | "snow" | "bolt" | "fog" | "thermometer"
   | "bulb" | "fan" | "speaker" | "play" | "pause" | "skip-back" | "skip-forward" | "note" | "backspace"
-  | "home" | "walk" | "calendar" | "mail" | "book" | "car" | "battery" | "clock" | "users" | "bell" | "flame" | "check" | "school" | "pin" | "sparkle" | "chart" | "alert" | "timer";
+  | "home" | "walk" | "calendar" | "mail" | "book" | "car" | "battery" | "clock" | "users" | "bell" | "flame" | "check" | "school" | "pin" | "sparkle" | "chart" | "alert" | "timer" | "disc";
 
 const S: Record<IconName, React.ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></>,
@@ -16,6 +16,7 @@ const S: Record<IconName, React.ReactNode> = {
   thermometer: <path d="M10 14.4V5a2 2 0 0 1 4 0v9.4a4 4 0 1 1-4 0z" />,
   bulb: <path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z" />,
   fan: <><circle cx="12" cy="12" r="1.7" /><path d="M12 10.3C12 6 10.3 3 8 3.4 6.2 3.8 6.6 7.4 10.5 10.7M13.7 12c4.3 0 7.3 1.7 6.9 4-.4 1.8-4 1.4-7.3-2.5M10.3 13.5c-2.2 3.7-1.8 7.1.4 7.4 1.9.3 2.7-3.2 1.2-7.6" /></>,
+  disc: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.4" /></>,
   speaker: <><rect x="6" y="2.5" width="12" height="19" rx="3" /><circle cx="12" cy="14.5" r="3.4" /><circle cx="12" cy="7" r="1" /></>,
   play: <path d="M7.5 4.5v15l12-7.5z" />,
   pause: <path d="M7 4.5h3.4v15H7zM13.6 4.5H17v15h-3.4z" />,
