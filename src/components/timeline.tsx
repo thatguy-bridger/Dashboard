@@ -1,4 +1,5 @@
 "use client";
+import { rgbVar } from "@/lib/color";
 import { useEffect, useRef, useState } from "react";
 import { fmtTime, hourLabel } from "@/lib/format";
 import type { Ev } from "@/lib/types";
@@ -42,7 +43,7 @@ export function Timeline({ events, now, compact }: { events: Ev[]; now: number; 
         {placed.map(({ e, lane, left, width }, i) => {
           const on = e === next, running = e.start * 1000 <= now;
           return (
-            <div key={i} className={`tl-event ${on ? "next" : ""} ${running ? "running" : ""}`} data-area="tlevent" style={{ left: `${left}%`, width: `${width}%`, top: `calc(${lane} * var(--lane-h))`, ["--c" as string]: e.color ?? "var(--accent)" }}>
+            <div key={i} className={`tl-event ${on ? "next" : ""} ${running ? "running" : ""}`} data-area="tlevent" style={{ left: `${left}%`, width: `${width}%`, top: `calc(${lane} * var(--lane-h))`, ["--c" as string]: e.color ?? "var(--accent)", ["--c-rgb" as string]: rgbVar(e.color) }}>
               <div className="tl-title">{e.title}</div>{!compact && <div className="tl-time">{fmtTime(e.start * 1000)}</div>}
             </div>
           );

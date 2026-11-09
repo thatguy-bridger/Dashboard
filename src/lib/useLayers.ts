@@ -7,7 +7,7 @@ export function useLayers<K extends string>(key: K, ms = 1100) {
   const next = useRef(1);
   useEffect(() => {
     setLayers((ls) => {
-      const cur = ls.filter((l) => !l.leaving).at(-1);
+      const live = ls.filter((l) => !l.leaving); const cur = live[live.length - 1];
       if (cur?.key === key) return ls;
       return [...ls.map((l) => ({ ...l, leaving: true })), { id: next.current++, key, leaving: false }];
     });

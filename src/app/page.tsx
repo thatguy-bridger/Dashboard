@@ -61,7 +61,7 @@ export default function Page() {
   const [pin, setPin] = useState<Pin | null>(null);
   const [mockOpts, setMockOpts] = useState<{ scenario: Scenario; long: boolean; force: SceneId | null; pulse?: number; page?: string; lyrics: boolean; h24?: boolean; font?: string }>({ scenario: "idle", long: false, force: null, lyrics: true });
   const [mounted, setMounted] = useState(false);              // the first paint happens in the browser only: the clock must never be rendered on the server
-  useEffect(() => setMounted(true), []);
+  useEffect(() => { setMounted(true); document.documentElement.setAttribute("data-ready", "1"); }, []);
   const [sheet, setSheet] = useState(false);                  // the hidden Screen settings sheet
   const [gate, setGate] = useState(false);                    // the PIN again, on a locked screen
   const [awakeUntil, setAwakeUntil] = useState(0);            // a dimmed control panel goes bright on touch

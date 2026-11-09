@@ -1,3 +1,4 @@
+import { rgbVar } from "./color";
 // Theme tokens pushed by Permuta (config:theme) so the page can look like the app. Everything has a default; unknown fields are ignored.
 
 export type ThemeConfig = {
@@ -52,11 +53,11 @@ export function cssVars(t: Theme, accent?: string | null): Record<string, string
   const a = soften((t.artAccent && accent) || t.accent);
   const g = t.glass;
   return t.dark ? {
-    "--accent": a, "--font": FONTS[t.font].text, "--font-num": FONTS[t.font].num, "--rs": String(t.radius),
+    "--accent": a, "--accent-rgb": rgbVar(a), "--bg-rgb": "15, 14, 19", "--font": FONTS[t.font].text, "--font-num": FONTS[t.font].num, "--rs": String(t.radius),
     "--fg": "#ece9e4", "--fg2": "rgba(236,233,228,.6)", "--fg3": "rgba(236,233,228,.38)", "--bg": "#0f0e13",
     "--glass-a": String((0.05 + g * 0.07).toFixed(3)), "--glass-b": String((0.025 + g * 0.035).toFixed(3)), "--edge": `rgba(255,255,255,${(0.03 + g * 0.04).toFixed(3)})`, "--on-accent": "#17151c",
   } : {
-    "--accent": a, "--font": FONTS[t.font].text, "--font-num": FONTS[t.font].num, "--rs": String(t.radius),
+    "--accent": a, "--accent-rgb": rgbVar(a), "--bg-rgb": "244, 241, 236", "--font": FONTS[t.font].text, "--font-num": FONTS[t.font].num, "--rs": String(t.radius),
     "--fg": "#2a2730", "--fg2": "rgba(42,39,48,.6)", "--fg3": "rgba(42,39,48,.4)", "--bg": "#f4f1ec",
     "--glass-a": String(0.55 + g * 0.3), "--glass-b": String(0.35 + g * 0.3), "--edge": `rgba(20,22,28,${(0.06 + g * 0.08).toFixed(3)})`, "--on-accent": "#ffffff",
   };

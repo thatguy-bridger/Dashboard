@@ -35,3 +35,12 @@ export const SWATCHES: { name: string; h: number; s: number }[] = [
 /** A point in the picker (x, y as fractions 0-1 of its width/height) to hue and saturation: hue runs left to right, saturation top (full) to bottom (white). */
 export const pickerToHs = (fx: number, fy: number): [number, number] => [Math.round(Math.max(0, Math.min(1, fx)) * 360), Math.round((1 - Math.max(0, Math.min(1, fy))) * 100)];
 export const hsToPicker = (h: number, s: number): [number, number] => [Math.max(0, Math.min(1, h / 360)), 1 - Math.max(0, Math.min(100, s)) / 100];
+
+/** "r, g, b" for a #hex colour (so CSS can say rgba(var(--x-rgb), .5) in browsers without color-mix). Anything else falls back to the accent. */
+export function rgbVar(c?: string | null): string {
+  const m = typeof c === "string" ? /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim()) : null;
+  if (!m) return "var(--accent-rgb)";
+  let h = m[1]; if (h.length === 3) h = h.split("").map((x) => x + x).join("");
+  const n = parseInt(h, 16);
+  return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
+}

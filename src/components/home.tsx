@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Device, Home } from "@/lib/ha";
-import { hsToHex, hsToPicker, pickerToHs, SWATCHES, tintFor } from "@/lib/color";
+import { hsToHex, hsToPicker, pickerToHs, rgbVar, SWATCHES, tintFor } from "@/lib/color";
 import { placePopover, type Rect } from "@/lib/popover";
 import { dragValue, tileReduce, TILE_IDLE, type TileState } from "@/lib/tile";
 import { post, type Call } from "@/lib/useApi";
@@ -81,7 +81,7 @@ function Tile({ icon, title, sub, lit, tint, level, badge, onTap, onLevel, onHol
   useEffect(() => () => clear(), []);
   const shown = local ?? level ?? 0;
   return (
-    <div ref={ref} className={`htile ${lit ? "lit" : ""} ${pressing ? "pressing" : ""} ${flash ? "flash" : ""} ${local != null ? "dragging" : ""} ${className}`} style={{ ["--tint" as string]: tint ?? "var(--accent)" }}
+    <div ref={ref} className={`htile ${lit ? "lit" : ""} ${pressing ? "pressing" : ""} ${flash ? "flash" : ""} ${local != null ? "dragging" : ""} ${className}`} style={{ ["--tint" as string]: tint ?? "var(--accent)", ["--tint-rgb" as string]: rgbVar(tint) }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={(e) => e.preventDefault()} role="button" tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onTap?.(); }}>
       {draggable && (lit || local != null) && <div className="hfill" style={{ width: `${Math.round(shown * 100)}%` }} />}
@@ -221,7 +221,7 @@ function LightsPanel({ title, lights, act, tm }: { title: string; lights: Device
   const bri = dim.filter((l) => l.on).reduce((s, l, _, a) => s + (l.brightness ?? 1) / a.length, 0);
   const k = warm?.kelvin ?? Math.round((range[0] + range[1]) / 2), hs = (col.find((l) => l.color)?.color ?? [30, 60]) as [number, number];
   return (
-    <div className="ppanel" style={{ ["--tint" as string]: tintFor({ color: col.find((l) => l.color)?.color, kelvin: warm?.kelvin }) }}>
+    <div className="ppanel" style={{ ["--tint" as string]: tintFor({ color: col.find((l) => l.color)?.color, kelvin: warm?.kelvin }), ["--tint-rgb" as string]: rgbVar(tintFor({ color: col.find((l) => l.color)?.color, kelvin: warm?.kelvin })) }}>
       <div className="ptitle">{title}</div>
       {dim.length > 0 && <Slider label="Brightness" value={bri} onChange={(v, f) => act({ op: "brightness", ids: dim.map((l) => l.id), pct: Math.max(1, v * 100) }, f)} />}
       {warm && <Slider label="Warmth" value={(k - range[0]) / (range[1] - range[0])} tone="linear-gradient(90deg, #ffa84d, #fff3e0, #b3d1ff)" onChange={(v, f) => act({ op: "kelvin", ids: lights.filter((l) => l.kelvinRange).map((l) => l.id), k: Math.round(range[0] + v * (range[1] - range[0])) }, f)} />}

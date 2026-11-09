@@ -1,4 +1,5 @@
 "use client";
+import { rgbVar } from "@/lib/color";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { countdown, fmtTime, mmss } from "@/lib/format";
 import { fitIsland, type Activity, type IslandPage, type IslandSelection } from "@/lib/island";
@@ -100,7 +101,7 @@ export function Island({ sel, now, music, events, onPin, onGo, act, control, acc
   const sideFor = (arr: typeof leftP) => arr.map((s, i) => <Sat key={s.item.id} a={s.item} leaving={s.leaving} i={i} onPin={onPin} onGo={onGo} />);
 
   return (
-    <div ref={root} className={`isl ${breathe ? "breathe" : ""} ${open ? "open" : ""}`} style={{ ["--isl-tint" as string]: tintBase }} data-area="island">
+    <div ref={root} className={`isl ${breathe ? "breathe" : ""} ${open ? "open" : ""}`} style={{ ["--isl-tint" as string]: tintBase, ["--isl-tint-rgb" as string]: rgbVar(tintBase) }} data-area="island">
       <div className="isl-sats left">{sideFor(left)}</div>
       <div className={`isl-core ${main ? "has" : "empty"} ${calm ? "calm" : ""} k-${main?.kind ?? "none"}`} data-area="islcore" role="button" tabIndex={0} aria-label={main ? main.label : "Nothing pressing"}
         style={{ ["--iw" as string]: fit ? Math.min(size.w, fit.coreUnits) : size.w, ["--ih" as string]: size.h }} {...press}>
