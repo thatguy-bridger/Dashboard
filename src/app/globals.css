@@ -205,7 +205,7 @@ html, body, .root { background: var(--bg); }
 /* lyrics: ONE large line under the title and the controls of the card, cross-fading softly as the song moves on */
 .lyrics { position: relative; min-height: calc(24 * var(--u)); margin: calc(2.6 * var(--u)) 0 calc(1 * var(--u)); }
 .lyricline { position: absolute; top: 0; right: 0; bottom: 0; left: 0; inset: 0; display: flex; align-items: center; font-size: calc(7.2 * var(--u)); font-weight: 600; line-height: 1.12; letter-spacing: -.012em; color: var(--fg); overflow: hidden; animation: lyricfade .9s var(--ease-soft) both; }
-.lyricline > * { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+.lyricline > .fit-text { display: block; width: 100%; overflow-wrap: anywhere; }   /* never clipped: FitText shrinks it to the box */
 .lyricline.leaving { animation: lyricout .9s var(--ease-soft) both; } .lyricline.instr { opacity: .6; } .lyricline .icon { font-size: calc(7 * var(--u)); color: var(--accent); }
 @keyframes lyricfade { from { opacity: 0; transform: translateY(calc(1.2 * var(--u))); } to { opacity: 1; transform: none; } } @keyframes lyricout { from { opacity: 1; } to { opacity: 0; transform: translateY(calc(-1.2 * var(--u))); } }
 .track.title-small { font-size: calc(3.8 * var(--u)); margin: calc(.8 * var(--u)) 0 calc(.4 * var(--u)); font-weight: 600; }
@@ -434,3 +434,7 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .sc.music .mmeta .lyrics { flex: 1 1 0; min-height: calc(8 * var(--u)); height: auto; margin: calc(1.2 * var(--u)) 0; } .sc.music .mmeta .lyricline { font-size: calc(5.6 * var(--u)); }
 .sc.music .playpanel:not(.big) { margin-top: calc(1.2 * var(--u)); } .sc.music .playpanel:not(.big) .pp-head { flex-wrap: nowrap; margin-bottom: calc(.8 * var(--u)); } .sc.music .playpanel:not(.big) .pp-speakers { flex-wrap: nowrap; overflow: hidden; min-width: 0; }
 .sc.music .playpanel:not(.big) .pp-tile { width: calc(11 * var(--u)); } .sc.music .playpanel:not(.big) .pp-art { height: calc(11 * var(--u)); } .sc.music .playpanel:not(.big) .pp-name { font-size: calc(1.8 * var(--u)); }
+
+.fit-text.one { display: inline-block; white-space: nowrap; }
+
+.sc.music .mmeta .track { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; } .sc.music .mmeta .lyrics { min-height: calc(12 * var(--u)); }
