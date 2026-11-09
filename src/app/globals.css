@@ -478,3 +478,20 @@ body { font-weight: 500; font-variant-numeric: normal; }
   .vol { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22); }
 }
 .art.hero { box-sizing: border-box; }
+
+/* music page: the art, the text column and the volume share one height */
+.sc.music { --art: min(calc(76 * var(--u)), 52vw, 70vh); }
+.sc.music .mbody { align-items: center; }
+.sc.music .art.hero { width: var(--art); height: var(--art); }
+.sc.music .mmeta { height: var(--art); max-height: var(--art); justify-content: space-between; }
+.sc.music .vol { height: var(--art); width: calc(2.4 * var(--u)); max-height: none; }
+.sc.music .mmeta .track.title-small, .sc.music .mmeta .track { font-size: calc(8.4 * var(--u)); line-height: 1.04; -webkit-line-clamp: 2; margin: 0 0 calc(.4 * var(--u)); }
+.sc.music .mmeta .artist { font-size: calc(3.6 * var(--u)); }
+.sc.music .mmeta .lyrics { flex: 1 1 0; min-height: 0; max-height: none; height: auto; overflow: hidden; }
+
+/* progress: a thick soft track, a glowing gradient fill and a knob at the playhead */
+.mprog .bar { position: relative; height: calc(1.5 * var(--u)); border-radius: 999px; background: rgba(255,255,255,.14); overflow: visible; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.mprog .bar > i { position: relative; display: block; height: 100%; min-width: calc(1.5 * var(--u)); border-radius: 999px; background: linear-gradient(90deg, rgba(255,255,255,.35), var(--accent)); box-shadow: 0 0 calc(2.4 * var(--u)) var(--accent); transition: width .9s linear; }
+.mprog .bar > i::after { content: ""; position: absolute; right: calc(-1.1 * var(--u)); top: 50%; width: calc(2.6 * var(--u)); height: calc(2.6 * var(--u)); margin-top: calc(-1.3 * var(--u)); border-radius: 50%; background: #fff; box-shadow: 0 0 calc(2.2 * var(--u)) var(--accent), 0 0 0 calc(.5 * var(--u)) rgba(255,255,255,.25); }
+.mprog .small { font-size: calc(2.2 * var(--u)); opacity: .8; }
+.mprog { margin: calc(1.4 * var(--u)) 0 calc(1 * var(--u)); }
