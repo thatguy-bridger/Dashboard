@@ -274,7 +274,7 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .sc.music { display: flex; } .mbody { flex: 1; min-width: 0; min-height: 0; height: 100%; display: flex; align-items: center; gap: calc(4 * var(--u)); }
 .art.hero { width: min(calc(76 * var(--u)), 52vw, 66vh); height: min(calc(76 * var(--u)), 52vw, 66vh); max-width: none; flex: none; }
 .mmeta { flex: 1 1 0; min-width: 0; max-height: 100%; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
-.mmeta .lyrics { flex: 0 1 auto; height: calc(24 * var(--u)); min-height: calc(13 * var(--u)); }
+.mmeta .lyrics { flex: 1 1 0; height: auto; max-height: calc(30 * var(--u)); min-height: calc(13 * var(--u)); } .mprog, .mmeta .row { flex: none; }
 .vol { width: calc(3.6 * var(--u)); height: min(calc(34 * var(--u)), 46%); }
 .mprog { margin: calc(2.2 * var(--u)) 0 calc(1.6 * var(--u)); } .mnext { margin-top: calc(1.8 * var(--u)); } .artist { opacity: .6; font-size: calc(3.2 * var(--u)); }
 .sc.soon { display: flex; align-items: center; justify-content: center; } .scenter { width: 100%; height: 100%; max-height: calc(70 * var(--u)); }
@@ -414,7 +414,7 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .mp-n { width: calc(2.6 * var(--u)); color: var(--fg3); font-variant-numeric: tabular-nums; } .mp-c { flex: 1; min-width: 0; font-weight: 500; } .mp-t { color: var(--fg2); font-variant-numeric: tabular-nums; font-size: calc(1.8 * var(--u)); }
 @media (prefers-reduced-motion: reduce) { .welcome, .welcome.out, .welcome-in, .goodbye { animation-duration: .2s; animation-name: wel-in; } .welcome.out { animation-name: wel-out; } }
 
-@supports not (aspect-ratio: 1 / 1) { .art.hero { width: min(calc(60 * var(--u)), 44vw); height: min(calc(60 * var(--u)), 44vw); } .ring { width: min(calc(46 * var(--u)), 44vw); height: min(calc(46 * var(--u)), 44vw); } }
+@supports not (aspect-ratio: 1 / 1) { .ring { width: min(calc(46 * var(--u)), 44vw); height: min(calc(46 * var(--u)), 44vw); } }
 
 .artists { font-size: calc(3.2 * var(--u)); font-weight: 500; color: var(--fg); opacity: .86; line-height: 1.2; }
 .album { display: flex; align-items: center; gap: calc(1 * var(--u)); margin-top: calc(.5 * var(--u)); font-size: calc(2.3 * var(--u)); font-weight: 400; color: var(--fg3); } .album .icon { width: calc(2.4 * var(--u)); height: calc(2.4 * var(--u)); flex: none; }
@@ -475,6 +475,6 @@ body { font-weight: 500; font-variant-numeric: normal; }
 @supports not (background: color-mix(in srgb, red 50%, blue)) {
   .bar > i, .vol > i { background: var(--accent); }
   .bar { background: rgba(255,255,255,.16); }
-  .vol { background: rgba(255,255,255,.14); }
+  .vol { background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22); }
 }
 .art.hero { box-sizing: border-box; }
