@@ -10,7 +10,7 @@ export const HEADER_MODE: Record<SceneId, "full" | "island" | "none"> = { idle: 
 const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
 
 /** Header regions, left to right: [clock + date (+ greeting)] [the island, centred in what's left]. The island collapses its satellites first, then its text, when the header is narrow. */
-export function Header({ mode, now, scene, island }: { mode: "full" | "island" | "none"; now: number; scene: SceneId; island: React.ReactNode }) {
+export function Header({ mode, now, scene, island, lyric }: { mode: "full" | "island" | "none"; now: number; scene: SceneId; island: React.ReactNode; lyric?: React.ReactNode }) {
   if (mode === "none") return null;
   return (
     <div className="hdr">
@@ -22,7 +22,7 @@ export function Header({ mode, now, scene, island }: { mode: "full" | "island" |
           </>
         )}
       </div>
-      <div className="hdr-c" data-area="island">{island}</div>
+      <div className="hdr-c" data-area="island">{island}{lyric}</div>
     </div>
   );
 }

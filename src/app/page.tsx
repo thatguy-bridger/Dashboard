@@ -32,6 +32,7 @@ import { useDevice } from "@/lib/useDevice";
 import { Rail } from "@/components/rail";
 import { Takeover } from "@/components/zones";
 import { Header, Foot, HEADER_MODE } from "@/components/frame";
+import { LyricBar } from "@/components/lyrics";
 import { Island } from "@/components/island";
 import { buildActivities } from "@/lib/activities";
 import { selectIsland, type IslandMemory, type IslandPage, type IslandPin } from "@/lib/island";
@@ -338,7 +339,7 @@ export default function Page() {
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
       <div className="frame" data-area="frame">
         <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} /></aside>
-        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} /></header>
+        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} lyric={shownScene !== "music" ? <LyricBar view={lyric} /> : null} /></header>
         <main className="area-hero" data-area="hero">
           {layers.map((l) => {
             const page = l.key.startsWith("page:"), id = l.key.slice(l.key.indexOf(":") + 1);

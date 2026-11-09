@@ -50,3 +50,17 @@ export function FitText({ text, single = false }: { text: string; single?: boole
   }, [fit]);
   return <span ref={ref} className={`fit-text ${single ? "one" : ""}`}>{text}</span>;
 }
+
+/** A slim scrolling lyric line in the header, under the island; long lines glide sideways so they can be read in full. */
+export function LyricBar({ view }: { view: LyricView | null }) {
+  const box = useRef<HTMLDivElement>(null), txt = useRef<HTMLSpanElement>(null);
+  const line = view && view.index >= 0 && !view.instrumental ? view.current : "";
+  useLayoutEffect(() => {
+    const b = box.current, t = txt.current; if (!b || !t) return;
+    const over = t.scrollWidth - b.clientWidth;
+    t.style.setProperty("--shift", over > 2 ? `${-over}px` : "0px");
+    t.classList.toggle("glide", over > 2);
+  }, [line]);
+  if (!line) return null;
+  return <div className="lyricbar" ref={box} key={view!.index}><span ref={txt}>{line}</span></div>;
+}

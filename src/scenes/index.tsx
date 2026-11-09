@@ -17,7 +17,7 @@ const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" :
 export function Idle(p: SceneProps) {
   return (
     <div className="sc idle">
-      <div className="left"><div><Clock now={p.now} /><DateLine now={p.now} away={p.away} /><LyricTicker view={p.lyric} /></div><WeatherCard w={p.data?.weather ?? null} /></div>
+      <div className="left"><div><Clock now={p.now} /><DateLine now={p.now} away={p.away} /></div><WeatherCard w={p.data?.weather ?? null} /></div>
     </div>
   );
 }
@@ -29,6 +29,7 @@ function MusicScene(p: SceneProps) {
   const lyr = p.lyric;
   const fallback = p.theme.accent;
   const id = m.trackId ?? m.track;
+  const controls = (p.data?.screen as Record<string, unknown> | undefined)?.musicControls !== 0;
   return (
     <div className="sc music">
       <div className="mbody">
@@ -37,18 +38,18 @@ function MusicScene(p: SceneProps) {
           <div className="cap fit">{m.ended ? "Finished" : m.playing ? "Now playing" : "Paused"}{m.device ? ` · ${m.device}` : ""}</div>
           {lyr ? (
             <>
-              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track title-small" />
+              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track title-small" maxLines={2} />
               <ArtistsLine m={m} /><AlbumLine album={m.album} />
               <LyricsBlock view={lyr} />
             </>
           ) : (
             <>
-              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track" />
+              <GradientTitle text={m.track} id={id} palette={m.palette} fallback={fallback} className="track" maxLines={2} />
               <ArtistsLine m={m} /><AlbumLine album={m.album} />
             </>
           )}
           <div className="mprog"><Progress m={m} now={p.now} /></div>
-          <div className="mrow"><Transport m={m} control={p.control} /><PlayEntry data={p.data} playingOn={m.device} control={p.control} /></div>
+          {controls && <div className="mrow"><Transport m={m} control={p.control} /><PlayEntry data={p.data} playingOn={m.device} control={p.control} /></div>}
           {m.next && <div className="small fit mnext">Next · {m.next.track}{m.next.artist ? ` · ${m.next.artist}` : ""}</div>}
         </div>
         <VolumePill m={m} control={p.control} />
@@ -75,7 +76,7 @@ function Soon(p: SceneProps) {
         <div className="sinfo">
           <div className="stitle clamp3"><Dot color={e.color} />{e.title}</div>
           <div className="mid soft">{fmtTime(e.start * 1000)} – {fmtTime(e.end * 1000)}{e.location ? ` · ${e.location}` : ""}</div>
-          <LyricTicker view={p.lyric} />
+          
         </div>
       </div>
     </div>
@@ -93,7 +94,7 @@ function Day(p: SceneProps) {
             <div className="cap">{next.start * 1000 <= p.now ? "Happening now" : `Next · ${until(next.start, p.now)}`}</div>
             <div className="stitle clamp3"><Dot color={next.color} />{next.title}</div>
             <div className="mid soft">{when(next, p.now)}{next.location ? ` · ${next.location}` : ""}</div>
-            <LyricTicker view={p.lyric} />
+            
           </div>
         ) : <div className="card nextcard"><div className="cap">Today</div><div className="mid">Nothing left today</div></div>}
         <WeatherCard w={p.data?.weather ?? null} />
@@ -111,7 +112,7 @@ function Morning(p: SceneProps) {
       <div className="left">
         <div><div className="greet">{greeting(h)}</div><DateLine now={p.now} /></div>
         <WeatherCard w={p.data?.weather ?? null} big />
-        <div><Clock now={p.now} className="mini" /><LyricTicker view={p.lyric} /></div>
+        <div><Clock now={p.now} className="mini" /></div>
       </div>
       <div className="right">
         <EventList events={today.length ? today : p.events} now={p.now} title={today.length ? "Today" : "Up next"} max={periods.length ? 3 : 6} />
@@ -142,7 +143,7 @@ function Away(p: SceneProps) {
       <div className="cap">Away</div>
       <Clock now={p.now} className="mini big2" />
       <DateLine now={p.now} />
-      <LyricTicker view={p.lyric} />
+      
       <div className="row" style={{ marginTop: "calc(3 * var(--u))" }}><WeatherCard w={p.data?.weather ?? null} /></div>
       {next && <div className="small" style={{ marginTop: "calc(3 * var(--u))" }}>Next · {next.title} · {when(next, p.now)}</div>}
     </div>
