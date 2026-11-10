@@ -328,6 +328,7 @@ export default function Page() {
       <div className="tint" /><div className="wash" style={{ opacity: 0.35 }} />
       <GuestScreen home={homeView} now={now} act={(b) => { post(callOpt, b); setTimeout(loadHome, 450); }} />
       <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : decision.dim }} />
+      {decision.stale && <div className="stalenote">{decision.stale}; showing the last update</div>}
       <HiddenTrigger onFire={trigger} />
       {gate && <PinGate verify={verify} onCancel={() => setGate(false)} />}
     </div>

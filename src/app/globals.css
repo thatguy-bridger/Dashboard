@@ -503,3 +503,6 @@ body { font-weight: 500; font-variant-numeric: normal; }
 /* the lyric bar under the island */
 .lyricbar { margin-top: calc(1 * var(--u)); max-width: 100%; overflow: hidden; white-space: nowrap; font-size: calc(2.6 * var(--u)); font-weight: 500; color: var(--fg2); text-align: center; animation: gtfade .6s var(--ease-soft) both; }
 .lyricbar span { display: inline-block; } .lyricbar span.glide { animation: lyricglide 7s linear .6s infinite alternate; } @keyframes lyricglide { from { transform: translateX(0); } to { transform: translateX(var(--shift)); } }
+
+/* Permuta (or the server) has gone quiet: the page keeps working from the last update and says so, quietly */
+.stalenote { position: fixed; left: 50%; bottom: calc(1.2 * var(--u)); transform: translateX(-50%); z-index: 5; padding: calc(.5 * var(--u)) calc(1.6 * var(--u)); border-radius: 999px; background: rgba(0,0,0,.35); color: rgba(255,255,255,.62); font-size: calc(1.7 * var(--u)); font-weight: 500; pointer-events: none; white-space: nowrap; }

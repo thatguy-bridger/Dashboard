@@ -63,20 +63,17 @@ test("morning window", () => {
   assert.equal(decide(base(at(7, 30), { config: { morningStart: 8, morningEnd: 10 } })).scene, "idle");
 });
 
-test("offline: stale Permuta or an unreachable server, with hysteresis", () => {
+test("a quiet Permuta never takes the page over: it keeps working and says so", () => {
   const now = at(13);
-  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 200 })).scene, "offline");
-  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 100 })).scene, "idle");
-  assert.equal(decide(base(now, { apiOk: false })).scene, "offline");
-  assert.equal(decide(base(now, { statusAt: null })).scene, "offline");
-  // once offline, it takes a fresher update (under half the limit) to come back
-  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 120 }), "offline").scene, "offline");
-  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 60 }), "offline").scene, "idle");
-  assert.ok(decide(base(now, { apiOk: false })).reason.length > 0);
+  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 200 })).scene, "idle");
+  assert.ok(decide(base(now, { statusAt: Math.floor(now / 1000) - 200 })).stale);
+  assert.ok(decide(base(now, { apiOk: false })).stale);
+  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 30 })).stale, undefined);
 });
-test("offline outranks music: a stale music state must not be believed", () => {
+
+test("a stale music state is not believed", () => {
   const now = at(13);
-  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 600, music: { playing: true, track: "x", at: now } })).scene, "offline");
+  assert.equal(decide(base(now, { statusAt: Math.floor(now / 1000) - 600, music: { playing: true, track: "x", at: now } })).scene, "idle");
 });
 
 test("config: order, disabled, bad values and unknown fields", () => {

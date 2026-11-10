@@ -51,6 +51,7 @@ export type Decision = {
   focus?: Ev;                 // the event a "soon" scene is about
   applies: SceneId[];         // every scene that applies right now, in priority order
   urgent: boolean;            // skip the minimum dwell time
+  stale?: string;             // set when Permuta (or the server) has gone quiet: the page keeps working from what it last received
 };
 
 const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
@@ -104,9 +105,11 @@ export function decide(input: SceneInput, prev?: SceneId | null): Decision {
 
   // offline: our server can't be reached, or Permuta has gone quiet (hysteresis: it must be fresh again by half the limit)
   const age = input.statusAt == null ? Infinity : input.now / 1000 - input.statusAt;
-  const limit = prev === "offline" ? c.staleSec / 2 : c.staleSec;
-  if (input.hasData && !input.apiOk) reasons.offline = "the server isn't answering";
-  else if (input.hasData && age > limit) reasons.offline = input.statusAt == null ? "Permuta hasn't reported yet" : `Permuta was last heard ${Math.round(age / 60)} min ago`;
+  const limit = c.staleSec;
+  // The page never goes dark for this: it keeps showing the schedule, weather and the rest from the last update, with a quiet note.
+  let stale: string | undefined;
+  if (input.hasData && !input.apiOk) stale = "the server isn't answering";
+  else if (input.hasData && age > limit) stale = input.statusAt == null ? "Permuta hasn't reported yet" : `Permuta was last heard ${age >= 3600 ? Math.round(age / 3600) + " h" : Math.round(age / 60) + " min"} ago`;
 
   const s = soonEvent(input.events, input.now, c);
   if (s) { focus = s; const m = Math.round((s.start * 1000 - input.now) / 60000); reasons.soon = `“${s.title}” ${m > 0 ? `starts in ${m} min` : "is starting"}`; }
@@ -114,7 +117,7 @@ export function decide(input: SceneInput, prev?: SceneId | null): Decision {
   if (input.away) reasons.away = "marked away";
 
   const m = input.music;
-  if (m && m.track) {
+  if (m && m.track && !stale) {          // a stale music state must not be believed
     if (m.playing) reasons.music = "music is playing";
     else if (m.at != null && input.now - m.at < c.musicHoldSec * 1000) reasons.music = "music paused a moment ago";
   }
@@ -130,7 +133,7 @@ export function decide(input: SceneInput, prev?: SceneId | null): Decision {
   const scene = applies[0];
   // music/soon/away at night keep their own look but dimmed; the night scene itself is the darkest
   const dim = scene === "night" ? 0.7 : night && scene !== "soon" ? 0.55 : 0;
-  return { scene, reason: reasons[scene] ?? "default", dim, focus: scene === "soon" ? focus : undefined, applies, urgent: scene === "soon" || scene === "offline" };
+  return { scene, reason: reasons[scene] ?? "default", dim, focus: scene === "soon" ? focus : undefined, applies, urgent: scene === "soon", stale };
 }
 
 /** Never flicker: keep the current scene for at least minDwellSec unless it stopped applying or the new one is urgent. */
