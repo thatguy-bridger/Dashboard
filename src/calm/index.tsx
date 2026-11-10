@@ -147,7 +147,7 @@ function JournalPage(p: SceneProps) {
     <Frame title="Journal" icon="book" p={p}>
       <div className="pgrid two">
         <div className="card"><div className="cap">Streak</div><div className="row" style={{ alignItems: "baseline", gap: "calc(2 * var(--u))" }}><Icon name="flame" className="flame" /><div className="bignum">{j.streak}</div><div className="mid" style={{ opacity: .6 }}>days</div></div><div className="small">Best {j.best}</div></div>
-        <div className="card nextcard"><div className="cap">{j.wroteToday ? "Written today" : j.due ? "Waiting for you" : "Tonight"}</div><div className="stitle clamp3">{j.prompt ?? "How was today?"}</div>{j.wroteToday && <div className="row"><Icon name="check" className="pillicon" /><div className="small">Done for today</div></div>}</div>
+        <div className="card nextcard"><div className="cap">{j.wroteToday ? "Written today" : j.due ? "Waiting for you" : "Tonight"}</div><div className="stitle clamp3">{j.prompt || "How was today?"}</div>{j.wroteToday && <div className="row"><Icon name="check" className="pillicon" /><div className="small">Done for today</div></div>}</div>
       </div>
     </Frame>
   );
