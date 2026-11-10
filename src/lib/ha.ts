@@ -65,7 +65,7 @@ export async function home(): Promise<Home> {
     const on = (id: string) => states.find((s) => s.entity_id === id)?.state === "on";
     const rooms = [...new Set(devices.filter((d) => d.kind === "light" || d.kind === "plug").map((d) => d.room))].sort();
     devices.sort((a, b) => (a.room + a.name).localeCompare(b.room + b.name));
-    return { configured: true, reachable: true, devices, away: states.some((s) => s.entity_id === "scene.home_base_before_leaving"), musicLights: on("input_boolean.home_base_music_lights"), rooms };
+    return { configured: true, reachable: true, devices, away: states.some((s) => s.entity_id === "scene.home_base_before_leaving") && !states.some((s) => s.entity_id.startsWith("person.") && s.state === "home"), musicLights: on("input_boolean.home_base_music_lights"), rooms };
   } catch { return { ...empty, configured: true }; }
 }
 
