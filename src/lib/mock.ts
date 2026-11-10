@@ -42,6 +42,7 @@ export function mockData(s: Scenario, now: number, long: boolean, pulseMin?: num
     lyrics, lyricsNext, lights, info: info as never, extra,
     status: { away: s === "away", at: s === "offline" ? sec - 900 : sec - 5 },
     weather: { current: { temperature_2m: 43, weather_code: 0, is_day: hr >= 7 && hr < 19 ? 1 : 0 }, daily: { time: [0, 1, 2, 3, 4].map((i) => new Date(now + i * 864e5).toISOString().slice(0, 10)), temperature_2m_max: [53, 64, 67, 61, 59], temperature_2m_min: [36, 38, 45, 51, 48], weather_code: [0, 1, 2, 3, 0] } },
+    location: { lat: 40.76, lon: -111.89, name: "Home" },
     updatedAt: new Date(now).toISOString(), now,
   };
 }

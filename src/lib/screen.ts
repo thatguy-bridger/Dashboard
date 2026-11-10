@@ -10,6 +10,7 @@ export function buildScreen(kv: KV, weather: unknown, now: number) {
   for (const [k, r] of Object.entries(kv)) if (k.startsWith("state:") && !KNOWN.has(k.slice(6))) extra[k.slice(6)] = r.v;
   return {
     screen: v("config:screen") ?? null,
+    location: v("config:location") ?? null,
     theme: v("config:theme") ?? null,
     lyrics: v("state:lyrics") ?? null,
     lyricsNext: v("state:lyrics_next") ?? null,

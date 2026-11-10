@@ -1,6 +1,9 @@
 "use client";
 // The calm-mode pages: the same cards as the zones and scenes, just larger. Each page id matches a source's `page.id` (src/lib/sources).
 // (Not named "pages": Next.js reserves src/pages for the old router.)
+import { useEffect, useState } from "react";
+import { WeatherMap } from "@/components/weathermap";
+import { compass, dayOutlook, forecastUrl, parseForecast, type Forecast } from "@/lib/forecast";
 import { collectSlots } from "@/lib/slots";
 import { sourceItems } from "@/lib/sources";
 import { fmtTime } from "@/lib/format";
@@ -44,7 +47,52 @@ function Today(p: SceneProps) {
   );
 }
 
+function useForecast(loc?: { lat: number; lon: number } | null) {
+  const [f, setF] = useState<Forecast | null>(null);
+  useEffect(() => {
+    if (!loc) return;
+    let dead = false;
+    const load = async () => { try { const r = await fetch(forecastUrl(loc.lat, loc.lon)); if (r.ok && !dead) setF(parseForecast(await r.json())); } catch { /* keep the last one */ } };
+    load(); const id = setInterval(load, 600000);
+    return () => { dead = true; clearInterval(id); };
+  }, [loc?.lat, loc?.lon]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return f;
+}
+
 function WeatherPage(p: SceneProps) {
+  const loc = p.data?.location ?? null;
+  const f = useForecast(loc);
+  if (!f || !loc) return <WeatherBasic {...p} />;
+  const c = f.current, today = f.days[0];
+  const hrs = f.hours.filter((h) => h.t >= p.now - 1800000).slice(0, 12);
+  const min = Math.min(...f.days.map((d) => d.lo)), max = Math.max(...f.days.map((d) => d.hi)), span = Math.max(1, max - min);
+  return (
+    <Frame title={loc.name && loc.name !== "Home" ? loc.name : "Weather"} icon="sun" p={p}>
+      <div className="wx-page">
+        <div className="wx-left">
+          <div className="wx-hero">
+            <div className="wx-temp">{Math.round(c.temp)}°</div>
+            <div className="wx-side">
+              <div className="wx-cond">{conditionText(c.code) || "Fair"}</div>
+              <div className="wx-hl">High {Math.round(today.hi)}° · Low {Math.round(today.lo)}° · Feels {Math.round(c.feels)}°</div>
+              <div className="wx-sum">{dayOutlook(f, p.now, conditionText)}</div>
+            </div>
+          </div>
+          <div className="wx-facts"><span>Wind {Math.round(c.wind)} mph {compass(c.dir)}{c.gust > c.wind + 5 ? `, gusts ${Math.round(c.gust)}` : ""}</span><span>Humidity {Math.round(c.humidity)}%</span><span>UV {Math.round(c.uv)}</span><span>Sunrise {fmtTime(today.sunrise)}</span><span>Sunset {fmtTime(today.sunset)}</span></div>
+          <div className="card wx-hours">{hrs.map((h, i) => (
+            <div key={h.t} className="wx-h"><div className="t">{i === 0 ? "Now" : new Date(h.t).toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase()}</div><Icon name={weatherIconName(h.code, !h.day)} className="ic" /><div className="tp">{Math.round(h.temp)}°</div><div className="pp">{h.pop >= 10 ? `${Math.round(h.pop / 10) * 10}%` : ""}</div><div className="wd">{Math.round(h.wind)} mph</div></div>))}
+          </div>
+          <div className="card wx-week">{f.days.slice(0, 7).map((d, i) => (
+            <div key={d.date} className="wx-wr"><div className="d">{i === 0 ? "Today" : new Date(d.date + "T12:00").toLocaleDateString([], { weekday: "short" })}</div><Icon name={weatherIconName(d.code, false)} className="ic" /><div className="pp">{d.pop >= 20 ? `${Math.round(d.pop / 10) * 10}%` : ""}</div><div className="lo">{Math.round(d.lo)}°</div><div className="bar"><i style={{ left: `${((d.lo - min) / span) * 100}%`, right: `${100 - ((d.hi - min) / span) * 100}%` }} /></div><div className="hi">{Math.round(d.hi)}°</div></div>))}
+          </div>
+        </div>
+        <WeatherMap lat={loc.lat} lon={loc.lon} />
+      </div>
+    </Frame>
+  );
+}
+
+function WeatherBasic(p: SceneProps) {
   const w = p.data?.weather; const d = w?.daily;
   return (
     <Frame title="Weather" icon="sun" p={p}>

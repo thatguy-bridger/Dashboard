@@ -14,6 +14,7 @@ export type ScreenConfig = SceneConfig & PulseConfig & FocusConfig & { widgets?:
 export type ScreenData = {
   screen: ScreenConfig | null; theme: ThemeConfig | null;
   agenda: { events: Ev[] } | null; music: Music | null; status: { away?: boolean; at?: number } | null;
+  location?: { lat: number; lon: number; name?: string } | null;
   weather: Weather | null; updatedAt: string | null; now: number;
   lyrics?: Lyrics | null;                     // state:lyrics
   lyricsNext?: Lyrics | null;                 // state:lyrics_next (the next song's lines, for the rollover)
