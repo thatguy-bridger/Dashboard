@@ -162,7 +162,8 @@ export default function Page() {
   const theme = useMemo(() => resolveTheme(data?.theme, data?.screen?.accent), [data?.theme, data?.screen?.accent]);
   const events = useMemo(() => liveEvents(data?.agenda?.events ?? [], now), [data?.agenda, now]);           // a passed event drops out on its own
   // ----- music: the clock decides, reports only correct it (rollover to the next song, gentle reconcile, optimistic keys) -----
-  const rawMusic = data?.music && data.music.track ? data.music : null;
+  // Permuta refreshes this every few seconds while it runs; if its report is old (computer closed) the song shown would be a guess, so show none.
+  const rawMusic = data?.music && data.music.track && now - Number(data.music.at ?? 0) < 150000 ? data.music : null;
   const predicted = useMemo(() => {
     const p = predictMusic(rawMusic, now);
     if (!p) { shownPos.current = null; return null; }
