@@ -150,7 +150,15 @@ export default function Page() {
     if (MOCK || !api.pin) return;
     try { const r = await api.call("/api/home"); if (r.ok) setHome(await r.json()); } catch {}
   }, [api]);
-  useEffect(() => { if (!unlocked || MOCK) return; loadScreen(); const t = setInterval(loadScreen, 5000); return () => clearInterval(t); }, [unlocked, loadScreen]);
+  // Normally every 5 s; around a song change (the last seconds of a song, or just after a guessed rollover) every 1.5 s so the real report replaces the guess quickly.
+  const nearSongEnd = useRef(false);
+  useEffect(() => {
+    if (!unlocked || MOCK) return;
+    let dead = false, t: ReturnType<typeof setTimeout>;
+    const loop = async () => { await loadScreen(); if (!dead) t = setTimeout(loop, nearSongEnd.current ? 1500 : 5000); };
+    loop();
+    return () => { dead = true; clearTimeout(t); };
+  }, [unlocked, loadScreen]);
 
   const nowSec = Math.floor(now / 1000);
   const data: ScreenData | null = useMemo(() => (MOCK ? (() => { const d = mockData(mockOpts.scenario, nowSec * 1000, mockOpts.long, mockOpts.pulse, mockOpts.lyrics); return mockOpts.h24 ? { ...d, screen: { ...d.screen, hours24: true } } : d; })() : real), [real, mockOpts, nowSec]);
@@ -173,6 +181,7 @@ export default function Page() {
     return { ...p, progress: pos, at: now };
   }, [rawMusic, nowSec]);   // eslint-disable-line react-hooks/exhaustive-deps
   const music = useMemo(() => applyMusic(predicted, optMap), [predicted, optMap]);
+  nearSongEnd.current = !!music && (!!music.predicted || !!music.ended || (music.playing && music.duration > 0 && music.duration - positionOf(music, now) < 8) || (!!rawMusic && !!predicted && predicted.trackId !== rawMusic.trackId));
   const homeView = useMemo(() => applyHome(MOCK ? mockHomeData : home, optMap), [home, optMap, mockHomeData]);
   homeRef.current = MOCK ? mockHomeData : home;
   useEffect(() => { setOptMap((m) => resolveOpt(m, reportedFor(m, homeRef.current, rawMusic), Date.now())); }, [nowSec, home, rawMusic]);   // confirmed or expired overrides drop out
