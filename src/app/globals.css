@@ -258,7 +258,6 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .hdr-r .pill { flex: 0 1 auto; min-width: calc(15 * var(--u)); max-width: calc(48 * var(--u)); } .pill .fit { flex: 1 1 auto; min-width: 0; } .pill b { flex: none; } .pill .pillicon { flex: none; }
 @container head (max-width: 1180px) { .hdr-greet { display: none; } }
 @container head (max-width: 880px) { .hdr-r .pill:nth-child(n+2) { display: none; } }
-@container head (max-width: 620px) { .hdr-meta .date { display: none; } }
 .clock.mini { font-size: calc(7.6 * var(--u)); }
 
 /* foot: the Next Up strip (or the day timeline) and the corner peek, side by side */
@@ -544,3 +543,6 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .isl-core.withlyr .isl-text { overflow: hidden; max-height: 100%; }
 .isl-lyr { font-size: calc(1.7 * var(--u)); font-weight: 500; line-height: 1.22; color: var(--fg2); margin-top: calc(.3 * var(--u)); max-height: calc(4.2 * var(--u)); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
 .hdr-l .clock.mini { font-size: calc(9.6 * var(--u)); } .hdr-l .clock.mini small { font-size: calc(3 * var(--u)); }
+.hdr-l { flex-direction: column; align-items: flex-start; gap: calc(.4 * var(--u)); max-width: 46%; }
+.hdr-l .hdr-meta { flex-direction: row; align-items: baseline; gap: calc(1.6 * var(--u)); } .hdr-l .date { font-size: calc(2.3 * var(--u)); margin: 0; letter-spacing: .04em; }
+.sc.idle .left { justify-content: flex-start; }

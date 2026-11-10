@@ -17,7 +17,7 @@ const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" :
 export function Idle(p: SceneProps) {
   return (
     <div className="sc idle">
-      <div className="left"><div><Clock now={p.now} /><DateLine now={p.now} away={p.away} /></div><WeatherCard w={p.data?.weather ?? null} /></div>
+      <div className="left"><WeatherCard w={p.data?.weather ?? null} /></div>
     </div>
   );
 }
@@ -110,9 +110,8 @@ function Morning(p: SceneProps) {
   return (
     <div className="sc morning">
       <div className="left">
-        <div><div className="greet">{greeting(h)}</div><DateLine now={p.now} /></div>
+        <div><div className="greet">{greeting(h)}</div></div>
         <WeatherCard w={p.data?.weather ?? null} big />
-        <div><Clock now={p.now} className="mini" /></div>
       </div>
       <div className="right">
         <EventList events={today.length ? today : p.events} now={p.now} title={today.length ? "Today" : "Up next"} max={periods.length ? 3 : 6} />
@@ -141,8 +140,6 @@ function Away(p: SceneProps) {
   return (
     <div className="sc away">
       <div className="cap">Away</div>
-      <Clock now={p.now} className="mini big2" />
-      <DateLine now={p.now} />
       
       <div className="row" style={{ marginTop: "calc(3 * var(--u))" }}><WeatherCard w={p.data?.weather ?? null} /></div>
       {next && <div className="small" style={{ marginTop: "calc(3 * var(--u))" }}>Next · {next.title} · {when(next, p.now)}</div>}

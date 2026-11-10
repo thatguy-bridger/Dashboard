@@ -6,7 +6,7 @@ import { Icon, type IconName } from "./Icon";
 import { Clock, DateLine, StripCard } from "./widgets";
 
 /** What the header carries for each scene: the small clock and date plus the island ("full"), only the island ("island": the hero already is the clock), or nothing. */
-export const HEADER_MODE: Record<SceneId, "full" | "island" | "none"> = { idle: "island", music: "full", soon: "full", day: "full", morning: "island", night: "none", away: "island", offline: "none" };
+export const HEADER_MODE: Record<SceneId, "full" | "island" | "none"> = { idle: "full", music: "full", soon: "full", day: "full", morning: "full", night: "none", away: "full", offline: "none" };
 const greeting = (h: number) => (h < 5 ? "Still up?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening");
 
 /** Header regions, left to right: [clock + date (+ greeting)] [the island, centred in what's left]. The island collapses its satellites first, then its text, when the header is narrow. */

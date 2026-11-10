@@ -11,8 +11,8 @@
 import { until, when } from "./format.ts";
 import type { Ev, SceneId } from "./scenes.ts";
 
-export type RailId = "today" | "calendar" | "music" | "home" | "mail" | "journal";
-export const RAIL_IDS: RailId[] = ["today", "calendar", "music", "home", "mail", "journal"];
+export type RailId = "today" | "calendar" | "music" | "home" | "mail" | "journal" | "weather";
+export const RAIL_IDS: RailId[] = ["today", "calendar", "music", "home", "mail", "journal", "weather"];
 export type Zone = "pill" | "strip" | "badge" | "peek" | "takeover";
 
 export type SlotItem = {

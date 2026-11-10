@@ -310,12 +310,12 @@ export default function Page() {
   const props = { now, data: data && !widgets.includes("weather") ? { ...data, weather: null } : data, theme, away, events: viewEvents, music, art, lyric, slots, ctx, control, home: homeView, call: callOpt, reloadHome: loadHome, hideRooms: cfg?.hideRooms ?? [] };
   const backdropOn = shownScene === "music" && !showingPage && !!art;
   const railHidden = scene === "night" || scene === "offline" || controlMode;
-  const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "home" ? "home" : viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : "today") : railFor(shownScene);
+  const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "home" ? "home" : viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : viewKey.slice(5) === "weather" ? "weather" : "today") : railFor(shownScene);
   const zonesOn = (!showingPage || viewKey === "page:home") && !railHidden;
-  const headerMode = showingPage ? (viewKey === "page:standby" ? "island" : "full") : HEADER_MODE[shownScene];
+  const headerMode = showingPage ? "full" : HEADER_MODE[shownScene];
   const timeline = !showingPage && (shownScene === "soon" || shownScene === "day") ? <Timeline events={viewEvents} now={now} compact={shownScene === "soon"} /> : undefined;
   // the island: the most pressing thing from OTHER pages, satellites beside it
-  const currentPage = (activeRail ?? "today") as IslandPage;
+  const currentPage = (activeRail === "weather" ? "today" : activeRail ?? "today") as IslandPage;
   const activities = buildActivities({ ...ctx, music }, { takeover, musicLights: !!homeView?.musicLights, lightsOn: homeView ? homeView.devices.filter((d) => (d.kind === "light" || d.kind === "plug") && d.on).length : 0 });
   const sel = selectIsland({ currentPage, activities, now, previous: islandMem.current, pin: islandPin });
   islandMem.current = sel.memory;
