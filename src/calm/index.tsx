@@ -14,15 +14,16 @@ import { parseLife } from "@/lib/sources/life";
 import { conditionText } from "@/lib/sources/weather";
 import { Icon, weatherIconName, type IconName } from "@/components/Icon";
 import { Timeline } from "@/components/timeline";
-import { Clock, Dot, EventList, StripCard, WeatherCard } from "@/components/widgets";
+import { Dot, EventList, StripCard, WeatherCard } from "@/components/widgets";
 import { Idle } from "@/scenes";
 import { HomePage } from "@/components/home";
 import type { SceneProps } from "@/scenes/types";
 
-function Frame({ title, icon, p, children }: { title: string; icon: IconName; p: SceneProps; children: React.ReactNode }) {
+function Frame({ p, children }: { title: string; icon: IconName; p: SceneProps; children: React.ReactNode }) {
+  // The time lives in the header (top left) on every page, so the page body starts right under it.
+  void p;
   return (
     <div className="sc page">
-      <div className="ptop"><div className="row"><Icon name={icon} className="ptitleicon" /><div className="cap" style={{ fontSize: "calc(1.8 * var(--u))" }}>{title}</div></div><Clock now={p.now} className="mini" /></div>
       <div className="pbody">{children}</div>
     </div>
   );

@@ -32,7 +32,6 @@ import { useDevice } from "@/lib/useDevice";
 import { Rail } from "@/components/rail";
 import { Takeover } from "@/components/zones";
 import { Header, Foot, HEADER_MODE } from "@/components/frame";
-import { LyricBar } from "@/components/lyrics";
 import { Island } from "@/components/island";
 import { buildActivities } from "@/lib/activities";
 import { selectIsland, type IslandMemory, type IslandPage, type IslandPin } from "@/lib/island";
@@ -313,14 +312,14 @@ export default function Page() {
   const railHidden = scene === "night" || scene === "offline" || controlMode;
   const activeRail: RailId | null = showingPage ? (viewKey.slice(5) === "home" ? "home" : viewKey.slice(5) === "mail" ? "mail" : viewKey.slice(5) === "journal" ? "journal" : viewKey.slice(5) === "today" ? "calendar" : "today") : railFor(shownScene);
   const zonesOn = (!showingPage || viewKey === "page:home") && !railHidden;
-  const headerMode = showingPage ? (viewKey === "page:home" ? "full" : "island") : HEADER_MODE[shownScene];
+  const headerMode = showingPage ? (viewKey === "page:standby" ? "island" : "full") : HEADER_MODE[shownScene];
   const timeline = !showingPage && (shownScene === "soon" || shownScene === "day") ? <Timeline events={viewEvents} now={now} compact={shownScene === "soon"} /> : undefined;
   // the island: the most pressing thing from OTHER pages, satellites beside it
   const currentPage = (activeRail ?? "today") as IslandPage;
   const activities = buildActivities({ ...ctx, music }, { takeover, musicLights: !!homeView?.musicLights, lightsOn: homeView ? homeView.devices.filter((d) => (d.kind === "light" || d.kind === "plug") && d.on).length : 0 });
   const sel = selectIsland({ currentPage, activities, now, previous: islandMem.current, pin: islandPin });
   islandMem.current = sel.memory;
-  const islandNode = <Island sel={sel} now={now} music={music} events={viewEvents} accent={theme.accent} control={control} act={(b) => { post(callOpt, b); }}
+  const islandNode = <Island lyric={(showingPage || shownScene !== "music") && lyric && lyric.index >= 0 && !lyric.instrumental ? lyric.current : undefined} sel={sel} now={now} music={music} events={viewEvents} accent={theme.accent} control={control} act={(b) => { post(callOpt, b); }}
     onPin={(id) => setIslandPin({ id, until: Date.now() + offset + 10000 })} onGo={(page) => pick(page === "weather" || page === "any" ? "today" : (page as RailId))} />;
   const wInfo = welcome?.kind === "welcome" ? welcomeInfo({ now, events: viewEvents, weather: data?.weather ?? null, unread: parseMail(data?.extra?.mail)?.unread ?? 0 }) : null;
   const noSlots = { pills: [], strip: [], badges: {}, peek: null, takeover: null };
@@ -342,7 +341,7 @@ export default function Page() {
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
       <div className="frame" data-area="frame">
         <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} /></aside>
-        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} lyric={shownScene !== "music" ? <LyricBar view={lyric} /> : null} /></header>
+        <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} lyric={null} /></header>
         <main className="area-hero" data-area="hero">
           {layers.map((l) => {
             const page = l.key.startsWith("page:"), id = l.key.slice(l.key.indexOf(":") + 1);

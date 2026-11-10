@@ -54,7 +54,8 @@ function usePresence<T extends { id: string }>(items: T[], ms = 380) {
 
 const Eq = ({ on }: { on: boolean }) => <span className={`eq ${on ? "on" : ""}`} aria-hidden><i /><i /><i /></span>;
 
-export function Island({ sel, now, music, events, onPin, onGo, act, control, accent }: {
+export function Island({ sel, now, music, events, onPin, onGo, act, control, accent, lyric }: {
+  lyric?: string;
   sel: IslandSelection; now: number; music: PredMusic | null; events: Ev[];
   onPin: (id: string) => void; onGo: (page: IslandPage) => void; act: (body: Record<string, unknown>) => void; control: (c: Record<string, unknown>) => void; accent: string;
 }) {
@@ -63,7 +64,9 @@ export function Island({ sel, now, music, events, onPin, onGo, act, control, acc
   const [fit, setFit] = useState<{ coreUnits: number; perSide: number } | null>(null);
   const [open, setOpen] = useState(false), [breathe, setBreathe] = useState(false), [touch, setTouch] = useState(0);
   const lastId = useRef<string | null>(null);
-  const size = islandSize(main, calm);
+  const lyr = !calm && main?.kind === "music" && music && lyric ? lyric : "";       // the current lyric line, shown inside the music pill only
+  const base = islandSize(main, calm);
+  const size = lyr ? { w: Math.max(base.w, 64), h: 10.4 } : base;
   useEffect(() => {                                           // measure the header region: only as many satellites as fit, then a smaller pill
     const el = root.current?.parentElement; if (!el || typeof ResizeObserver === "undefined") return;
     const run = () => setFit(fitIsland({ availPx: el.clientWidth, unitPx: Math.max(Math.min(window.innerWidth, window.innerHeight) / 100, 5.4), coreUnits: size.w, maxPerSide: 3 }));
@@ -83,7 +86,7 @@ export function Island({ sel, now, music, events, onPin, onGo, act, control, acc
   const node = !main ? <span className="isl-dot" /> : main.kind === "music" && music ? (
     <div className="isl-row">
       <ArtTile src={music.art ?? null} className="isl-art" />
-      <div className="isl-text"><div className="isl-title fit" style={{ backgroundImage: titleGradient(music.palette, accent) }}>{music.track}</div></div>
+      <div className="isl-text"><div className="isl-title fit" style={{ backgroundImage: titleGradient(music.palette, accent) }}>{music.track}</div>{lyr && <div className="isl-lyr">{lyr}</div>}</div>
       <Eq on={!!music.playing} />
       <button className="isl-btn" aria-label="Play or pause" onClick={(e) => { e.stopPropagation(); control({ action: music.playing ? "pause" : "play" }); setTouch(Date.now()); }} onPointerDown={(e) => e.stopPropagation()}><Icon name={music.playing ? "pause" : "play"} /></button>
       <i className="isl-prog" style={{ transform: `scaleX(${music.duration ? Math.min(1, positionOf(music, now) / music.duration) : 0})` }} />
@@ -104,7 +107,7 @@ export function Island({ sel, now, music, events, onPin, onGo, act, control, acc
   return (
     <div ref={root} className={`isl ${breathe ? "breathe" : ""} ${open ? "open" : ""}`} style={{ ["--isl-tint" as string]: tintBase, ["--isl-tint-rgb" as string]: rgbVar(tintBase) }} data-area="island">
       <div className="isl-sats left">{sideFor(left)}</div>
-      <div className={`isl-core ${main ? "has" : "empty"} ${calm ? "calm" : ""} k-${main?.kind ?? "none"}`} data-area="islcore" role="button" tabIndex={0} aria-label={main ? main.label : "Nothing pressing"}
+      <div className={`isl-core ${main ? "has" : "empty"} ${calm ? "calm" : ""} ${lyr ? "withlyr" : ""} k-${main?.kind ?? "none"}`} data-area="islcore" role="button" tabIndex={0} aria-label={main ? main.label : "Nothing pressing"}
         style={{ ["--iw" as string]: fit ? Math.min(size.w, fit.coreUnits) : size.w, ["--ih" as string]: size.h }} {...press}>
         {layers.map((l) => <div key={l.id} className={`isl-layer ${l.leaving ? "leaving" : ""}`}>{l.leaving ? snap.current.get(l.key) ?? null : node}</div>)}
       </div>
