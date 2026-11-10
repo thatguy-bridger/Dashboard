@@ -270,7 +270,7 @@ export default function Page() {
     return () => clearInterval(t);
   }, [unlocked, pulseCfg.reloadMin]);
 
-  const layers = useLayers(viewKey, 900);
+  const layers = useLayers(viewKey, 400);
   // every control applies at once (optimistic) and is reverted only if the request fails or the reports still disagree after ~6 s
   const callOpt: Call = useCallback(async (path, init) => {
     let keys: string[] = [];
@@ -343,7 +343,7 @@ export default function Page() {
 
   if (guestOn) return (                                              // nothing but the lights and the fan is rendered, so nothing else can be reached
     <div className="root norail">
-      <div className="tint" /><div className="wash" style={{ opacity: 0.35 }} />
+      <div className="tint" /><div className="wash" style={{ opacity: 0.6 }} />
       <GuestScreen home={homeView} now={now} act={(b) => { post(callOpt, b); setTimeout(loadHome, 450); }} />
       <div className="dimmer" style={{ opacity: device.cfg.dim === "never" ? 0 : decision.dim }} />
       {decision.stale && <div className="stalenote">{decision.stale}; showing the last update</div>}
@@ -355,7 +355,7 @@ export default function Page() {
     <div className={`root ${railHidden ? "norail" : ""}`} onPointerDownCapture={() => { setAwakeUntil(now + 60000); interactingRef.current = true; setTimeout(() => { interactingRef.current = false; }, 5000); setPin((p) => (p && !p.locked && p.until > Date.now() + offset ? { ...p, until: Date.now() + offset + (p.key === "page:home" ? 120000 : 60000) } : p)); }}>
       <div className="tint" />
       <div className={`backdrop ${backdropOn ? "on" : ""} ${colors?.soft ? "" : "fallback"}`} style={backdropOn ? { backgroundImage: `url("${colors?.soft ?? art}")` } : undefined} />
-      <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
+      <div className="wash" style={{ opacity: 0.6 }} />
       <div className="frame" data-area="frame">
         <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} onLock={toggleLock} locked={pin?.locked && pinned ? activeRail : null} /></aside>
         <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} lyric={null} /></header>

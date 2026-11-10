@@ -567,3 +567,9 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .tc:not(.hero) .tc-list { display: none; } .tc:not(.hero) { padding: calc(2 * var(--u)) calc(2.4 * var(--u)); } .tc:not(.hero) .tc-art { width: calc(9 * var(--u)); height: calc(9 * var(--u)); }
 .tc-head .cap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .railitem.locked::after { content: ""; position: absolute; right: calc(.6 * var(--u)); bottom: calc(.6 * var(--u)); width: calc(1.3 * var(--u)); height: calc(1.3 * var(--u)); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 calc(.3 * var(--u)) rgba(0,0,0,.45); }
+
+/* Page switching: a straight change, no dip in brightness. The new page fades in over the old one, which stays solid until it is gone;
+   the background keeps the same darkness and only its colour changes (and only when the colours differ). */
+.layer { animation: fadein .3s ease both; z-index: 2; }
+.layer.leaving { animation: none; opacity: 1; z-index: 1; }
+.backdrop { transition: opacity .6s ease, background-image .6s ease; } .backdrop.on { opacity: .4; }
