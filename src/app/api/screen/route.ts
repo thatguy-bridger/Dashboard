@@ -1,6 +1,7 @@
 import { allowed, deny, pinOf } from "@/lib/auth";
 import { readAll } from "@/lib/supabase";
 import { buildScreen } from "@/lib/screen";
+import { spotifyNow } from "@/lib/spotify";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,11 @@ async function weather(loc?: Loc) {
 export async function GET(req: Request) {
   if (!(await allowed(req))) return deny();
   try {
-    const kv = await readAll(pinOf(req));
-    return Response.json(buildScreen(kv, await weather(kv["config:location"]?.v as Loc | undefined), Date.now()));
+    let kv = await readAll(pinOf(req));
+    const now = Date.now();
+    // Permuta reports the music every few seconds while it runs; when it has gone quiet (computer closed) the server asks Spotify itself.
+    const m = kv["state:music"]?.v as { at?: number; track?: string } | undefined;
+    if (!m?.track || now - Number(m.at ?? 0) > 150000) { const sp = await spotifyNow(now); if (sp) kv = { ...kv, "state:music": { v: sp, at: new Date(now).toISOString() } }; }
+    return Response.json(buildScreen(kv, await weather(kv["config:location"]?.v as Loc | undefined), now));
   } catch { return Response.json({ error: "storage" }, { status: 502 }); }
 }

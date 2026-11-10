@@ -42,6 +42,7 @@ import { applyHome, applyMusic, blendPosition, failOpt, liveEvents, overridesFor
 import type { Call } from "@/lib/useApi";
 import { SCENE_VIEWS } from "@/scenes";
 import { PAGES } from "@/calm";
+import { allowedPages } from "@/lib/pagerules";
 
 // The page does five jobs: fetch what Permuta saved; decide the situation (scene: src/lib/scenes.ts; focus or calm: src/lib/focus.ts; what the
 // zones carry: src/lib/sources); draw it with cross-fades; look after itself (a gentle pulse, a soft reload now and then, a reload on a new deploy);
@@ -194,7 +195,7 @@ export default function Page() {
   const focusCfg = resolveFocus(cfg);
   useEffect(() => { setModeState((prev) => decideMode(prev, { scene, score, now, cfg: focusCfg })); }, [scene, score, now, focusCfg.focusThreshold, focusCfg.calmAfterSec]);   // eslint-disable-line react-hooks/exhaustive-deps
   const calm = (modeState?.mode === "calm" && scene === "idle") || (MOCK && !!mockOpts.page);
-  const pages = calmPages(baseCtx);
+  const pages = allowedPages(calmPages(baseCtx), cfg?.pageRules, new Date(now).getHours());
   const rot = rotation(pages, now, focusCfg.pageSec);
 
   // ----- this screen's own role and view (the server is the authority; changes apply live) -----
