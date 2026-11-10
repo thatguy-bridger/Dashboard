@@ -41,6 +41,7 @@ export type SceneInput = {
   statusAt: number | null;    // when Permuta last said anything, epoch seconds
   apiOk: boolean;             // the last request to our own server worked
   hasData: boolean;           // at least one successful load so far
+  musicLights?: boolean;      // the music lights are on: the Music page takes priority, even if nothing is playing yet
   config?: SceneConfig | null;
 };
 
@@ -121,6 +122,7 @@ export function decide(input: SceneInput, prev?: SceneId | null): Decision {
     if (m.playing) reasons.music = "music is playing";
     else if (m.at != null && input.now - m.at < c.musicHoldSec * 1000) reasons.music = "music paused a moment ago";
   }
+  if (input.musicLights && !stale && reasons.music === undefined) reasons.music = "music lights are on";
 
   const night = inWindow(hour, c.nightStart, c.nightEnd);
   if (night) reasons.night = `night hours (${c.nightStart}:00–${c.nightEnd}:00)`;

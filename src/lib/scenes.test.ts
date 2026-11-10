@@ -121,3 +121,9 @@ test("day: a busy day (enough events left, or school/church) shows the timeline,
   assert.equal(decide(base(now, { events: three, config: { disabled: ["day"] } })).scene, "idle");
   assert.equal(decide(base(at(23, 50), { events: [ev(at(23, 50), 5, { tier: 0 })] })).scene, "night");
 });
+
+test("music lights on: the Music scene takes priority even with nothing playing", () => {
+  const n = at(15);
+  assert.notEqual(decide(base(n)).scene, "music");
+  assert.equal(decide(base(n, { musicLights: true })).scene, "music");
+});

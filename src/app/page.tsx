@@ -189,7 +189,7 @@ export default function Page() {
   const sceneCfg = useMemo(() => ({ ...cfg, disabled: [...(cfg?.disabled ?? []), ...(widgets.includes("music") ? [] : (["music"] as SceneId[]))] }), [cfg, widgets]);
   const decision = decide({
     now, events, music: music ? { playing: music.playing, track: music.track, at: music.at } : null, away,
-    statusAt: data?.status?.at ?? null, apiOk, hasData: !!data, config: sceneCfg,
+    statusAt: data?.status?.at ?? null, apiOk, hasData: !!data, config: sceneCfg, musicLights: !!data?.lights?.on || !!homeView?.musicLights,
   }, sceneState?.scene);
   const dwell = resolveConfig(sceneCfg).minDwellSec;
   useEffect(() => { setSceneState((prev) => settle(prev, decision, now, dwell)); }, [decision.scene, now, dwell]);   // eslint-disable-line react-hooks/exhaustive-deps

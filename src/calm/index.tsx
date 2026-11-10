@@ -116,13 +116,31 @@ function SchoolPage(p: SceneProps) {
 
 function MailPage(p: SceneProps) {
   const m = parseMail(p.ctx.extra.mail); if (!m) return <Idle {...p} />;
+  const mis = m.missionaries, misUnread = mis.reduce((a, x) => a + x.unread, 0);
+  // one combined list: unread first-class, then what else came in today (Permuta sends both, newest first)
+  const items = m.items.length ? m.items : m.recent.map((x) => ({ from: x.from, subject: x.subject, at: x.at, unread: true, priority: false, missionary: undefined as string | undefined }));
   return (
     <Frame title="Mail" icon="mail" p={p}>
-      <div className="pgrid two">
-        <div className="col"><div className="card"><div className="cap">Unread</div><div className="bignum">{m.unread}</div><div className="small">{m.priority > 0 ? `${m.priority} that matter` : "Nothing urgent"}</div></div></div>
-        <div className="card"><div className="cap" style={{ marginBottom: "calc(2 * var(--u))" }}>{m.missionaries.length ? "Missionaries" : "Recent"}</div>
-          {(m.missionaries.length ? m.missionaries.map((x) => ({ k: x.name, t: x.last ?? "", n: x.unread })) : m.recent.map((x) => ({ k: x.from, t: x.subject, n: 0 }))).slice(0, 5).map((r, i) => (
-            <div key={i} className="row evrow"><Icon name="mail" className="pillicon" /><div style={{ minWidth: 0, flex: 1 }}><div className="mid clamp1">{r.k}</div><div className="small clamp1">{r.t}</div></div>{r.n > 0 && <span className="badge inline">{r.n}</span>}</div>))}
+      <div className="mailpage">
+        <div className="mail-side">
+          <div className="card"><div className="cap">Unread</div><div className="bignum">{m.unread}</div><div className="small">{m.priority > 0 ? `${m.priority} that matter` : m.today > 0 ? `${m.today} came in today` : "Nothing urgent"}</div></div>
+          {mis.length > 0 && (
+            <div className="card mis-card"><div className="row" style={{ justifyContent: "space-between" }}><div className="cap">Missionaries</div><span className={`mis-count ${misUnread ? "on" : ""}`}>{misUnread}</span></div>
+              {mis.slice(0, 4).map((x, i) => <div key={i} className="row mis-row"><span className={`mdot ${x.unread ? "mis" : ""}`} /><div className="mid clamp1" style={{ flex: 1 }}>{x.name}</div>{x.unread > 0 && <span className="mis-count on sm">{x.unread}</span>}</div>)}
+            </div>)}
+        </div>
+        <div className="card mail-list">
+          <div className="cap" style={{ marginBottom: "calc(1.4 * var(--u))" }}>Unread and today</div>
+          {items.slice(0, 9).map((x, i) => (
+            <div key={i} className={`row mail-row ${x.unread ? "unread" : ""}`}>
+              <span className={`mdot ${x.unread ? (x.missionary ? "mis" : x.priority ? "pri" : "on") : ""}`} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="mid clamp1">{x.missionary ? <span className="mis-tag">{x.missionary}</span> : null}{x.missionary && x.missionary === x.from ? "" : x.from}</div>
+                <div className="small clamp1">{x.subject}</div>
+              </div>
+              {x.at ? <div className="small">{fmtTime(x.at * 1000)}</div> : null}
+            </div>))}
+          {!items.length && <div className="small">Nothing unread, and nothing new today.</div>}
         </div>
       </div>
     </Frame>
