@@ -2,7 +2,7 @@
 // Calm = nothing pressing for a while: calm full-screen pages that rotate. Switching has hysteresis so it never flickers.
 
 export type FocusConfig = { focusThreshold?: number; calmAfterSec?: number; pageSec?: number };
-export const FOCUS_DEFAULTS = { focusThreshold: 50, calmAfterSec: 90, pageSec: 20 };
+export const FOCUS_DEFAULTS = { focusThreshold: 50, calmAfterSec: 25, pageSec: 20 };
 export const resolveFocus = (c?: FocusConfig | null) => {
   const n = (v: unknown, d: number, lo: number, hi: number) => (typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
   return { focusThreshold: n(c?.focusThreshold, FOCUS_DEFAULTS.focusThreshold, 1, 100), calmAfterSec: n(c?.calmAfterSec, FOCUS_DEFAULTS.calmAfterSec, 0, 3600), pageSec: n(c?.pageSec, FOCUS_DEFAULTS.pageSec, 5, 300) };

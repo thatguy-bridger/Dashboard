@@ -1,9 +1,9 @@
 "use client";
 // The calm-mode pages: the same cards as the zones and scenes, just larger. Each page id matches a source's `page.id` (src/lib/sources).
 // (Not named "pages": Next.js reserves src/pages for the old router.)
-import { useEffect, useState } from "react";
 import { WeatherMap } from "@/components/weathermap";
-import { compass, dayOutlook, forecastUrl, parseForecast, type Forecast } from "@/lib/forecast";
+import { compass, dayOutlook } from "@/lib/forecast";
+import { useForecast } from "@/lib/useForecast";
 import { collectSlots } from "@/lib/slots";
 import { sourceItems } from "@/lib/sources";
 import { fmtTime } from "@/lib/format";
@@ -46,18 +46,6 @@ function Today(p: SceneProps) {
       <div className="pgrid two"><EventList events={today} now={p.now} title="Schedule" max={7} /><div className="card"><div className="cap" style={{ marginBottom: "calc(2 * var(--u))" }}>The day</div><Timeline events={today} now={p.now} compact /></div></div>
     </Frame>
   );
-}
-
-function useForecast(loc?: { lat: number; lon: number } | null) {
-  const [f, setF] = useState<Forecast | null>(null);
-  useEffect(() => {
-    if (!loc) return;
-    let dead = false;
-    const load = async () => { try { const r = await fetch(forecastUrl(loc.lat, loc.lon)); if (r.ok && !dead) setF(parseForecast(await r.json())); } catch { /* keep the last one */ } };
-    load(); const id = setInterval(load, 600000);
-    return () => { dead = true; clearInterval(id); };
-  }, [loc?.lat, loc?.lon]);   // eslint-disable-line react-hooks/exhaustive-deps
-  return f;
 }
 
 function WeatherPage(p: SceneProps) {

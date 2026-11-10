@@ -4,6 +4,7 @@
 import { resolveConfig, type SceneId } from "@/lib/scenes";
 import { countdown, fmtTime, until, when } from "@/lib/format";
 import { Icon } from "@/components/Icon";
+import { TodayScene } from "@/components/today";
 import { LyricTicker, LyricsBlock } from "@/components/lyrics";
 import { GradientTitle } from "@/components/title";
 import { AlbumLine, ArtistsLine, ArtTile, Clock, DateLine, Dot, EventList, Progress, Transport, VolumePill, WeatherCard } from "@/components/widgets";
@@ -156,4 +157,4 @@ function Offline(p: SceneProps) {
   );
 }
 
-export const SCENE_VIEWS: Record<SceneId, (p: SceneProps) => React.JSX.Element> = { idle: Idle, music: MusicScene, soon: Soon, day: Day, morning: Morning, night: Night, away: Away, offline: Offline };
+export const SCENE_VIEWS: Record<SceneId, (p: SceneProps) => React.JSX.Element> = { idle: TodayScene, music: MusicScene, soon: Soon, day: Day, morning: Morning, night: Night, away: Away, offline: Offline };

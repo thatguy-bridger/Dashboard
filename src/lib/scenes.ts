@@ -30,7 +30,7 @@ export const DEFAULTS: Required<SceneConfig> = {
   disabled: [],
   soonLeadMin: 15, soonStayMin: 5, soonMinTier: 1, dayMinEvents: 3, dayKinds: ["school", "church"],
   nightStart: 22, nightEnd: 6, morningStart: 6, morningEnd: 9,
-  musicHoldSec: 90, staleSec: 180, minDwellSec: 20,
+  musicHoldSec: 90, staleSec: 180, minDwellSec: 6,
 };
 
 export type SceneInput = {

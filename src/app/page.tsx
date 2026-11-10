@@ -48,7 +48,7 @@ import { allowedPages } from "@/lib/pagerules";
 // and stay out of the way: the rail and the touch controller are only fallbacks, and the controller closes itself.
 
 const MOCK = process.env.NEXT_PUBLIC_DASH_MOCK === "1";   // local test harness only (set when building locally; never on Vercel)
-type Pin = { key: string; until: number };                  // tapping the rail pins a view for a minute
+type Pin = { key: string; until: number; locked?: boolean };                  // tapping the rail pins a view for a minute
 
 export default function Page() {
   const api = useApi();
@@ -199,12 +199,13 @@ export default function Page() {
   // ----- information sources, focus or calm -----
   const viewEvents = widgets.includes("agenda") ? events : [];
   const baseCtx: SourceCtx = { now, scene, events: viewEvents, music, weather: widgets.includes("weather") ? data?.weather ?? null : null, away, extra: batteryExtra(tabletBat, data?.extra), soonLeadMin: resolveConfig(sceneCfg).soonLeadMin };
-  const { score } = focusScore(baseCtx);
+  const { score, top } = focusScore(baseCtx);
   const focusCfg = resolveFocus(cfg);
   useEffect(() => { setModeState((prev) => decideMode(prev, { scene, score, now, cfg: focusCfg })); }, [scene, score, now, focusCfg.focusThreshold, focusCfg.calmAfterSec]);   // eslint-disable-line react-hooks/exhaustive-deps
   const calm = (modeState?.mode === "calm" && scene === "idle") || (MOCK && !!mockOpts.page);
   const pages = allowedPages(calmPages(baseCtx), cfg?.pageRules, new Date(now).getHours());
-  const rot = rotation(pages, now, focusCfg.pageSec);
+  const best = score >= 30 && top && pages.includes(top) ? top : null;       // the page for whatever matters most right now; otherwise the pages take turns
+  const rot = best ? { id: best, index: pages.indexOf(best), count: pages.length } : rotation(pages, now, focusCfg.pageSec);
 
   // ----- this screen's own role and view (the server is the authority; changes apply live) -----
   const device = useDevice({ call: api.call, unlocked, scene, mode: calm ? "calm" : "focus", ver: version.current, mock: MOCK ? mockDev : null, battery: tabletBat });
@@ -278,6 +279,13 @@ export default function Page() {
     try { const r = await api.call(path, init); if (!r.ok && keys.length) setOptMap((m) => failOpt(m, keys)); return r; } catch (e) { if (keys.length) setOptMap((m) => failOpt(m, keys)); throw e; }
   }, [api]);
   const control = useCallback((cmd: Record<string, unknown>) => { post(callOpt, { op: "permuta", cmd: { type: "music", ...cmd } }); }, [callOpt]);
+  const keyFor = (id: RailId) => (id === "home" ? "page:home" : id === "today" ? "scene:idle" : id === "calendar" ? "scene:day" : id === "music" ? (music ? "scene:music" : "scene:idle") : `page:${id}`);
+  // double-click a rail item: lock the screen to that page until it is double-clicked again
+  const toggleLock = (id: RailId) => {
+    if (!guestAllows(guestRef.current, "navigate")) return;
+    const key = keyFor(id);
+    setPin((p) => (p?.locked && p.key === key ? null : { key, until: Date.now() + offset + 1e11, locked: true }));
+  };
   const pick = (id: RailId) => {
     if (!guestAllows(guestRef.current, "navigate")) return;
     const until = Date.now() + offset + 60000;
@@ -344,12 +352,12 @@ export default function Page() {
     </div>
   );
   return (
-    <div className={`root ${railHidden ? "norail" : ""}`} onPointerDownCapture={() => { setAwakeUntil(now + 60000); interactingRef.current = true; setTimeout(() => { interactingRef.current = false; }, 5000); setPin((p) => (p && p.until > Date.now() + offset ? { ...p, until: Date.now() + offset + (p.key === "page:home" ? 120000 : 60000) } : p)); }}>
+    <div className={`root ${railHidden ? "norail" : ""}`} onPointerDownCapture={() => { setAwakeUntil(now + 60000); interactingRef.current = true; setTimeout(() => { interactingRef.current = false; }, 5000); setPin((p) => (p && !p.locked && p.until > Date.now() + offset ? { ...p, until: Date.now() + offset + (p.key === "page:home" ? 120000 : 60000) } : p)); }}>
       <div className="tint" />
       <div className={`backdrop ${backdropOn ? "on" : ""} ${colors?.soft ? "" : "fallback"}`} style={backdropOn ? { backgroundImage: `url("${colors?.soft ?? art}")` } : undefined} />
       <div className="wash" style={{ opacity: backdropOn ? 1 : 0.35 }} />
       <div className="frame" data-area="frame">
-        <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} /></aside>
+        <aside className="area-rail" data-area="rail"><Rail active={activeRail} badges={slots.badges} hidden={railHidden} onPick={pick} onLock={toggleLock} locked={pin?.locked && pinned ? activeRail : null} /></aside>
         <header className={`area-head ${headerMode === "none" ? "empty" : ""}`} data-area="head"><Header mode={headerMode} now={now} scene={shownScene} island={islandNode} lyric={null} /></header>
         <main className="area-hero" data-area="hero">
           {layers.map((l) => {
@@ -358,7 +366,7 @@ export default function Page() {
             return <div key={l.id} className={`layer ${l.leaving ? "leaving" : ""}`}><View {...props} decision={{ ...decision, scene: (page ? "idle" : id) as SceneId, focus: decision.focus ?? lastFocus.current }} /></div>;
           })}
         </main>
-        <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn} lights={lightsBar}>{timeline}</Foot></footer>
+        <footer className="area-foot" data-area="foot"><Foot slots={zonesOn ? slots : noSlots} showStrip={zonesOn && (showingPage || shownScene !== "idle")} lights={lightsBar}>{timeline}</Foot></footer>
       </div>
       <Takeover item={headerMode === "none" ? takeover : null} />
       <div className={`pulse-ring ${pulsing ? "go" : ""}`} />

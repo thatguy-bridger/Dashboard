@@ -9,7 +9,7 @@ export const RAIL_ITEMS: { id: RailId; icon: IconName; label: string }[] = [
   { id: "weather", icon: "cloud-sun", label: "Weather" }, { id: "home", icon: "home", label: "Home" }, { id: "mail", icon: "mail", label: "Mail" }, { id: "journal", icon: "book", label: "Journal" },
 ];
 
-export function Rail({ active, badges, hidden, onPick }: { active: RailId | null; badges: Partial<Record<RailId, Badge>>; hidden: boolean; onPick: (id: RailId) => void }) {
+export function Rail({ active, badges, hidden, onPick, onLock, locked }: { active: RailId | null; badges: Partial<Record<RailId, Badge>>; hidden: boolean; onPick: (id: RailId) => void; onLock?: (id: RailId) => void; locked?: RailId | null }) {
   const idx = active ? RAIL_ITEMS.findIndex((i) => i.id === active) : -1;
   return (
     <nav className={`rail ${hidden ? "hidden" : ""}`} onClick={(e) => e.stopPropagation()} aria-label="Sections">
@@ -17,7 +17,7 @@ export function Rail({ active, badges, hidden, onPick }: { active: RailId | null
         {RAIL_ITEMS.map((it) => {
           const b = badges[it.id];
           return (
-            <button key={it.id} data-gi-item className={`railitem ${active === it.id ? "on" : ""}`} onClick={() => onPick(it.id)} aria-label={it.label}>
+            <button key={it.id} data-gi-item className={`railitem ${active === it.id ? "on" : ""} ${locked === it.id ? "locked" : ""}`} onClick={() => onPick(it.id)} onDoubleClick={() => onLock?.(it.id)} aria-label={it.label}>
               <Icon name={it.icon} />
               {b && (b.count ? <span className="badge" style={b.color ? { background: b.color } : undefined}>{b.count > 9 ? "9+" : b.count}</span> : b.dot ? <span className="badge dotb" style={b.color ? { background: b.color } : undefined} /> : null)}
             </button>
