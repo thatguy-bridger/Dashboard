@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findLine, songPosition, lyricView, parseLyrics, isInstrumental, stageLayout, lyricOpacity, type Lyrics } from "./lyrics.ts";
+import { findLine, songPosition, lyricView, parseLyrics, isInstrumental, lineLook, scrollShift, type Lyrics } from "./lyrics.ts";
 
 const L: Lyrics = { id: "abc", lines: [[5, "one"], [10, "two"], [15, ""], [20, "three"], [30, "four"]] };
 const music = (over = {}) => ({ playing: true, progress: 0, at: 1_000_000, trackId: "abc", ...over });
@@ -68,27 +68,26 @@ test("parseLyrics is tolerant", () => {
   assert.deepEqual(p.lines, [[1, "a"], [3, ""], [9, "b"]]);
 });
 
-test("stageLayout: neighbours sit either side of the middle, further out the more lines the current one takes", () => {
-  const one = stageLayout(300, 40, 46);
-  assert.equal(one.y(0), 150);
-  assert.ok(one.y(1) > 150 && one.y(2) > one.y(1) && one.y(-1) < 150 && one.y(-2) < one.y(-1));
-  assert.ok(Math.abs((one.y(1) - 150) - (150 - one.y(-1))) < 1e-9);          // symmetric
-  const two = stageLayout(300, 40, 92);                                     // the current line wraps to two lines
-  assert.ok(two.y(1) > one.y(1) && two.y(-1) < one.y(-1));                  // pushed outward
-  assert.ok(two.y(1) - 150 >= 92 / 2);                                      // never overlapping the current line
+test("lineLook: the current line is the biggest and brightest; lines shrink, dim and blur with distance; sung lines dim faster than coming ones", () => {
+  const c = lineLook(0);
+  assert.deepEqual([c.scale, c.opacity, c.blur], [1, 1, 0]);
+  for (const d of [1, 2, 3, 4]) {
+    const n = lineLook(d), p = lineLook(-d);
+    assert.ok(n.scale < 1 && n.opacity < 1 && n.blur > 0, `d=${d}`);
+    assert.ok(p.opacity < n.opacity, `sung dimmer than coming, d=${d}`);
+  }
+  assert.ok(lineLook(1).opacity > lineLook(2).opacity && lineLook(2).opacity > lineLook(3).opacity);
+  assert.ok(lineLook(-1).opacity > lineLook(-2).opacity && lineLook(-2).opacity > lineLook(-3).opacity);
+  assert.ok(lineLook(1).scale >= lineLook(3).scale && lineLook(3).scale >= 0.72);
+  assert.equal(lineLook(9).opacity, 0);
+  assert.equal(lineLook(-9).opacity, 0);
 });
 
-test("stageLayout: a long current line dims its neighbours and a short box draws fewer of them", () => {
-  assert.equal(stageLayout(300, 40, 46).calm, 1);
-  assert.ok(stageLayout(300, 40, 92).calm < 1 && stageLayout(300, 40, 140).calm < stageLayout(300, 40, 92).calm);
-  assert.ok(stageLayout(300, 40, 140).calm >= 0.4);
-  const tight = stageLayout(120, 40, 92);                                   // barely room beyond the current line
-  assert.ok(!tight.visible(2) && !tight.visible(-2));
-  assert.ok(stageLayout(400, 40, 46).visible(1) && stageLayout(400, 40, 46).visible(-1));
-});
-
-test("lyricOpacity: the current line is full, upcoming lines fade in by distance, past lines are fainter than upcoming", () => {
-  assert.equal(lyricOpacity(0), 1);
-  assert.ok(lyricOpacity(1) > lyricOpacity(2) && lyricOpacity(2) > lyricOpacity(3) && lyricOpacity(4) === 0);
-  assert.ok(lyricOpacity(-1) < lyricOpacity(1) && lyricOpacity(-1) > lyricOpacity(-2) && lyricOpacity(-4) === 0);
+test("scrollShift: the target line's middle lands in the middle of the box", () => {
+  assert.equal(scrollShift(300, 500, 40), 150 - 520);
+  assert.equal(scrollShift(300, 0, 60), 120);
+  assert.equal(scrollShift(300, 500, 40, 0.4), 120 - 520);
+  // moving to the next line moves the column up by exactly the distance between the two line middles
+  const a = scrollShift(300, 500, 40), b = scrollShift(300, 560, 80);
+  assert.equal(a - b, (560 + 40) - (500 + 20));
 });

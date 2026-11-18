@@ -49,19 +49,16 @@ export function parseLyrics(raw: unknown): Lyrics | null {
   return { id: o.id, lines };
 }
 
-/** How the lyric stage is laid out in a box `h` px tall, around a current line that is `cur` px tall (one line or several) in a font of `size` px.
- *  Neighbours sit above and below the REAL height of the current line, so a long line that wraps pushes them outward instead of crowding them; `calm` (1 → ~0.4) says how
- *  much to dim them because of that push. `y(offset)` is where a neighbour is centered (px from the top). Pure, so it can be tested. */
-export function stageLayout(h: number, size: number, cur: number = size * 1.15) {
-  const n = size * 0.56;                                   // neighbours are smaller than the line being sung
-  const step = n * 1.55;                                   // from one neighbour to the next
-  const gap = size * 0.2;                                  // clear air between the current line and its nearest neighbour
-  const lines = Math.max(1, cur / (size * 1.15));          // how many lines the current one takes
-  const calm = Math.min(1, Math.max(0.4, 1 - (lines - 1) * 0.28));
-  const y = (offset: number) => offset === 0 ? h / 2 : h / 2 + Math.sign(offset) * (cur / 2 + gap + n * 0.6 + (Math.abs(offset) - 1) * step);
-  const visible = (offset: number) => { const c = y(offset); return c > n * 0.4 && c < h - n * 0.4; };   // a line wholly off the box isn't drawn
-  return { n, step, gap, lines, calm, y, visible };
+/** How a line looks by its distance `d` from the line being sung (d < 0: already sung). The current line is the biggest and the brightest; the others shrink,
+ *  dim and blur with distance, and the ones already sung dim a little faster, so as the list scrolls each line grows and brightens as it arrives and recedes as it leaves. */
+export function lineLook(d: number) {
+  if (d === 0) return { scale: 1, opacity: 1, blur: 0 };
+  const a = Math.abs(d);
+  const opacity = d > 0 ? [0.5, 0.34, 0.22, 0.14][Math.min(a, 4) - 1] : [0.36, 0.2, 0.11, 0.06][Math.min(a, 4) - 1];
+  return { scale: Math.max(0.72, 0.86 - (a - 1) * 0.03), opacity: a > 6 ? 0 : opacity, blur: Math.min(3, 0.5 + (a - 1) * 0.7) };
 }
 
-/** How bright a line is by where it sits: coming up fades in, already sung fades out (slower, see `lyricFade`). */
-export const lyricOpacity = (offset: number) => offset === 0 ? 1 : offset > 0 ? [0.5, 0.26, 0.12][offset - 1] ?? 0 : [0.24, 0.1, 0.04][-offset - 1] ?? 0;
+/** Where the scrolled column sits so the target line is centered in a box `h` px tall: `top` and `height` are the line's offset and height inside the column. */
+export function scrollShift(h: number, top: number, height: number, focus = 0.5): number {
+  return h * focus - (top + height / 2);
+}

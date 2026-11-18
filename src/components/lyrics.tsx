@@ -1,58 +1,53 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fitFontSize } from "@/lib/fit";
-import { lyricOpacity, stageLayout, type LyricView } from "@/lib/lyrics";
-import { useLayers } from "@/lib/useLayers";
+import { lineLook, scrollShift, type LyricView } from "@/lib/lyrics";
 import { Icon } from "./Icon";
 
-/** The lyrics for the Music scene: the line being sung stays big in the middle and soft-fades to the next as the song moves on. The lines coming up fade in below it,
- *  and the lines already sung drift up and fade away slowly. A box too short for neighbours shows just the current line, as before. */
+/** The lyrics for the Music scene, the way Apple Music shows them: every line sits in one long column that scrolls so the line being sung is in the middle.
+ *  That line is the biggest and brightest; the lines around it are smaller, dimmer and a little blurred, and as the song moves on each line grows and brightens as it
+ *  arrives and recedes as it leaves while the whole column glides up. A line that wraps to several lines simply takes more room and pushes the rest along. */
 export function LyricsBlock({ view }: { view: LyricView }) {
-  const texts = useRef(new Map<string, { text: string; instrumental: boolean }>());
-  const key = String(view.index);
-  texts.current.set(key, { text: view.current, instrumental: view.instrumental || view.index < 0 });
-  if (texts.current.size > 8) { const first = texts.current.keys().next().value; if (first !== undefined && first !== key) texts.current.delete(first); }
-  const layers = useLayers(key, 1150);
-
   const box = useRef<HTMLDivElement>(null);
-  const [geo, setGeo] = useState({ h: 0, size: 0, cur: 0 });
+  const col = useRef<HTMLDivElement>(null);
+  const refs = useRef(new Map<number, HTMLDivElement>());
+  const [shift, setShift] = useState(0);
+  const [h, setH] = useState(0);
+
+  // the column's position: centre the line being sung (before the first line, centre the first one a little lower, as "coming up")
   useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const measure = () => {
-      const line = el.querySelector(".lyricline");
-      const size = line ? parseFloat(getComputedStyle(line).fontSize) || 0 : 0;
-      // the line being sung (the newest layer): its real height, one line or several
-      const live = el.querySelectorAll(".lyricline:not(.leaving) .fit-text");
-      const cur = live.length ? (live[live.length - 1] as HTMLElement).offsetHeight : size * 1.15;
-      setGeo((g) => (Math.abs(g.h - el.clientHeight) > 1 || Math.abs(g.size - size) > 0.5 || Math.abs(g.cur - cur) > 1 ? { h: el.clientHeight, size, cur } : g));
-    };
+    const el = refs.current.get(Math.max(0, view.index));
+    if (!el || !h) return;
+    setShift(scrollShift(h, el.offsetTop, el.offsetHeight) + (view.index < 0 ? el.offsetHeight * 0.9 : 0));
+  }, [view.index, view.lines.length, h]);
+  useLayoutEffect(() => {
+    const b = box.current;
+    if (!b) return;
+    const measure = () => setH(b.clientHeight);
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    el.querySelectorAll(".fit-text").forEach((t) => ro.observe(t));
+    ro.observe(b);
+    if (col.current) ro.observe(col.current);        // a line wrapping differently changes the column's height: centre again
     return () => ro.disconnect();
-  }, [layers.length, key]);
-  const stage = geo.h > 0 && geo.size > 0 ? stageLayout(geo.h, geo.size, geo.cur) : null;
+  }, []);
 
   return (
-    <div className="lyrics" aria-live="off" ref={box}>
-      {layers.map((l) => {
-        const t = texts.current.get(l.key) ?? { text: "", instrumental: true };
-        return (
-          <div key={l.id} className={`lyricline ${l.leaving ? "leaving" : ""} ${t.instrumental ? "instr" : ""}`}>
-            <div className="lcore">{t.instrumental ? <Icon name="note" /> : <FitText text={t.text} />}</div>
-          </div>
-        );
-      })}
-      {stage && view.lines.filter((l) => l.offset !== 0 && Math.abs(l.offset) <= 3 && !l.instrumental && stage.visible(l.offset)).map((l) => (
-        <div
-          key={l.i}
-          className={`lnb ${l.offset < 0 ? "past" : "next"}`}
-          style={{ top: stage.y(l.offset), fontSize: stage.n, opacity: lyricOpacity(l.offset) * stage.calm, filter: `blur(${(Math.abs(l.offset) > 1 ? Math.abs(l.offset) - 0.4 : 0) + (1 - stage.calm) * 2.2}px)` }}
-        >{l.text}</div>
-      ))}
+    <div className="lyrics lscroll" aria-live="off" ref={box}>
+      <div className="lcol" ref={col} style={{ transform: `translateY(${shift}px)` }}>
+        {view.lines.map((l) => {
+          const d = l.i - view.index;
+          const look = lineLook(d);
+          return (
+            <div
+              key={l.i}
+              ref={(el) => { if (el) refs.current.set(l.i, el); else refs.current.delete(l.i); }}
+              className={`lln ${d === 0 ? "now" : d < 0 ? "past" : "next"} ${l.instrumental ? "instr" : ""}`}
+              style={{ transform: `scale(${look.scale})`, opacity: look.opacity, filter: look.blur ? `blur(${look.blur}px)` : "none" }}
+            >{l.instrumental ? "\u266a" : l.text}</div>
+          );
+        })}
+      </div>
     </div>
   );
 }

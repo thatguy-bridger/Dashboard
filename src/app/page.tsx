@@ -226,7 +226,7 @@ export default function Page() {
   const lyrics = pickLyrics(music?.lyricsId ?? music?.trackId, lyricsNow, lyricsNext);      // the next song's lines after a predicted rollover
   const lyricsOn = !!music?.playing && !!lyrics;
   useEffect(() => { if (!lyricsOn) return; const t = setInterval(() => setFast(Date.now()), 250); return () => clearInterval(t); }, [lyricsOn]);
-  const lyric = lyricsOn && music ? lyricView({ ...music, trackId: lyrics?.id }, lyrics, fast + offset) : null;
+  const lyric = lyricsOn && music ? lyricView({ ...music, trackId: lyrics?.id }, lyrics, fast + offset, 400) : null;
 
   // takeover: an urgent item shows until it expires (default five minutes from first seen)
   let takeover = slots.takeover;
