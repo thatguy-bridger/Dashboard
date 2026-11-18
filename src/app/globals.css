@@ -585,3 +585,15 @@ body { font-weight: 500; font-variant-numeric: normal; }
 .mis-card { display: flex; flex-direction: column; gap: calc(1 * var(--u)); } .mis-row { gap: calc(1.4 * var(--u)); }
 .mis-count { min-width: calc(4.2 * var(--u)); padding: 0 calc(1.2 * var(--u)); text-align: center; border-radius: 99px; font-weight: 700; font-size: calc(2.4 * var(--u)); background: rgba(255,255,255,.1); } .mis-count.on { background: #38d39f; color: #04261c; } .mis-count.sm { font-size: calc(1.7 * var(--u)); min-width: calc(3 * var(--u)); }
 .mdot.on + .mid, .mdot.mis + div { }
+
+/* lyrics stage: the line being sung is the big one in the middle; the next lines fade in below it, the lines already sung drift up and fade out slowly */
+.lyrics { overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%); }
+.lyricline { display: block; }
+.lyricline > .lcore { position: absolute; left: 0; right: 0; top: var(--lpad, 0px); bottom: var(--lpad, 0px); display: flex; align-items: center; transition: top .75s var(--ease-soft), bottom .75s var(--ease-soft); }
+.lyricline > .lcore > .fit-text { display: block; width: 100%; overflow-wrap: anywhere; }
+.lyricline .lcore .icon { font-size: calc(7 * var(--u)); color: var(--accent); }
+.lnb { position: absolute; left: 0; right: 0; transform: translateY(-50%); font-weight: 600; line-height: 1.2; letter-spacing: -.01em; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.lnb.next { animation: lnbin .9s var(--ease-soft) both; transition: top .75s var(--ease-soft), opacity .9s var(--ease-soft), filter .9s var(--ease-soft); }
+.lnb.past { transition: top .75s var(--ease-soft), opacity 2.6s ease-in, filter 2.6s ease-in; }
+@keyframes lnbin { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lnb, .lyricline > .lcore { transition: none; animation: none; } }

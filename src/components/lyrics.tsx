@@ -1,23 +1,54 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { fitFontSize } from "@/lib/fit";
-import type { LyricView } from "@/lib/lyrics";
+import { lyricOpacity, stageLayout, type LyricView } from "@/lib/lyrics";
 import { useLayers } from "@/lib/useLayers";
 import { Icon } from "./Icon";
 
-/** The lyrics for the Music scene: ONE large current line that replaces itself with a soft cross-fade as the song moves on (like the old dashboard). */
+/** The lyrics for the Music scene: the line being sung stays big in the middle and soft-fades to the next as the song moves on. The lines coming up fade in below it,
+ *  and the lines already sung drift up and fade away slowly. A box too short for neighbours shows just the current line, as before. */
 export function LyricsBlock({ view }: { view: LyricView }) {
   const texts = useRef(new Map<string, { text: string; instrumental: boolean }>());
   const key = String(view.index);
   texts.current.set(key, { text: view.current, instrumental: view.instrumental || view.index < 0 });
   if (texts.current.size > 8) { const first = texts.current.keys().next().value; if (first !== undefined && first !== key) texts.current.delete(first); }
   const layers = useLayers(key, 900);
+
+  const box = useRef<HTMLDivElement>(null);
+  const [geo, setGeo] = useState({ h: 0, size: 0 });
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => {
+      const line = el.querySelector(".lyricline");
+      const size = line ? parseFloat(getComputedStyle(line).fontSize) || 0 : 0;
+      setGeo((g) => (Math.abs(g.h - el.clientHeight) > 1 || Math.abs(g.size - size) > 0.5 ? { h: el.clientHeight, size } : g));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const stage = geo.h > 0 && geo.size > 0 ? stageLayout(geo.h, geo.size) : null;
+
   return (
-    <div className="lyrics" aria-live="off">
+    <div className="lyrics" aria-live="off" ref={box} style={stage ? ({ ["--lpad" as string]: `${stage.pad}px` } as React.CSSProperties) : undefined}>
       {layers.map((l) => {
         const t = texts.current.get(l.key) ?? { text: "", instrumental: true };
-        return <div key={l.id} className={`lyricline ${l.leaving ? "leaving" : ""} ${t.instrumental ? "instr" : ""}`}>{t.instrumental ? <Icon name="note" /> : <FitText text={t.text} />}</div>;
+        return (
+          <div key={l.id} className={`lyricline ${l.leaving ? "leaving" : ""} ${t.instrumental ? "instr" : ""}`}>
+            <div className="lcore">{t.instrumental ? <Icon name="note" /> : <FitText text={t.text} />}</div>
+          </div>
+        );
       })}
+      {stage && stage.span > 0 && view.lines.filter((l) => l.offset !== 0 && Math.abs(l.offset) <= stage.span && !l.instrumental).map((l) => (
+        <div
+          key={l.i}
+          className={`lnb ${l.offset < 0 ? "past" : "next"}`}
+          style={{ top: stage.y(l.offset), fontSize: stage.n, opacity: lyricOpacity(l.offset), filter: `blur(${Math.abs(l.offset) > 1 ? Math.abs(l.offset) - 0.4 : 0}px)` }}
+        >{l.text}</div>
+      ))}
     </div>
   );
 }

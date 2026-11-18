@@ -48,3 +48,20 @@ export function parseLyrics(raw: unknown): Lyrics | null {
   lines.sort((a, b) => a[0] - b[0]);
   return { id: o.id, lines };
 }
+
+/** How the lyric stage is laid out in a box `h` px tall whose current line is `size` px: how many lines fit either side of the current one, the room kept for them, and where each
+ *  of them is centered (px from the top). Pure, so it can be tested. */
+export function stageLayout(h: number, size: number, maxSpan = 2) {
+  const n = size * 0.56;                                   // neighbours are smaller than the line being sung
+  const step = n * 1.5;                                    // from one neighbour to the next
+  const gap = size * 0.14;
+  const need = (k: number) => size * 1.3 + 2 * (k * step + gap);
+  let span = maxSpan;
+  while (span > 0 && h < need(span)) span--;               // a short box shows fewer neighbours (none when it only fits the current line)
+  const pad = span ? span * step + gap : 0;
+  const y = (offset: number) => offset === 0 ? h / 2 : h / 2 + Math.sign(offset) * (size * 0.62 + gap + (Math.abs(offset) - 0.5) * step);
+  return { span, pad, n, y };
+}
+
+/** How bright a line is by where it sits: coming up fades in, already sung fades out (slower, see `lyricFade`). */
+export const lyricOpacity = (offset: number) => offset === 0 ? 1 : offset > 0 ? [0.5, 0.26, 0.12][offset - 1] ?? 0 : [0.24, 0.1, 0.04][-offset - 1] ?? 0;

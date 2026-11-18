@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findLine, songPosition, lyricView, parseLyrics, isInstrumental, type Lyrics } from "./lyrics.ts";
+import { findLine, songPosition, lyricView, parseLyrics, isInstrumental, stageLayout, lyricOpacity, type Lyrics } from "./lyrics.ts";
 
 const L: Lyrics = { id: "abc", lines: [[5, "one"], [10, "two"], [15, ""], [20, "three"], [30, "four"]] };
 const music = (over = {}) => ({ playing: true, progress: 0, at: 1_000_000, trackId: "abc", ...over });
@@ -66,4 +66,21 @@ test("parseLyrics is tolerant", () => {
   assert.equal(parseLyrics(null), null); assert.equal(parseLyrics({ id: 3, lines: [] }), null); assert.equal(parseLyrics({ id: "a" }), null);
   const p = parseLyrics({ id: "a", lines: [[9, "b"], ["x", "bad"], [1, "a"], [3], null] })!;
   assert.deepEqual(p.lines, [[1, "a"], [3, ""], [9, "b"]]);
+});
+
+test("stageLayout: a short box shows fewer neighbours, a tall one the most; neighbours sit either side of the middle", () => {
+  assert.equal(stageLayout(40, 40).span, 0);
+  assert.ok(stageLayout(200, 40).span === 2);
+  const g = stageLayout(300, 40);
+  assert.equal(g.y(0), 150);
+  assert.ok(g.y(1) > 150 && g.y(2) > g.y(1) && g.y(-1) < 150 && g.y(-2) < g.y(-1));
+  assert.ok(Math.abs((g.y(1) - 150) - (150 - g.y(-1))) < 1e-9);            // symmetric
+  assert.ok(g.pad > 0 && stageLayout(40, 40).pad === 0);
+  assert.ok(300 - 2 * g.pad >= 40 * 1.2);                                 // the current line keeps room
+});
+
+test("lyricOpacity: the current line is full, upcoming lines fade in by distance, past lines are fainter than upcoming", () => {
+  assert.equal(lyricOpacity(0), 1);
+  assert.ok(lyricOpacity(1) > lyricOpacity(2) && lyricOpacity(2) > lyricOpacity(3) && lyricOpacity(4) === 0);
+  assert.ok(lyricOpacity(-1) < lyricOpacity(1) && lyricOpacity(-1) > lyricOpacity(-2) && lyricOpacity(-4) === 0);
 });
