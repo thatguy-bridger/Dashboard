@@ -49,18 +49,18 @@ export function parseLyrics(raw: unknown): Lyrics | null {
   return { id: o.id, lines };
 }
 
-/** How the lyric stage is laid out in a box `h` px tall whose current line is `size` px: how many lines fit either side of the current one, the room kept for them, and where each
- *  of them is centered (px from the top). Pure, so it can be tested. */
-export function stageLayout(h: number, size: number, maxSpan = 2) {
+/** How the lyric stage is laid out in a box `h` px tall, around a current line that is `cur` px tall (one line or several) in a font of `size` px.
+ *  Neighbours sit above and below the REAL height of the current line, so a long line that wraps pushes them outward instead of crowding them; `calm` (1 → ~0.4) says how
+ *  much to dim them because of that push. `y(offset)` is where a neighbour is centered (px from the top). Pure, so it can be tested. */
+export function stageLayout(h: number, size: number, cur: number = size * 1.15) {
   const n = size * 0.56;                                   // neighbours are smaller than the line being sung
-  const step = n * 1.5;                                    // from one neighbour to the next
-  const gap = size * 0.14;
-  const need = (k: number) => size * 1.3 + 2 * (k * step + gap);
-  let span = maxSpan;
-  while (span > 0 && h < need(span)) span--;               // a short box shows fewer neighbours (none when it only fits the current line)
-  const pad = span ? span * step + gap : 0;
-  const y = (offset: number) => offset === 0 ? h / 2 : h / 2 + Math.sign(offset) * (size * 0.62 + gap + (Math.abs(offset) - 0.5) * step);
-  return { span, pad, n, y };
+  const step = n * 1.55;                                   // from one neighbour to the next
+  const gap = size * 0.2;                                  // clear air between the current line and its nearest neighbour
+  const lines = Math.max(1, cur / (size * 1.15));          // how many lines the current one takes
+  const calm = Math.min(1, Math.max(0.4, 1 - (lines - 1) * 0.28));
+  const y = (offset: number) => offset === 0 ? h / 2 : h / 2 + Math.sign(offset) * (cur / 2 + gap + n * 0.6 + (Math.abs(offset) - 1) * step);
+  const visible = (offset: number) => { const c = y(offset); return c > n * 0.4 && c < h - n * 0.4; };   // a line wholly off the box isn't drawn
+  return { n, step, gap, lines, calm, y, visible };
 }
 
 /** How bright a line is by where it sits: coming up fades in, already sung fades out (slower, see `lyricFade`). */

@@ -68,15 +68,23 @@ test("parseLyrics is tolerant", () => {
   assert.deepEqual(p.lines, [[1, "a"], [3, ""], [9, "b"]]);
 });
 
-test("stageLayout: a short box shows fewer neighbours, a tall one the most; neighbours sit either side of the middle", () => {
-  assert.equal(stageLayout(40, 40).span, 0);
-  assert.ok(stageLayout(200, 40).span === 2);
-  const g = stageLayout(300, 40);
-  assert.equal(g.y(0), 150);
-  assert.ok(g.y(1) > 150 && g.y(2) > g.y(1) && g.y(-1) < 150 && g.y(-2) < g.y(-1));
-  assert.ok(Math.abs((g.y(1) - 150) - (150 - g.y(-1))) < 1e-9);            // symmetric
-  assert.ok(g.pad > 0 && stageLayout(40, 40).pad === 0);
-  assert.ok(300 - 2 * g.pad >= 40 * 1.2);                                 // the current line keeps room
+test("stageLayout: neighbours sit either side of the middle, further out the more lines the current one takes", () => {
+  const one = stageLayout(300, 40, 46);
+  assert.equal(one.y(0), 150);
+  assert.ok(one.y(1) > 150 && one.y(2) > one.y(1) && one.y(-1) < 150 && one.y(-2) < one.y(-1));
+  assert.ok(Math.abs((one.y(1) - 150) - (150 - one.y(-1))) < 1e-9);          // symmetric
+  const two = stageLayout(300, 40, 92);                                     // the current line wraps to two lines
+  assert.ok(two.y(1) > one.y(1) && two.y(-1) < one.y(-1));                  // pushed outward
+  assert.ok(two.y(1) - 150 >= 92 / 2);                                      // never overlapping the current line
+});
+
+test("stageLayout: a long current line dims its neighbours and a short box draws fewer of them", () => {
+  assert.equal(stageLayout(300, 40, 46).calm, 1);
+  assert.ok(stageLayout(300, 40, 92).calm < 1 && stageLayout(300, 40, 140).calm < stageLayout(300, 40, 92).calm);
+  assert.ok(stageLayout(300, 40, 140).calm >= 0.4);
+  const tight = stageLayout(120, 40, 92);                                   // barely room beyond the current line
+  assert.ok(!tight.visible(2) && !tight.visible(-2));
+  assert.ok(stageLayout(400, 40, 46).visible(1) && stageLayout(400, 40, 46).visible(-1));
 });
 
 test("lyricOpacity: the current line is full, upcoming lines fade in by distance, past lines are fainter than upcoming", () => {

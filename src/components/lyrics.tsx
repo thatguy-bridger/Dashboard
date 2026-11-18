@@ -12,28 +12,32 @@ export function LyricsBlock({ view }: { view: LyricView }) {
   const key = String(view.index);
   texts.current.set(key, { text: view.current, instrumental: view.instrumental || view.index < 0 });
   if (texts.current.size > 8) { const first = texts.current.keys().next().value; if (first !== undefined && first !== key) texts.current.delete(first); }
-  const layers = useLayers(key, 900);
+  const layers = useLayers(key, 1150);
 
   const box = useRef<HTMLDivElement>(null);
-  const [geo, setGeo] = useState({ h: 0, size: 0 });
+  const [geo, setGeo] = useState({ h: 0, size: 0, cur: 0 });
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     const measure = () => {
       const line = el.querySelector(".lyricline");
       const size = line ? parseFloat(getComputedStyle(line).fontSize) || 0 : 0;
-      setGeo((g) => (Math.abs(g.h - el.clientHeight) > 1 || Math.abs(g.size - size) > 0.5 ? { h: el.clientHeight, size } : g));
+      // the line being sung (the newest layer): its real height, one line or several
+      const live = el.querySelectorAll(".lyricline:not(.leaving) .fit-text");
+      const cur = live.length ? (live[live.length - 1] as HTMLElement).offsetHeight : size * 1.15;
+      setGeo((g) => (Math.abs(g.h - el.clientHeight) > 1 || Math.abs(g.size - size) > 0.5 || Math.abs(g.cur - cur) > 1 ? { h: el.clientHeight, size, cur } : g));
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    el.querySelectorAll(".fit-text").forEach((t) => ro.observe(t));
     return () => ro.disconnect();
-  }, []);
-  const stage = geo.h > 0 && geo.size > 0 ? stageLayout(geo.h, geo.size) : null;
+  }, [layers.length, key]);
+  const stage = geo.h > 0 && geo.size > 0 ? stageLayout(geo.h, geo.size, geo.cur) : null;
 
   return (
-    <div className="lyrics" aria-live="off" ref={box} style={stage ? ({ ["--lpad" as string]: `${stage.pad}px` } as React.CSSProperties) : undefined}>
+    <div className="lyrics" aria-live="off" ref={box}>
       {layers.map((l) => {
         const t = texts.current.get(l.key) ?? { text: "", instrumental: true };
         return (
@@ -42,11 +46,11 @@ export function LyricsBlock({ view }: { view: LyricView }) {
           </div>
         );
       })}
-      {stage && stage.span > 0 && view.lines.filter((l) => l.offset !== 0 && Math.abs(l.offset) <= stage.span && !l.instrumental).map((l) => (
+      {stage && view.lines.filter((l) => l.offset !== 0 && Math.abs(l.offset) <= 3 && !l.instrumental && stage.visible(l.offset)).map((l) => (
         <div
           key={l.i}
           className={`lnb ${l.offset < 0 ? "past" : "next"}`}
-          style={{ top: stage.y(l.offset), fontSize: stage.n, opacity: lyricOpacity(l.offset), filter: `blur(${Math.abs(l.offset) > 1 ? Math.abs(l.offset) - 0.4 : 0}px)` }}
+          style={{ top: stage.y(l.offset), fontSize: stage.n, opacity: lyricOpacity(l.offset) * stage.calm, filter: `blur(${(Math.abs(l.offset) > 1 ? Math.abs(l.offset) - 0.4 : 0) + (1 - stage.calm) * 2.2}px)` }}
         >{l.text}</div>
       ))}
     </div>
