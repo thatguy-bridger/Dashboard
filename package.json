@@ -9,7 +9,7 @@
     "test": "node --test \"src/lib/*.test.ts\"",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
-    "cf:deploy": "BUILD_ID=$(git rev-parse --short HEAD) && opennextjs-cloudflare build && opennextjs-cloudflare deploy --var BUILD_ID:$BUILD_ID",
+    "cf:deploy": "./scripts/cf-deploy.sh",
     "cf:secrets": "./scripts/cf-secrets.sh"
   },
   "dependencies": {
