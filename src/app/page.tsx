@@ -1,7 +1,7 @@
 "use client";
 import { LightsBar } from "@/components/lightsrow";
 import { lightsView } from "@/lib/lights";
-import { poll, screenEvery, homeEvery, hidden } from "@/lib/cadence";
+import { poll, screenEvery, homeEvery, hidden, setLights, lightsOn, watchEvery, watching } from "@/lib/cadence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Home } from "@/lib/ha";
 import { decide, resolveConfig, settle, type SceneId, type SceneState } from "@/lib/scenes";
@@ -234,7 +234,17 @@ export default function Page() {
   const computedKey = calm ? `page:${(MOCK && mockOpts.page) || rot.id}` : `scene:${scene}`;
   const viewKey = forced.kind === "control" ? "page:home" : forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
   playingRef.current = !!music?.playing;
-  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); return poll(loadHome, () => homeEvery(viewKey === "page:home" || guestOn)); }, [unlocked, loadHome, viewKey, guestOn]);   // the Home page refreshes faster only while it's on screen and being used
+  // This screen's room (open the page once as /?room=Bedroom and it remembers); without one, any light on in the house counts.
+  const roomRef = useRef("");
+  useEffect(() => { try { const q = new URLSearchParams(location.search).get("room"); if (q !== null) localStorage.setItem("dashRoom", q); roomRef.current = localStorage.getItem("dashRoom") ?? ""; } catch {} }, []);
+  useEffect(() => { if (home?.reachable) setLights(lightsOn(home.devices, roomRef.current)); }, [home]);
+  // While it is slow, a tiny check watches the lights; the moment they come on everything speeds up (setLights wakes every poll).
+  const loadWatch = useCallback(async () => {
+    if (MOCK || !api.pin || !watching(playingRef.current)) return;
+    try { const r = await api.call(`/api/watch?room=${encodeURIComponent(roomRef.current)}`); if (r.ok) { const w = await r.json(); if (w.reachable) setLights(Number(w.lights) || 0); } } catch {}
+  }, [api]);
+  useEffect(() => { if (!unlocked || MOCK) return; return poll(loadWatch, () => watchEvery(playingRef.current)); }, [unlocked, loadWatch]);
+  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); return poll(loadHome, () => homeEvery(viewKey === "page:home" || guestOn, playingRef.current)); }, [unlocked, loadHome, viewKey, guestOn]);   // the Home page refreshes faster only while it's on screen and being used
   const shownScene = viewKey.startsWith("scene:") ? (viewKey.slice(6) as SceneId) : scene;
   const showingPage = viewKey.startsWith("page:");
 

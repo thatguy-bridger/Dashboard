@@ -69,6 +69,24 @@ export async function home(): Promise<Home> {
   } catch { return { ...empty, configured: true }; }
 }
 
+/** Which lights are on, and in which rooms, in one small call (all the screens share the answer for a few seconds). */
+export type Watch = { reachable: boolean; lights: number; byRoom: Record<string, number> };
+export async function watch(): Promise<Watch> {
+  const none: Watch = { reachable: false, lights: 0, byRoom: {} };
+  if (!haConfigured()) return none;
+  try {
+    const tpl = "{% for s in states.light if s.state == 'on' %}L|{{ area_name(s.entity_id) or '' }}\n{% endfor %}ok";
+    const res = await ha("POST", "/api/template", { template: tpl });
+    if (!res.ok) return none;
+    const text = await res.text();
+    if (!text.trimEnd().endsWith("ok")) return none;
+    const byRoom: Record<string, number> = {};
+    let lights = 0;
+    for (const line of text.split("\n")) if (line.startsWith("L|")) { lights++; const room = line.slice(2).trim().toLowerCase(); byRoom[room] = (byRoom[room] ?? 0) + 1; }
+    return { reachable: true, lights, byRoom };
+  } catch { return none; }
+}
+
 export async function call(domain: string, service: string, data: Record<string, unknown>) {
   const res = await ha("POST", `/api/services/${domain}/${service}`, data);
   return res.ok;
