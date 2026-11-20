@@ -1,0 +1,12 @@
+{
+  // The dashboard on Cloudflare Workers (OpenNext). Secrets are set with `npm run cf:secrets` and are never written here.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dashboard",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": { "BUILD_ID": "dev" }
+}
