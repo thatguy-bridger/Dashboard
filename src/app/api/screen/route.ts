@@ -2,6 +2,7 @@ import { allowed, deny, pinOf } from "@/lib/auth";
 import { readAll } from "@/lib/supabase";
 import { buildScreen } from "@/lib/screen";
 import { spotifyNow } from "@/lib/spotify";
+import { memo } from "@/lib/memo";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,12 @@ async function weather(loc?: Loc) {
 export async function GET(req: Request) {
   if (!(await allowed(req))) return deny();
   try {
-    let kv = await readAll(pinOf(req));
+    const pin = pinOf(req);
+    let kv = await memo(`screen:${pin}`, 4000, () => readAll(pin));          // several screens asking at once cost one trip to the database
     const now = Date.now();
-    // Permuta reports the music every few seconds while it runs; when it has gone quiet (computer closed) the server asks Spotify itself.
+    // Permuta reports the music every few seconds while it runs; when it has gone quiet (computer closed) the server asks Spotify itself (and remembers the answer a few seconds).
     const m = kv["state:music"]?.v as { at?: number; track?: string } | undefined;
-    if (!m?.track || now - Number(m.at ?? 0) > 150000) { const sp = await spotifyNow(now); if (sp) kv = { ...kv, "state:music": { v: sp, at: new Date(now).toISOString() } }; }
+    if (!m?.track || now - Number(m.at ?? 0) > 150000) { const sp = await memo("spotify", 5000, () => spotifyNow(now)); if (sp) kv = { ...kv, "state:music": { v: sp, at: new Date(now).toISOString() } }; }
     return Response.json(buildScreen(kv, await weather(kv["config:location"]?.v as Loc | undefined), now));
   } catch { return Response.json({ error: "storage" }, { status: 502 }); }
 }

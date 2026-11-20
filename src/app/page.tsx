@@ -1,6 +1,7 @@
 "use client";
 import { LightsBar } from "@/components/lightsrow";
 import { lightsView } from "@/lib/lights";
+import { poll, screenEvery, homeEvery, hidden } from "@/lib/cadence";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Home } from "@/lib/ha";
 import { decide, resolveConfig, settle, type SceneId, type SceneState } from "@/lib/scenes";
@@ -150,15 +151,11 @@ export default function Page() {
     if (MOCK || !api.pin) return;
     try { const r = await api.call("/api/home"); if (r.ok) setHome(await r.json()); } catch {}
   }, [api]);
-  // Normally every 5 s; around a song change (the last seconds of a song, or just after a guessed rollover) every 1.5 s so the real report replaces the guess quickly.
+  // Paced by lib/cadence.ts (quick while someone uses the screen or music plays, slow when idle, slowest at night, never while the tab is hidden); around a song change (the last
+  // seconds of a song, or just after a guessed rollover) every 1.5 s so the real report replaces the guess quickly.
   const nearSongEnd = useRef(false);
-  useEffect(() => {
-    if (!unlocked || MOCK) return;
-    let dead = false, t: ReturnType<typeof setTimeout>;
-    const loop = async () => { await loadScreen(); if (!dead) t = setTimeout(loop, nearSongEnd.current ? 1500 : 5000); };
-    loop();
-    return () => { dead = true; clearTimeout(t); };
-  }, [unlocked, loadScreen]);
+  const playingRef = useRef(false);
+  useEffect(() => { if (!unlocked || MOCK) return; loadScreen(); return poll(loadScreen, () => (nearSongEnd.current ? 1500 : screenEvery(playingRef.current))); }, [unlocked, loadScreen]);
 
   const nowSec = Math.floor(now / 1000);
   const data: ScreenData | null = useMemo(() => (MOCK ? (() => { const d = mockData(mockOpts.scenario, nowSec * 1000, mockOpts.long, mockOpts.pulse, mockOpts.lyrics); return mockOpts.h24 ? { ...d, screen: { ...d.screen, hours24: true } } : d; })() : real), [real, mockOpts, nowSec]);
@@ -236,7 +233,8 @@ export default function Page() {
   const pinned = pin && pin.until > now ? pin.key : null;
   const computedKey = calm ? `page:${(MOCK && mockOpts.page) || rot.id}` : `scene:${scene}`;
   const viewKey = forced.kind === "control" ? "page:home" : forced.kind === "scene" ? `scene:${forced.scene}` : forced.kind === "calm" ? `page:${(MOCK && mockOpts.page) || rot.id}` : pinned ?? computedKey;       // a pinned view on this screen beats auto
-  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); const t = setInterval(loadHome, viewKey === "page:home" || guestOn ? 3000 : 20000); return () => clearInterval(t); }, [unlocked, loadHome, viewKey, guestOn]);   // the Home page refreshes faster while it's on screen
+  playingRef.current = !!music?.playing;
+  useEffect(() => { if (!unlocked || MOCK) return; loadHome(); return poll(loadHome, () => homeEvery(viewKey === "page:home" || guestOn)); }, [unlocked, loadHome, viewKey, guestOn]);   // the Home page refreshes faster only while it's on screen and being used
   const shownScene = viewKey.startsWith("scene:") ? (viewKey.slice(6) as SceneId) : scene;
   const showingPage = viewKey.startsWith("page:");
 
@@ -252,13 +250,13 @@ export default function Page() {
   const pulseCfg = resolvePulse(cfg);
   useEffect(() => {
     if (!unlocked) return;
-    const t = setInterval(() => { setPulsing(true); setTimeout(() => setPulsing(false), 1900); loadScreen(); loadHome(); }, pulseCfg.pulseMin * 60000);
+    const t = setInterval(() => { if (hidden()) return; setPulsing(true); setTimeout(() => setPulsing(false), 1900); }, pulseCfg.pulseMin * 60000);          // only the little heartbeat: the data has its own pace (lib/cadence.ts)
     return () => clearInterval(t);
-  }, [unlocked, pulseCfg.pulseMin, loadScreen, loadHome]);
+  }, [unlocked, pulseCfg.pulseMin]);
   useEffect(() => {
     if (!unlocked || MOCK) return;
     const check = async () => { try { const v = (await (await fetch("/api/version", { cache: "no-store" })).json()).v as string; if (version.current === null) version.current = v; else if (v !== version.current) setNewVersion(true); } catch {} };
-    check(); const t = setInterval(check, pulseCfg.versionMin * 60000);
+    check(); const t = setInterval(() => { if (!hidden()) check(); }, pulseCfg.versionMin * 60000);
     return () => clearInterval(t);
   }, [unlocked, pulseCfg.versionMin]);
   const sceneRef = useRef(scene); sceneRef.current = scene;

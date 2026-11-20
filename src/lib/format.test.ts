@@ -34,7 +34,7 @@ test("reload only when due and calm", () => {
   assert.equal(reloadDue({ ...base, interacting: true }), false);
   assert.equal(reloadDue({ ...base, loadedAt: 99 * 60000, newVersion: true }), true);   // a new deployment
   assert.equal(reloadDue({ ...base, loadedAt: 99 * 60000, newVersion: true, scene: "soon" }), false);
-  assert.deepEqual(resolvePulse({ pulseMin: -3, reloadMin: "x" as never }), { pulseMin: 1, reloadMin: 60, versionMin: 5 });
+  assert.deepEqual(resolvePulse({ pulseMin: -3, reloadMin: "x" as never }), { pulseMin: 1, reloadMin: 60, versionMin: 20 });
 });
 test("theme: defaults, validation, light mode", () => {
   assert.equal(resolveTheme(null).accent, "#7c8cff");

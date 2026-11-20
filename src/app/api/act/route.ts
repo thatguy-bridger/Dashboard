@@ -2,6 +2,7 @@ import { allowed, deny, pinOf } from "@/lib/auth";
 import { call } from "@/lib/ha";
 import { enqueue } from "@/lib/supabase";
 import { cancelCall, timerCalls } from "@/lib/timer";
+import { forget } from "@/lib/memo";
 
 type Body = { op: string; id?: string; ids?: string[]; on?: boolean; pct?: number; k?: number; h?: number; s?: number; level?: number; minutes?: number; action?: string; name?: string; cmd?: Record<string, unknown> };
 
@@ -12,6 +13,7 @@ export async function POST(req: Request) {
   if (!(await allowed(req))) return deny();
   const b = (await req.json()) as Body;
   const dom = (id: string) => id.split(".")[0];
+  forget("home"); forget("screen:");          // a change is shown at once, not after the short memory runs out
   let ok = false;
   switch (b.op) {
     case "toggle": if (b.id) ok = await call(dom(b.id), b.on ? "turn_on" : "turn_off", { entity_id: b.id }); break;

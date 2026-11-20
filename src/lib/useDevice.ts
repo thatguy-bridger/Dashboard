@@ -1,4 +1,5 @@
 "use client";
+import { poll, pingEvery } from "@/lib/cadence";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEVICE_DEFAULTS, makeDeviceId, mergeDevice, resolveDevice, type DeviceConfig } from "./device";
 import type { Call } from "./useApi";
@@ -60,7 +61,7 @@ export function useDevice(o: { call: Call; unlocked: boolean; scene: string; mod
     if (c && !pending.current) setCfg((prev) => (JSON.stringify(prev) === JSON.stringify(c) ? prev : c));      // the server's answer is authoritative; unchanged means no re-render
   }, [post]);
 
-  useEffect(() => { if (!ready || !o.unlocked || o.mock) return; ping(); const t = setInterval(ping, 15000); return () => clearInterval(t); }, [ready, o.unlocked, o.mock, ping]);
+  useEffect(() => { if (!ready || !o.unlocked || o.mock) return; ping(); return poll(ping, pingEvery); }, [ready, o.unlocked, o.mock, ping]);
 
   /** Change this screen's settings: applied immediately, saved to the server (retried if it fails). */
   const save = useCallback(async (patch: Partial<DeviceConfig>) => {
