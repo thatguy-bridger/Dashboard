@@ -10,7 +10,8 @@
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
     "cf:deploy": "./scripts/cf-deploy.sh",
-    "cf:secrets": "./scripts/cf-secrets.sh"
+    "cf:secrets": "./scripts/cf-secrets.sh",
+    "cf:secrets:vercel": "./scripts/cf-secrets-from-vercel.sh"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.12",
