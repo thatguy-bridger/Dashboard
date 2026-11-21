@@ -7,6 +7,7 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "workers_dev": true,
+  "routes": [{ "pattern": "dashboard.bridgerjones.com", "custom_domain": true }],
   "observability": { "enabled": true },
   "vars": { "BUILD_ID": "dev" }
 }
